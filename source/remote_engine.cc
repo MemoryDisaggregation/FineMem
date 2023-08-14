@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-08-13 09:46:18
+ * @LastEditTime: 2023-08-14 17:34:50
  * @FilePath: /rmalloc_newbase/source/remote_engine.cc
  * @Description: 
  * 
@@ -39,7 +39,7 @@ bool RemoteEngine::start(const std::string addr, const std::string port) {
     return false;
   }
 
-  m_context_ = ibv_ctxs[0];
+  m_context_ = ibv_ctxs[1];
   m_pd_ = ibv_alloc_pd(m_context_);
   if (!m_pd_) {
     perror("ibv_alloc_pd fail");

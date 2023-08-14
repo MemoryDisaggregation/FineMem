@@ -2,12 +2,13 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-08-14 16:26:55
+ * @LastEditTime: 2023-08-14 17:35:17
  * @FilePath: /rmalloc_newbase/source/remote_heap.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
  * Copyright (c) 2023 by wxy1999@mail.ustc.edu.cn, All Rights Reserved. 
  */
+#include <cstdio>
 #include <cstdlib>
 #include "memory_heap.h"
 #include "msg.h"
@@ -53,7 +54,7 @@ bool RemoteHeap::start(const std::string addr, const std::string port) {
     return false;
   }
 
-  m_context_ = ibv_ctxs[0];
+  m_context_ = ibv_ctxs[1];
   m_pd_ = ibv_alloc_pd(m_context_);
   if (!m_pd_) {
     perror("ibv_alloc_pd fail");
@@ -445,6 +446,8 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
       } else {
         resp_msg->status = RES_FAIL;
       }
+      // printf("fetch 2MB memory, addr: %ld, rkey: %d\n", resp_msg->addr,
+      //        resp_msg->rkey);
       /* write response */
       remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
                    sizeof(CmdMsgRespBlock), request->resp_addr,

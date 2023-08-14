@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-14 09:21:21
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-08-14 16:27:22
+ * @LastEditTime: 2023-08-14 17:33:48
  * @FilePath: /rmalloc_newbase/source/server.cc
  * @Description: 
  * 
@@ -30,7 +30,7 @@ int main(int argc, char *argv[]) {
   // uint64_t addr;
   // uint32_t lkey;
   // while(iter--){
-  //   heap->fetch_mem_2MB(addr, lkey);
+  //   heap->get_mem_2MB(addr, lkey);
   //   std::cout << "addr: " << std::hex << addr << " rkey: " << lkey << std::endl;
   // }
 
