@@ -10,7 +10,6 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include "kv_engine.h"
 #include "msg.h"
 #include "rdma_conn_manager.h"
 #include "rdma_mem_pool.h"
@@ -22,7 +21,7 @@
 static_assert(((SHARDING_NUM & (~SHARDING_NUM + 1)) == SHARDING_NUM),
               "RingBuffer's size must be a positive power of 2");
 
-namespace kv {
+namespace mralloc {
 
 /* Abstract base engine */
 class Engine {
@@ -54,7 +53,7 @@ class LocalEngine : public Engine {
   bool read(const std::string key, std::string &value);
 
  private:
-  kv::ConnectionManager *m_rdma_conn_;
+  mralloc::ConnectionManager *m_rdma_conn_;
   /* NOTE: should use some concurrent data structure, and also should take the
    * extra memory overhead into consideration */
   std::unordered_map<std::string, internal_value_t> m_map_[SHARDING_NUM];

@@ -1,3 +1,13 @@
+/*
+ * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @Date: 2023-07-24 10:13:26
+ * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-08-14 16:48:16
+ * @FilePath: /rmalloc_newbase/include/rdma_conn.h
+ * @Description: RDMA Connection functions, with RDMA read/write and fetch block, used by both LocalHeap and RemoteHeap
+ * 
+ * Copyright (c) 2023 by wxy1999@mail.ustc.edu.cn, All Rights Reserved. 
+ */
 #pragma once
 
 #include <arpa/inet.h>
@@ -12,7 +22,7 @@
 #include <string>
 #include "msg.h"
 
-namespace kv {
+namespace mralloc {
 
 #define RESOLVE_TIMEOUT_MS 5000
 
@@ -25,6 +35,8 @@ class RDMAConnection {
                   uint32_t rkey);
   int remote_write(void *ptr, uint64_t size, uint64_t remote_addr,
                    uint32_t rkey);
+  int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size) {};
+  int remote_fetch_2MB_block(uint64_t &addr, uint32_t &rkey);
 
  private:
   struct ibv_mr *rdma_register_memory(void *ptr, uint64_t size);

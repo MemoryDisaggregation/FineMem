@@ -5,7 +5,7 @@
 #include <thread>
 #include "rdma_conn.h"
 
-namespace kv {
+namespace mralloc {
 
 /* The RDMA connection queue */
 class ConnQue {
@@ -51,6 +51,8 @@ class ConnectionManager {
                   uint32_t rkey);
   int remote_write(void *ptr, uint32_t size, uint64_t remote_addr,
                    uint32_t rkey);
+  int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size);
+  int remote_fetch_2MB_block(uint64_t &addr, uint32_t &rkey);
 
  private:
   ConnQue *m_rpc_conn_queue_;

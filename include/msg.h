@@ -1,10 +1,20 @@
+/*
+ * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @Date: 2023-07-24 10:13:26
+ * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-08-14 15:47:49
+ * @FilePath: /rmalloc_newbase/include/msg.h
+ * @Description: 
+ * 
+ * Copyright (c) 2023 by wxy1999@mail.ustc.edu.cn, All Rights Reserved. 
+ */
 #pragma once
 
 #include <assert.h>
 #include <stdint.h>
 #include <chrono>
 
-namespace kv {
+namespace mralloc {
 
 #define NOTIFY_WORK 0xFF
 #define NOTIFY_IDLE 0x00
@@ -19,7 +29,7 @@ namespace kv {
   (std::chrono::duration_cast<std::chrono::microseconds>((END) - (START)) \
        .count())
 
-enum MsgType { MSG_REGISTER, MSG_UNREGISTER };
+enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_FETCH_2MB };
 
 enum ResStatus { RES_OK, RES_FAIL };
 
@@ -55,6 +65,12 @@ class ResponseMsg {
   uint8_t status;
 };
 CHECK_RDMA_MSG_SIZE(ResponseMsg);
+
+class Fetch2MBResponse : public ResponseMsg {
+ public:
+  uint64_t addr;
+  uint32_t rkey;
+};
 
 class RegisterRequest : public RequestsMsg {
  public:

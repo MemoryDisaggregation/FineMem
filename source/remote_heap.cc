@@ -2,25 +2,37 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-08-13 09:46:18
- * @FilePath: /rmalloc_newbase/source/remote_engine.cc
- * @Description: 
+ * @LastEditTime: 2023-08-14 16:26:55
+ * @FilePath: /rmalloc_newbase/source/remote_heap.cc
+ * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
  * Copyright (c) 2023 by wxy1999@mail.ustc.edu.cn, All Rights Reserved. 
  */
-#include "kv_engine.h"
+#include <cstdlib>
+#include "memory_heap.h"
+#include "msg.h"
+#include <bits/stdint-uintn.h>
+#include <infiniband/verbs.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <linux/mman.h>
 
 #define MEM_ALIGN_SIZE 4096
+
+#define INIT_MEM_SIZE ((uint64_t)1 << 33ul)
+
+#define SERVER_BASE_ADDR 0x10000000
 
 namespace mralloc {
 
 /**
  * @description: start remote engine service
- * @param {string} addr   empty string for RemoteEngine as server
+ * @param {string} addr   empty string for RemoteHeap as server
  * @param {string} port   the port the server listened
  * @return {bool} true for success
  */
-bool RemoteEngine::start(const std::string addr, const std::string port) {
+bool RemoteHeap::start(const std::string addr, const std::string port) {
+
   m_stop_ = false;
 
   m_worker_info_ = new WorkerInfo *[MAX_SERVER_WORKER];
@@ -30,6 +42,8 @@ bool RemoteEngine::start(const std::string addr, const std::string port) {
     m_worker_threads_[i] = nullptr;
   }
   m_worker_num_ = 0;
+
+  // get rdma device, alloc protect domain and init memory heap
 
   struct ibv_context **ibv_ctxs;
   int nr_devices_;
@@ -45,6 +59,13 @@ bool RemoteEngine::start(const std::string addr, const std::string port) {
     perror("ibv_alloc_pd fail");
     return false;
   }
+
+  if(!init_memory_heap(INIT_MEM_SIZE)) {
+    perror("init memory heap fail");
+    return false;
+  }
+
+  // create connection manager and listen
 
   m_cm_channel_ = rdma_create_event_channel();
   if (!m_cm_channel_) {
@@ -72,8 +93,9 @@ bool RemoteEngine::start(const std::string addr, const std::string port) {
     return false;
   }
 
-  m_conn_handler_ = new std::thread(&RemoteEngine::handle_connection, this);
+  m_conn_handler_ = new std::thread(&RemoteHeap::handle_connection, this);
 
+  // wait for all threads exit
   m_conn_handler_->join();
   for (uint32_t i = 0; i < MAX_SERVER_WORKER; i++) {
     if (m_worker_threads_[i] != nullptr) {
@@ -82,13 +104,71 @@ bool RemoteEngine::start(const std::string addr, const std::string port) {
   }
 
   return true;
+
+}
+
+/**
+ * @description: init memory heap, malloc a huge memory region and register it, then init free queue manager
+ * @param {uint64_t} size: memory heap size
+ * @return {bool} true for success
+ */
+bool RemoteHeap::init_memory_heap(uint64_t size) {
+  free_queue_manager = new FreeQueueManager();
+  void* init_addr = mmap((void*)SERVER_BASE_ADDR, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
+  printf("init_addr: %p\n", init_addr);
+  if (init_addr == MAP_FAILED) {
+    perror("mmap fail");
+    return false;
+  }
+
+  global_mr_ = rdma_register_memory(init_addr, size);
+
+  if(!free_queue_manager->init((uint64_t)init_addr, size)) {
+    perror("init free queue manager fail");
+    return false;
+  }
+  return true;
+}
+
+/**
+ * @description: fetch memory in local, provide lkey
+ * @param {uint64_t} &addr: the address of memory
+ * @param {uint32_t} &lkey: the lkey of memory
+ * @return {bool} true for success
+ */
+bool RemoteHeap::fetch_mem_2MB_local(uint64_t &addr, uint32_t &lkey) {
+  uint64_t mem_addr;
+  if(!(mem_addr = free_queue_manager->fetch_2MB_fast())) {
+    perror("get mem fail");
+    return false;
+  }
+  addr = mem_addr;
+  lkey = global_mr_->lkey;
+  return true;
+}
+
+/**
+ * @description: fetch memory in local, provide rkey
+ * @param {uint64_t} &addr: the address of memory
+ * @param {uint32_t} &rkey: the rkey of memory
+ * @return {bool} true for success
+ */
+bool RemoteHeap::fetch_mem_2MB_remote(uint64_t &addr, uint32_t &rkey) {
+  uint64_t mem_addr;
+  if(!(mem_addr = free_queue_manager->fetch_2MB_fast())) {
+    perror("get mem fail");
+    return false;
+  }
+  addr = mem_addr;
+  rkey = global_mr_->rkey;
+  return true;
 }
 
 /**
  * @description: get engine alive state
  * @return {bool}  true for alive
  */
-bool RemoteEngine::alive() {  // TODO
+bool RemoteHeap::alive() {  // TODO
   return true;
 }
 
@@ -96,7 +176,7 @@ bool RemoteEngine::alive() {  // TODO
  * @description: stop local engine service
  * @return {void}
  */
-void RemoteEngine::stop() {
+void RemoteHeap::stop() {
   m_stop_ = true;
   if (m_conn_handler_ != nullptr) {
     m_conn_handler_->join();
@@ -111,9 +191,11 @@ void RemoteEngine::stop() {
     }
   }
   // TODO: release resources
+  munmap((void*)SERVER_BASE_ADDR, INIT_MEM_SIZE);
+  delete free_queue_manager;
 }
 
-void RemoteEngine::handle_connection() {
+void RemoteHeap::handle_connection() {
   printf("start handle_connection\n");
   struct rdma_cm_event *event;
   while (true) {
@@ -136,7 +218,7 @@ void RemoteEngine::handle_connection() {
   printf("exit handle_connection\n");
 }
 
-int RemoteEngine::create_connection(struct rdma_cm_id *cm_id) {
+int RemoteHeap::create_connection(struct rdma_cm_id *cm_id) {
   if (!m_pd_) {
     perror("ibv_pibv_alloc_pdoll_cq fail");
     return -1;
@@ -211,7 +293,7 @@ int RemoteEngine::create_connection(struct rdma_cm_id *cm_id) {
 
     assert(m_worker_threads_[num] == nullptr);
     m_worker_threads_[num] =
-        new std::thread(&RemoteEngine::worker, this, m_worker_info_[num], num);
+        new std::thread(&RemoteHeap::worker, this, m_worker_info_[num], num);
   }
 
   struct rdma_conn_param conn_param;
@@ -231,7 +313,7 @@ int RemoteEngine::create_connection(struct rdma_cm_id *cm_id) {
   return 0;
 }
 
-struct ibv_mr *RemoteEngine::rdma_register_memory(void *ptr, uint64_t size) {
+struct ibv_mr *RemoteHeap::rdma_register_memory(void *ptr, uint64_t size) {
   struct ibv_mr *mr =
       ibv_reg_mr(m_pd_, ptr, size,
                  IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
@@ -243,7 +325,7 @@ struct ibv_mr *RemoteEngine::rdma_register_memory(void *ptr, uint64_t size) {
   return mr;
 }
 
-int RemoteEngine::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
+int RemoteHeap::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
                                                uint64_t size) {
   /* align mem */
   uint64_t total_size = size + MEM_ALIGN_SIZE;
@@ -262,7 +344,7 @@ int RemoteEngine::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
   return 0;
 }
 
-int RemoteEngine::remote_write(WorkerInfo *work_info, uint64_t local_addr,
+int RemoteHeap::remote_write(WorkerInfo *work_info, uint64_t local_addr,
                                uint32_t lkey, uint32_t length,
                                uint64_t remote_addr, uint32_t rkey) {
   struct ibv_sge sge;
@@ -320,7 +402,9 @@ int RemoteEngine::remote_write(WorkerInfo *work_info, uint64_t local_addr,
   return ret;
 }
 
-void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
+// RPC worker
+
+void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
   printf("start worker %d\n", num);
   CmdMsgBlock *cmd_msg = work_info->cmd_msg;
   CmdMsgRespBlock *cmd_resp = work_info->cmd_resp_msg;
@@ -348,6 +432,23 @@ void RemoteEngine::worker(WorkerInfo *work_info, uint32_t num) {
       remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
                    sizeof(CmdMsgRespBlock), reg_req->resp_addr,
                    reg_req->resp_rkey);
+    } else if (request->type == MSG_FETCH_2MB) {
+      /* handle memory fetch requests */
+      // printf("receive a memory fetch message\n");
+      Fetch2MBResponse *resp_msg = (Fetch2MBResponse *)cmd_resp;
+      uint64_t addr;
+      uint32_t rkey;
+      if (fetch_mem_2MB_remote(addr, rkey)) {
+        resp_msg->status = RES_OK;
+        resp_msg->addr = addr;
+        resp_msg->rkey = rkey;
+      } else {
+        resp_msg->status = RES_FAIL;
+      }
+      /* write response */
+      remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                   sizeof(CmdMsgRespBlock), request->resp_addr,
+                   request->resp_rkey);
     } else if (request->type == MSG_UNREGISTER) {
       /* handle memory unregister requests */
       UnregisterRequest *unreg_req = (UnregisterRequest *)request;

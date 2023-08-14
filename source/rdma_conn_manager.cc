@@ -1,7 +1,17 @@
+/*
+ * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @Date: 2023-07-24 10:13:27
+ * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-08-14 16:40:31
+ * @FilePath: /rmalloc_newbase/source/rdma_conn_manager.cc
+ * @Description: 
+ * 
+ * Copyright (c) 2023 by wxy1999@mail.ustc.edu.cn, All Rights Reserved. 
+ */
 #include "rdma_conn_manager.h"
 #include "atomic"
 
-namespace kv {
+namespace mralloc {
 
 int ConnectionManager::init(const std::string ip, const std::string port,
                             uint32_t rpc_conn_num,
@@ -59,6 +69,23 @@ int ConnectionManager::remote_write(void *ptr, uint32_t size,
   RDMAConnection *conn = m_one_sided_conn_queue_->dequeue();
   assert(conn != nullptr);
   int ret = conn->remote_write(ptr, size, remote_addr, rkey);
+  m_one_sided_conn_queue_->enqueue(conn);
+  return ret;
+}
+
+int ConnectionManager::remote_fetch_block(uint64_t &addr, uint32_t &rkey,
+                                          uint64_t size) {
+  RDMAConnection *conn = m_one_sided_conn_queue_->dequeue();
+  assert(conn != nullptr);
+  int ret = conn->remote_fetch_block(addr, rkey, size);
+  m_one_sided_conn_queue_->enqueue(conn);
+  return ret;
+}
+
+int ConnectionManager::remote_fetch_2MB_block(uint64_t &addr, uint32_t &rkey) {
+  RDMAConnection *conn = m_one_sided_conn_queue_->dequeue();
+  assert(conn != nullptr);
+  int ret = conn->remote_fetch_2MB_block(addr, rkey);
   m_one_sided_conn_queue_->enqueue(conn);
   return ret;
 }

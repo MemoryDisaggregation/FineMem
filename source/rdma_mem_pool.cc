@@ -1,6 +1,6 @@
 #include "rdma_mem_pool.h"
 
-namespace kv {
+namespace mralloc {
 
 /* return 0 if success, otherwise fail to get the mem */
 int RDMAMemPool::get_mem(uint64_t size, uint64_t &addr, uint32_t &rkey) {

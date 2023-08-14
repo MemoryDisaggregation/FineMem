@@ -1,0 +1,146 @@
+/*
+ * @Author: blahaj wxy1999@mail.ustc.edu.cn
+ * @Date: 2023-07-24 16:09:32
+ * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-08-14 16:47:28
+ * @FilePath: /rmalloc_newbase/include/memory_heap.h
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
+#pragma once
+
+#include <bits/stdint-uintn.h>
+#include <infiniband/verbs.h>
+#include <sched.h>
+#include <queue>
+#include <unordered_map>
+#include <sys/sysinfo.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <rdma/rdma_cma.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include "msg.h"
+#include "rdma_conn_manager.h"
+#include "rdma_mem_pool.h"
+#include "string"
+#include "thread"
+#include "unordered_map"
+#include "free_block_manager.h"
+
+#define RDMA_ALLOCATE_SIZE (1 << 26ul)
+
+// const uint8_t nprocs = get_nprocs();
+// const uint8_t nprocs = 2;
+
+namespace mralloc {
+
+class MemHeap {
+ public:
+    MemHeap(){}
+
+    virtual bool start(const std::string addr, const std::string port) { return true; }
+
+    virtual void stop() {}
+
+    virtual bool alive() { return true; }
+
+    ~MemHeap() {}
+ 
+ protected:
+
+};
+
+class LocalHeap: public MemHeap {
+ public:
+  typedef struct {
+    uint64_t addr;
+    uint32_t rkey;
+  } rdma_mem_t;
+
+  LocalHeap() {}
+
+  bool start(const std::string addr, const std::string port) override;
+
+  void stop() override;
+
+  bool alive() override;
+
+  ~LocalHeap() { destory(); }
+
+  int fetch_mem(uint64_t size, uint64_t &addr, uint32_t &rkey);
+
+  // alloc 2MB memory blocks
+  bool fetch_mem_fast_2MB(uint64_t &addr);
+
+  // alloc 2MB aligned large blocks
+  int fetch_mem_align(uint64_t size, uint64_t &addr, uint32_t &rkey);
+
+ private:
+  void destory(){};
+
+  // TODO: cpu cache using shm_open;
+  // std::queue<uint64_t> cpu_free_pages_[nprocs];
+  // std::unordered_map<uint64_t, pid_t>* cpu_allocated_pages_[nprocs];
+  ConnectionManager *m_rdma_conn_;
+  uint32_t global_rkey_;
+  std::vector<rdma_mem_t> m_used_mem_; /* the used mem */
+  std::mutex m_mutex_;                 /* used for concurrent mem allocation */
+};
+
+class RemoteHeap : public MemHeap {
+ public:
+  struct WorkerInfo {
+    CmdMsgBlock *cmd_msg;
+    CmdMsgRespBlock *cmd_resp_msg;
+    struct ibv_mr *msg_mr;
+    struct ibv_mr *resp_mr;
+    rdma_cm_id *cm_id;
+    struct ibv_cq *cq;
+  };
+
+  ~RemoteHeap(){};
+
+  bool start(const std::string addr, const std::string port) override;
+  void stop() override;
+  bool alive() override;
+  bool fetch_mem_2MB_local(uint64_t &addr, uint32_t &lkey);
+  bool fetch_mem_2MB_remote(uint64_t &addr, uint32_t &rkey);
+
+ private:
+
+  FreeQueueManager *free_queue_manager;
+
+  bool init_memory_heap(uint64_t size);
+
+  void handle_connection();
+
+  int create_connection(struct rdma_cm_id *cm_id);
+
+  struct ibv_mr *rdma_register_memory(void *ptr, uint64_t size);
+
+  int remote_write(WorkerInfo *work_info, uint64_t local_addr, uint32_t lkey,
+                   uint32_t length, uint64_t remote_addr, uint32_t rkey);
+
+  int allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
+                                   uint64_t size);
+
+  void worker(WorkerInfo *work_info, uint32_t num);
+
+  struct ibv_mr *global_mr_;
+  struct rdma_event_channel *m_cm_channel_;
+  struct rdma_cm_id *m_listen_id_;
+  struct ibv_pd *m_pd_;
+  struct ibv_context *m_context_;
+  bool m_stop_;
+  std::thread *m_conn_handler_;
+  WorkerInfo **m_worker_info_;
+  uint32_t m_worker_num_;
+  std::thread **m_worker_threads_;
+};
+
+}  // namespace kv
