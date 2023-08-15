@@ -19,6 +19,7 @@ class FreeBlockManager{
 public:
     FreeBlockManager() {};
     ~FreeBlockManager() {};
+    virtual bool init(uint64_t addr, uint64_t size) {return true;};
     virtual uint64_t fetch(uint64_t size) {return 0;};
     virtual uint64_t return_back(uint64_t addr, uint64_t size) {return 0;};
     virtual uint64_t fetch_2MB_fast() {return 0;};
@@ -36,7 +37,7 @@ public:
         }
     };
     
-    bool init(uint64_t addr, uint64_t size);
+    bool init(uint64_t addr, uint64_t size) override;
 
     uint64_t fetch(uint64_t size) override;
 

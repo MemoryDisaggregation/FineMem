@@ -52,6 +52,7 @@ class MemHeap {
     ~MemHeap() {}
  
  protected:
+    FreeBlockManager *free_queue_manager;
 
 };
 
@@ -112,8 +113,6 @@ class RemoteHeap : public MemHeap {
   bool fetch_mem_2MB_remote(uint64_t &addr, uint32_t &rkey);
 
  private:
-
-  FreeQueueManager *free_queue_manager;
 
   bool init_memory_heap(uint64_t size);
 
