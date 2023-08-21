@@ -17,23 +17,24 @@ namespace mralloc {
 
 class FreeBlockManager{
 public:
-    FreeBlockManager() {};
+    FreeBlockManager(uint64_t fast_size): fast_size_(fast_size) {};
     ~FreeBlockManager() {};
     virtual bool init(uint64_t addr, uint64_t size) {return true;};
     virtual uint64_t fetch(uint64_t size) {return 0;};
-    virtual uint64_t return_back(uint64_t addr, uint64_t size) {return 0;};
-    virtual uint64_t fetch_2MB_fast() {return 0;};
+    virtual bool return_back(uint64_t addr, uint64_t size) {return 0;};
+    virtual uint64_t fetch_fast() {return 0;};
     virtual void print_state() {};
+    uint64_t get_fast_size() {return fast_size_;};
 protected:
-    const uint64_t BASE_BLOCK_SIZE = 1024*1024*2;
+    uint64_t fast_size_;
 };
-
+    
 class FreeQueueManager: public FreeBlockManager{
 public:
-    FreeQueueManager() {};
+    FreeQueueManager(uint64_t fast_size):FreeBlockManager(fast_size) {};
     ~FreeQueueManager() {
-        while(!free_2MB_queue.empty()){
-            free_2MB_queue.pop();
+        while(!free_fast_queue.empty()){
+            free_fast_queue.pop();
         }
     };
     
@@ -41,35 +42,15 @@ public:
 
     uint64_t fetch(uint64_t size) override;
 
-    uint64_t return_back(uint64_t addr, uint64_t size) override;
+    bool return_back(uint64_t addr, uint64_t size) override;
 
-    uint64_t fetch_2MB_fast() override;
+    uint64_t fetch_fast() override;
 
     void print_state() override{};
     
 private:
-    std::queue<uint64_t> free_2MB_queue;
+    std::queue<uint64_t> free_fast_queue;
     
 };
 
-class FreeBuddyManager: public FreeBlockManager{
-public:
-    FreeBuddyManager() {};
-    ~FreeBuddyManager() {};
-    
-    bool init(uint64_t addr, uint64_t size);
-
-    uint64_t fetch(uint64_t size) override;
-
-    uint64_t return_back(uint64_t addr, uint64_t size) override;
-
-    uint64_t fetch_2MB_fast() override;
-
-    void print_state() override;
-
-// A buddy tree's private member:
-
-
-};
-    
 } // namespace mralloc

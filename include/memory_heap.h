@@ -4,7 +4,7 @@
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @LastEditTime: 2023-08-14 16:47:28
  * @FilePath: /rmalloc_newbase/include/memory_heap.h
- * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ * @Description: memory heap for rmalloc
  */
 #pragma once
 
@@ -76,7 +76,7 @@ class LocalHeap: public MemHeap {
   int fetch_mem(uint64_t size, uint64_t &addr, uint32_t &rkey);
 
   // alloc 2MB memory blocks
-  bool fetch_mem_fast_2MB(uint64_t &addr);
+  bool fetch_mem_fast(uint64_t &addr);
 
   // alloc 2MB aligned large blocks
   int fetch_mem_align(uint64_t size, uint64_t &addr, uint32_t &rkey);
@@ -109,8 +109,8 @@ class RemoteHeap : public MemHeap {
   bool start(const std::string addr, const std::string port) override;
   void stop() override;
   bool alive() override;
-  bool fetch_mem_2MB_local(uint64_t &addr, uint32_t &lkey);
-  bool fetch_mem_2MB_remote(uint64_t &addr, uint32_t &rkey);
+  bool fetch_mem_fast_local(uint64_t &addr, uint32_t &lkey);
+  bool fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey);
 
  private:
 

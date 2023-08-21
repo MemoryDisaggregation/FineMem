@@ -48,9 +48,9 @@ bool LocalHeap::alive() { return true; }
  * @param {uint32_t} &rkey
  * @return {bool} 
  */  
-bool LocalHeap::fetch_mem_fast_2MB(uint64_t &addr) {
+bool LocalHeap::fetch_mem_fast(uint64_t &addr) {
   uint32_t rkey;
-  if (m_rdma_conn_->remote_fetch_2MB_block(addr, rkey)) return false;
+  if (m_rdma_conn_->remote_fetch_fast_block(addr, rkey)) return false;
   return true;
 }
 

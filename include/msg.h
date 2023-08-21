@@ -29,7 +29,7 @@ namespace mralloc {
   (std::chrono::duration_cast<std::chrono::microseconds>((END) - (START)) \
        .count())
 
-enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_FETCH_2MB };
+enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_FETCH_FAST };
 
 enum ResStatus { RES_OK, RES_FAIL };
 
@@ -66,10 +66,11 @@ class ResponseMsg {
 };
 CHECK_RDMA_MSG_SIZE(ResponseMsg);
 
-class Fetch2MBResponse : public ResponseMsg {
+class FetchFastResponse : public ResponseMsg {
  public:
   uint64_t addr;
   uint32_t rkey;
+  uint32_t size;
 };
 
 class RegisterRequest : public RequestsMsg {

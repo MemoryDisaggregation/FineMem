@@ -346,14 +346,14 @@ int RDMAConnection::register_remote_memory(uint64_t &addr, uint32_t &rkey,
   return 0;
 }
 
-int RDMAConnection::remote_fetch_2MB_block(uint64_t &addr, uint32_t &rkey){
+int RDMAConnection::remote_fetch_fast_block(uint64_t &addr, uint32_t &rkey){
   memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
   memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));
   m_cmd_resp_->notify = NOTIFY_IDLE;
   RequestsMsg *request = (RequestsMsg *)m_cmd_msg_;
   request->resp_addr = (uint64_t)m_cmd_resp_;
   request->resp_rkey = m_resp_mr_->rkey;
-  request->type = MSG_FETCH_2MB;
+  request->type = MSG_FETCH_FAST;
   m_cmd_msg_->notify = NOTIFY_WORK;
 
   /* send a request to sever */
@@ -373,9 +373,9 @@ int RDMAConnection::remote_fetch_2MB_block(uint64_t &addr, uint32_t &rkey){
       return -1;
     }
   }
-  Fetch2MBResponse *resp_msg = (Fetch2MBResponse *)m_cmd_resp_;
+  FetchFastResponse *resp_msg = (FetchFastResponse *)m_cmd_resp_;
   if (resp_msg->status != RES_OK) {
-    printf("fetch 2MB block fail\n");
+    printf("fetch fast block fail\n");
     return -1;
   }
   addr = resp_msg->addr;

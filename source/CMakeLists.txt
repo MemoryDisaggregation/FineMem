@@ -4,7 +4,7 @@ set(BASE_SOURCE
     local_engine.cc remote_engine.cc rdma_conn_manager.cc rdma_conn.cc rdma_mem_pool.cc free_block_manager.cc local_heap.cc remote_heap.cc
     )
 
-add_library(polarkv STATIC ${BASE_SOURCE})
+add_library(mralloc STATIC ${BASE_SOURCE})
 
 add_executable(server server.cc)
 
@@ -15,13 +15,13 @@ add_executable(client client.cc)
 # message("Build Type: ${CMAKE_BUILD_TYPE} ${CMAKE_CXX_FLAGS}")
 
 target_link_libraries(server
-    polarkv
+    mralloc
     ibverbs
     rdmacm
 )
 
 target_link_libraries(client
-    polarkv
+    mralloc
     ibverbs
     rdmacm
 )
@@ -32,7 +32,7 @@ target_link_libraries(client
 #     rdmacm
 # )
 
-install(TARGETS polarkv
+install(TARGETS mralloc
         ARCHIVE DESTINATION lib
         LIBRARY DESTINATION lib
         RUNTIME DESTINATION bin

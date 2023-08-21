@@ -20,6 +20,8 @@
 
 #define MEM_ALIGN_SIZE 4096
 
+#define REMOTE_MEM_SIZE 1024*1024*64
+
 #define INIT_MEM_SIZE ((uint64_t)1 << 33ul)
 
 #define SERVER_BASE_ADDR 0x10000000
@@ -114,7 +116,7 @@ bool RemoteHeap::start(const std::string addr, const std::string port) {
  * @return {bool} true for success
  */
 bool RemoteHeap::init_memory_heap(uint64_t size) {
-  free_queue_manager = new FreeQueueManager();
+  free_queue_manager = new FreeQueueManager(REMOTE_MEM_SIZE);
   void* init_addr = mmap((void*)SERVER_BASE_ADDR, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
   printf("init_addr: %p\n", init_addr);
   if (init_addr == MAP_FAILED) {
@@ -137,9 +139,9 @@ bool RemoteHeap::init_memory_heap(uint64_t size) {
  * @param {uint32_t} &lkey: the lkey of memory
  * @return {bool} true for success
  */
-bool RemoteHeap::fetch_mem_2MB_local(uint64_t &addr, uint32_t &lkey) {
+bool RemoteHeap::fetch_mem_fast_local(uint64_t &addr, uint32_t &lkey) {
   uint64_t mem_addr;
-  if(!(mem_addr = free_queue_manager->fetch_2MB_fast())) {
+  if(!(mem_addr = free_queue_manager->fetch_fast())) {
     perror("get mem fail");
     return false;
   }
@@ -154,9 +156,9 @@ bool RemoteHeap::fetch_mem_2MB_local(uint64_t &addr, uint32_t &lkey) {
  * @param {uint32_t} &rkey: the rkey of memory
  * @return {bool} true for success
  */
-bool RemoteHeap::fetch_mem_2MB_remote(uint64_t &addr, uint32_t &rkey) {
+bool RemoteHeap::fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey) {
   uint64_t mem_addr;
-  if(!(mem_addr = free_queue_manager->fetch_2MB_fast())) {
+  if(!(mem_addr = free_queue_manager->fetch_fast())) {
     perror("get mem fail");
     return false;
   }
@@ -433,16 +435,17 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
       remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
                    sizeof(CmdMsgRespBlock), reg_req->resp_addr,
                    reg_req->resp_rkey);
-    } else if (request->type == MSG_FETCH_2MB) {
+    } else if (request->type == MSG_FETCH_FAST) {
       /* handle memory fetch requests */
       // printf("receive a memory fetch message\n");
-      Fetch2MBResponse *resp_msg = (Fetch2MBResponse *)cmd_resp;
+      FetchFastResponse *resp_msg = (FetchFastResponse *)cmd_resp;
       uint64_t addr;
       uint32_t rkey;
-      if (fetch_mem_2MB_remote(addr, rkey)) {
+      if (fetch_mem_fast_remote(addr, rkey)) {
         resp_msg->status = RES_OK;
         resp_msg->addr = addr;
         resp_msg->rkey = rkey;
+        resp_msg->size = free_queue_manager->get_fast_size();
       } else {
         resp_msg->status = RES_FAIL;
       }

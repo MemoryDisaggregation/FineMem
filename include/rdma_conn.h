@@ -36,7 +36,7 @@ class RDMAConnection {
   int remote_write(void *ptr, uint64_t size, uint64_t remote_addr,
                    uint32_t rkey);
   int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size) {};
-  int remote_fetch_2MB_block(uint64_t &addr, uint32_t &rkey);
+  int remote_fetch_fast_block(uint64_t &addr, uint32_t &rkey);
 
  private:
   struct ibv_mr *rdma_register_memory(void *ptr, uint64_t size);

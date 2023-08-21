@@ -82,10 +82,10 @@ int ConnectionManager::remote_fetch_block(uint64_t &addr, uint32_t &rkey,
   return ret;
 }
 
-int ConnectionManager::remote_fetch_2MB_block(uint64_t &addr, uint32_t &rkey) {
+int ConnectionManager::remote_fetch_fast_block(uint64_t &addr, uint32_t &rkey) {
   RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
   assert(conn != nullptr);
-  int ret = conn->remote_fetch_2MB_block(addr, rkey);
+  int ret = conn->remote_fetch_fast_block(addr, rkey);
   m_rpc_conn_queue_->enqueue(conn);
   return ret;
 }

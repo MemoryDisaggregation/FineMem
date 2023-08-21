@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8)
-project(POLAR_CONTEST)
+project(MRALLOC)
 
 set(CMAKE_BUILD_TYPE "Debug")
 
@@ -17,7 +17,7 @@ endif( CMAKE_BUILD_TYPE STREQUAL "Debug" )
 
 message("Build Type: ${CMAKE_BUILD_TYPE} ${CMAKE_CXX_FLAGS}")
 
-set(CMAKE_INSTALL_PREFIX ${CMAKE_BINARY_DIR}/polarkv)
+set(CMAKE_INSTALL_PREFIX ${CMAKE_BINARY_DIR}/mralloc)
 MESSAGE("Install prefix is: ${CMAKE_INSTALL_PREFIX}")
 
 include_directories(${PROJECT_SOURCE_DIR}/include)
