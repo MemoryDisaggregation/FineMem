@@ -51,7 +51,7 @@ bool LocalHeap::start(const std::string addr, const std::string port){
         // TODO: here we just fill 10 blocks, an automated or valified number should be tested
         for( int j = 0; j < 10; j++){
           fetch_mem_fast(init_addr_);
-          printf("init @%d, addr:%ld\n", i, init_addr_);
+          printf("init @%d, addr:%lx\n", i, init_addr_);
           cpu_cache_->add_cache(i, init_addr_);
         }
       }
@@ -105,7 +105,15 @@ bool LocalHeap::alive() { return true; }
 // fetch memory in local side
 bool LocalHeap::fetch_mem_fast(uint64_t &addr){
   addr = free_queue_manager->fetch_fast();
-  if(addr == 0) return false;
+  if(addr == 0) {
+    uint64_t fetch_addr_;
+    fetch_mem_fast_remote(fetch_addr_);
+    if (!free_queue_manager->return_back(fetch_addr_, REMOTE_BLOCKSIZE)){
+      printf("Remote fetch failed!\n");
+      return false;
+    }
+    addr = free_queue_manager->fetch_fast();
+  }
   return true;
 }
 
