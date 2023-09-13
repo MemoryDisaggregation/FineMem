@@ -31,13 +31,22 @@
 #include "thread"
 #include "unordered_map"
 #include "free_block_manager.h"
+#include "cpu_cache.h"
 
 #define RDMA_ALLOCATE_SIZE (1 << 26ul)
 
 // const uint8_t nprocs = get_nprocs();
-// const uint8_t nprocs = 2;
+
 
 namespace mralloc {
+
+/*
+struct cpu_cache {
+  uint64_t read_p[nproc];
+  uint64_t write_p[nproc];
+  uint64_t cache[nproc][max_item];
+};
+*/
 
 class MemHeap {
  public:
@@ -49,12 +58,18 @@ class MemHeap {
 
     virtual bool alive() { return true; }
 
+    virtual void run() {}
+
     ~MemHeap() {}
  
  protected:
     FreeBlockManager *free_queue_manager;
+    uint8_t running;
 
 };
+
+void * run_heap(void* arg) ;
+
 
 class LocalHeap: public MemHeap {
  public:
@@ -63,7 +78,9 @@ class LocalHeap: public MemHeap {
     uint32_t rkey;
   } rdma_mem_t;
 
-  LocalHeap() {}
+  LocalHeap() {
+
+  }
 
   bool start(const std::string addr, const std::string port) override;
 
@@ -71,15 +88,21 @@ class LocalHeap: public MemHeap {
 
   bool alive() override;
 
+  void run() override;
+
   ~LocalHeap() { destory(); }
 
-  int fetch_mem(uint64_t size, uint64_t &addr, uint32_t &rkey);
+  uint64_t fetch_cache(uint8_t nproc);
 
-  // alloc 2MB memory blocks
   bool fetch_mem_fast(uint64_t &addr);
 
+  bool fetch_mem_remote(uint64_t size, uint64_t &addr, uint32_t &rkey);
+
+  // alloc 2MB memory blocks
+  bool fetch_mem_fast_remote(uint64_t &addr);
+
   // alloc 2MB aligned large blocks
-  int fetch_mem_align(uint64_t size, uint64_t &addr, uint32_t &rkey);
+  bool fetch_mem_align_remote(uint64_t size, uint64_t &addr, uint32_t &rkey);
 
  private:
   void destory(){};
@@ -87,6 +110,7 @@ class LocalHeap: public MemHeap {
   // TODO: cpu cache using shm_open;
   // std::queue<uint64_t> cpu_free_pages_[nprocs];
   // std::unordered_map<uint64_t, pid_t>* cpu_allocated_pages_[nprocs];
+  cpu_cache* cpu_cache_;
   ConnectionManager *m_rdma_conn_;
   uint32_t global_rkey_;
   std::vector<rdma_mem_t> m_used_mem_; /* the used mem */

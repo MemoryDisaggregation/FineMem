@@ -33,10 +33,10 @@ int main(int argc, char* argv[]){
     uint64_t addr;
     uint32_t rkey=0;
     while(iter--){
-      heap->fetch_mem_fast_2MB(addr);
+      addr = heap->fetch_cache(iter);
       std::cout << "addr: " << std::hex << addr << " rkey: " << rkey << std::endl;
     }
-
+    getchar();
     heap->stop();
     delete heap;
     return 0;

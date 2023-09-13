@@ -10,7 +10,7 @@
 #define RDMA_ALLOCATE_SIZE (1 << 26ul)
 
 // const uint8_t nprocs = get_nprocs();
-const uint8_t nprocs = 2;
+// const uint8_t nprocs = 2;
 
 namespace mralloc {
 class RDMAMemPool {

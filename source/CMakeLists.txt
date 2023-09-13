@@ -18,12 +18,14 @@ target_link_libraries(server
     mralloc
     ibverbs
     rdmacm
+    rt
 )
 
 target_link_libraries(client
     mralloc
     ibverbs
     rdmacm
+    rt
 )
 
 # target_link_libraries(remote_heap

@@ -30,6 +30,7 @@ class Engine {
 
   virtual bool start(const std::string addr, const std::string port) = 0;
   virtual void stop() = 0;
+  virtual void run()  = 0;
 
   virtual bool alive() = 0;
 };
@@ -48,6 +49,7 @@ class LocalEngine : public Engine {
   bool start(const std::string addr, const std::string port) override;
   void stop() override;
   bool alive() override;
+  void run() override;
 
   bool write(const std::string key, const std::string value);
   bool read(const std::string key, std::string &value);
