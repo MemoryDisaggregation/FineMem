@@ -10,6 +10,7 @@ add_executable(server server.cc)
 
 add_executable(client client.cc)
 
+add_executable(user_code user_code.cc)
 # add_executable(remote_heap remote_heap.cc)
 
 # message("Build Type: ${CMAKE_BUILD_TYPE} ${CMAKE_CXX_FLAGS}")
@@ -26,6 +27,11 @@ target_link_libraries(client
     ibverbs
     rdmacm
     rt
+)
+
+
+target_link_libraries(user_code
+    rt    
 )
 
 # target_link_libraries(remote_heap
