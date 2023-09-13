@@ -12,7 +12,7 @@
 
 namespace mralloc {
 
-const uint32_t nprocs = 2;
+const uint32_t nprocs = 32;
 const uint32_t max_item = 1024;
 
 class cpu_cache{
@@ -21,11 +21,11 @@ public:
         // init cache at host/local side
         // try to open the cpu cache shared memory
         int port_flag = PROT_READ | PROT_WRITE;
-        int mm_flag   = MAP_SHARED | MAP_FIXED; 
+        int mm_flag   = MAP_SHARED; 
         int fd = shm_open("/cpu_cache", O_RDWR, 0);
         if(fd==-1){
             // if shm not exist, create and init it
-            fd = shm_open("/cpu_cache", O_CREAT | O_EXCL | O_RDWR, 0777);
+            fd = shm_open("/cpu_cache", O_CREAT | O_EXCL | O_RDWR, 0600);
             // change size to cpu number * max_item
             // TODO: our cpu number should be dynamic, max_item can be static
             // e.g. const uint8_t nprocs = get_nprocs();
@@ -44,8 +44,7 @@ public:
             }
         }
         else {
-            // open shm success, then mmap this file to local memory, and get ring buffer read and write
-            int mm_flag   = MAP_SHARED | MAP_FIXED; 
+            // open shm success, then mmap this file to local memory, and get ring buffer read and write 
             shared_cpu_cache_ = (uint64_t*)mmap(NULL, sizeof(uint64_t) * nprocs * (max_item + 2), port_flag, mm_flag, fd, 0);
             read_p_ = (uint64_t*)shared_cpu_cache_;
             write_p_ = (uint64_t*)shared_cpu_cache_ + nprocs;
@@ -100,11 +99,11 @@ public:
     }
 
     bool is_full(uint32_t nproc){
-        return (write_p_[nproc] == read_p_[nproc] && write_p_[nproc] != -1);
+        return (write_p_[nproc] == read_p_[nproc] && shared_cpu_cache_[2 * nprocs + nproc * max_item + write_p_[nproc]] != -1);
     }
 
     bool is_empty(uint32_t nproc){
-        return (write_p_[nproc] == read_p_[nproc] && write_p_[nproc] == -1);
+        return (write_p_[nproc] == read_p_[nproc] && shared_cpu_cache_[2 * nprocs + nproc * max_item + write_p_[nproc]] == -1);
     }
 
 private:

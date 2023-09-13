@@ -51,6 +51,7 @@ bool LocalHeap::start(const std::string addr, const std::string port){
         // TODO: here we just fill 10 blocks, an automated or valified number should be tested
         for( int j = 0; j < 10; j++){
           fetch_mem_fast(init_addr_);
+          printf("init @%d, addr:%ld\n", i, init_addr_);
           cpu_cache_->add_cache(i, init_addr_);
         }
       }
