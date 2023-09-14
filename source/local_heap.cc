@@ -84,11 +84,9 @@ void LocalHeap::run() {
   }
 }
 
-uint64_t LocalHeap::fetch_cache(uint8_t nproc){
-  uint64_t addr;
-  uint32_t rkey;
+void LocalHeap::fetch_cache(uint8_t nproc, uint64_t &addr, uint32_t &rkey) {
   cpu_cache_->fetch_cache(nproc, addr, rkey);
-  return addr;
+  return;
 }
 
 /**

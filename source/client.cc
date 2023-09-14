@@ -33,7 +33,7 @@ int main(int argc, char* argv[]){
     uint64_t addr;
     uint32_t rkey=0;
     while(iter--){
-      addr = heap->fetch_cache(iter);
+      heap->fetch_cache(iter, addr, rkey);
       std::cout << "addr: " << std::hex << addr << " rkey: " << rkey << std::endl;
     }
     getchar();

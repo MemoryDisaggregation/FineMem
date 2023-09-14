@@ -101,7 +101,7 @@ class LocalHeap: public MemHeap {
 
   ~LocalHeap() { destory(); }
 
-  uint64_t fetch_cache(uint8_t nproc);
+  void fetch_cache(uint8_t nproc, uint64_t &addr, uint32_t &rkey);
 
   bool fetch_mem_fast(uint64_t &addr);
 
