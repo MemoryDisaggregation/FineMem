@@ -31,6 +31,9 @@ target_link_libraries(client
 
 
 target_link_libraries(user_code
+    mralloc
+    ibverbs
+    rdmacm
     rt    
 )
 

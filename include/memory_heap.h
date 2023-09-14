@@ -2,7 +2,7 @@
  * @Author: blahaj wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 16:09:32
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-08-14 16:47:28
+ * @LastEditTime: 2023-09-14 15:23:43
  * @FilePath: /rmalloc_newbase/include/memory_heap.h
  * @Description: memory heap for rmalloc
  */
@@ -60,11 +60,20 @@ class MemHeap {
 
     virtual void run() {}
 
+    void set_global_rkey(uint32_t rkey) {
+      global_rkey_ = rkey;
+    }
+
+    uint32_t get_global_rkey() {
+      return global_rkey_;
+    }
+
     ~MemHeap() {}
  
  protected:
     FreeBlockManager *free_queue_manager;
     uint8_t running;
+    uint32_t global_rkey_;
 
 };
 
@@ -99,7 +108,7 @@ class LocalHeap: public MemHeap {
   bool fetch_mem_remote(uint64_t size, uint64_t &addr, uint32_t &rkey);
 
   // alloc 2MB memory blocks
-  bool fetch_mem_fast_remote(uint64_t &addr);
+  bool fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey);
 
   // alloc 2MB aligned large blocks
   bool fetch_mem_align_remote(uint64_t size, uint64_t &addr, uint32_t &rkey);

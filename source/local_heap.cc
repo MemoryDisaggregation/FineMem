@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 16:08:03
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-08-14 16:41:55
+ * @LastEditTime: 2023-09-14 15:41:25
  * @FilePath: /rmalloc_newbase/source/local_heap.cc
  * @Description: 
  * 
@@ -37,12 +37,14 @@ void * run_heap(void* arg) {
   */
 bool LocalHeap::start(const std::string addr, const std::string port){
     uint64_t init_addr_ = 0;
+    uint32_t init_rkey_ = 0;
     m_rdma_conn_ = new ConnectionManager();
     if (m_rdma_conn_ == nullptr) return -1;
     if (m_rdma_conn_->init(addr, port, 4, 20)) return false;
     // init free queue manager, using REMOTE_BLOCKSIZE as init size
     free_queue_manager = new FreeQueueManager(LOCAL_BLOCKSIZE);
-    fetch_mem_fast_remote(init_addr_);
+    fetch_mem_fast_remote(init_addr_, init_rkey_);
+    set_global_rkey(init_rkey_);
     free_queue_manager->init(init_addr_, REMOTE_BLOCKSIZE);
     // init cpu cache, insert a block for each cpu cache ring buffer
     cpu_cache_ = new cpu_cache(LOCAL_BLOCKSIZE);
@@ -52,7 +54,7 @@ bool LocalHeap::start(const std::string addr, const std::string port){
         for( int j = 0; j < 10; j++){
           fetch_mem_fast(init_addr_);
           printf("init @%d, addr:%lx\n", i, init_addr_);
-          cpu_cache_->add_cache(i, init_addr_);
+          cpu_cache_->add_cache(i, init_addr_, get_global_rkey());
         }
       }
     }
@@ -75,7 +77,7 @@ void LocalHeap::run() {
         // TODO: an iteration to call times of fetch blocks is somehow too ugly
         for( int j = 0; j < 10; j++){
           fetch_mem_fast(init_addr_);
-          cpu_cache_->add_cache(i, init_addr_);
+          cpu_cache_->add_cache(i, init_addr_, get_global_rkey());
         }
       }
     }
@@ -83,7 +85,10 @@ void LocalHeap::run() {
 }
 
 uint64_t LocalHeap::fetch_cache(uint8_t nproc){
-  return cpu_cache_->fetch_cache(nproc);
+  uint64_t addr;
+  uint32_t rkey;
+  cpu_cache_->fetch_cache(nproc, addr, rkey);
+  return addr;
 }
 
 /**
@@ -104,11 +109,12 @@ bool LocalHeap::alive() { return true; }
 
 // fetch memory in local side
 bool LocalHeap::fetch_mem_fast(uint64_t &addr){
+  uint32_t rkey;
   addr = free_queue_manager->fetch_fast();
   if(addr == 0) {
     uint64_t fetch_addr_;
-    fetch_mem_fast_remote(fetch_addr_);
-    if (!free_queue_manager->return_back(fetch_addr_, REMOTE_BLOCKSIZE)){
+    fetch_mem_fast_remote(fetch_addr_, rkey);
+    if (!free_queue_manager->return_back(fetch_addr_, REMOTE_BLOCKSIZE) || rkey != get_global_rkey()){
       printf("Remote fetch failed!\n");
       return false;
     }
@@ -123,8 +129,8 @@ bool LocalHeap::fetch_mem_fast(uint64_t &addr){
  * @param {uint32_t} &rkey
  * @return {bool} 
  */  
-bool LocalHeap::fetch_mem_fast_remote(uint64_t &addr) {
-  uint32_t rkey;
+bool LocalHeap::fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey) {
+  // uint32_t rkey;
   if (m_rdma_conn_->remote_fetch_fast_block(addr, rkey)) return false;
   return true;
 }
