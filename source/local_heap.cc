@@ -40,7 +40,7 @@ bool LocalHeap::start(const std::string addr, const std::string port){
     uint32_t init_rkey_ = 0;
     m_rdma_conn_ = new ConnectionManager();
     if (m_rdma_conn_ == nullptr) return -1;
-    if (m_rdma_conn_->init(addr, port, 4, 20)) return false;
+    if (m_rdma_conn_->init(addr, port, 2, 20)) return false;
     // init free queue manager, using REMOTE_BLOCKSIZE as init size
     free_queue_manager = new FreeQueueManager(LOCAL_BLOCKSIZE);
     if(!fetch_mem_fast_remote(init_addr_, init_rkey_)){

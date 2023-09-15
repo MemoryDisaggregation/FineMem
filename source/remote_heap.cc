@@ -467,7 +467,7 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
       uint64_t addr = resp_req->addr; 
       uint32_t rkey = resp_req->rkey; 
       uint64_t size = resp_req->size;
-      if(rkey == get_global_rkey()){
+      if(rkey == global_mr_->rkey){
         ibv_mw* mw_ = mw_queue_->dequeue();
         struct ibv_send_wr wr_ = {};
         struct ibv_send_wr* bad_wr_;

@@ -20,7 +20,7 @@ int main(int argc, char** argv){
     mralloc::cpu_cache cpu_cache_ = mralloc::cpu_cache(cache_size);
     mralloc::ConnectionManager* m_rdma_conn_ = new mralloc::ConnectionManager();
     // if (m_rdma_conn_ == nullptr) return -1;
-    if (m_rdma_conn_ == nullptr || m_rdma_conn_->init("10.0.0.63", "1145", 4, 20) == -1 ){
+    if (m_rdma_conn_ == nullptr || m_rdma_conn_->init("10.0.0.63", "1145", 2, 20) == -1 ){
         printf("rdma connection create failed!\n");
     }
     int k=1000;
