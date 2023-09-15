@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-12 22:24:28
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-08-14 17:34:13
+ * @LastEditTime: 2023-09-15 16:23:58
  * @FilePath: /rmalloc_newbase/source/client.cc
  * @Description: 
  * 
@@ -35,8 +35,8 @@ int main(int argc, char* argv[]){
     while(iter--){
       heap->fetch_cache(iter, addr, rkey);
       std::cout << "addr: " << std::hex << addr << " rkey: " <<rkey << std::endl;
-      heap->mr_bind_remote(2*1024*1024, addr, rkey, 114514);
-      std::cout << "addr mw bind success " << std::endl;
+      // heap->mr_bind_remote(2*1024*1024, addr, rkey, 114514);
+      // std::cout << "addr mw bind success " << std::endl;
     }
     getchar();
     heap->stop();

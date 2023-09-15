@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:26
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-08-14 15:47:49
+ * @LastEditTime: 2023-09-15 16:43:55
  * @FilePath: /rmalloc_newbase/include/msg.h
  * @Description: 
  * 
@@ -33,6 +33,8 @@ namespace mralloc {
 enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_FETCH_FAST, MSG_MW_BIND };
 
 enum ResStatus { RES_OK, RES_FAIL };
+
+enum ConnType {CONN_RPC, CONN_ONESIDE};
 
 #define CHECK_RDMA_MSG_SIZE(T) \
   static_assert(sizeof(T) < MAX_MSG_SIZE, #T " msg size is too big!")
