@@ -48,6 +48,40 @@ struct cpu_cache {
 };
 */
 
+/* The RDMA connection queue */
+class MWQueue {
+ public:
+  MWQueue(ibv_pd *pd) :pd_(pd) {
+    for(int i=0; i<10; i++){
+        ibv_mw* new_mw_ = ibv_alloc_mw(pd_, IBV_MW_TYPE_2);
+        mw_queue_.push(new_mw_);
+    }
+  }
+
+  void enqueue(ibv_mw *conn) {
+    std::unique_lock<std::mutex> lock(mw_mutex_);
+    mw_queue_.push(conn);
+  };
+
+  ibv_mw *dequeue() {
+    std::unique_lock<std::mutex> lock(mw_mutex_);
+    if(mw_queue_.empty()) {
+      for(int i=0; i<10; i++){
+        ibv_mw* new_mw_ = ibv_alloc_mw(pd_, IBV_MW_TYPE_2);
+        mw_queue_.push(new_mw_);
+      }
+    }
+    ibv_mw *mw = mw_queue_.front();
+    mw_queue_.pop();
+    return mw;
+  }
+
+ private:
+  std::queue<ibv_mw*> mw_queue_;
+  std::mutex mw_mutex_;
+  ibv_pd *pd_;
+};
+
 class MemHeap {
  public:
     MemHeap(){}
@@ -173,6 +207,7 @@ class RemoteHeap : public MemHeap {
   WorkerInfo **m_worker_info_;
   uint32_t m_worker_num_;
   std::thread **m_worker_threads_;
+  MWQueue* mw_queue_;
 };
 
 }  // namespace kv

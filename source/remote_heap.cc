@@ -63,6 +63,12 @@ bool RemoteHeap::start(const std::string addr, const std::string port) {
     return false;
   }
 
+  mw_queue_ = new MWQueue(m_pd_);
+  if (!mw_queue_) {
+    perror("memeory window init fail");
+    return false;
+  }
+
   if(!init_memory_heap(INIT_MEM_SIZE)) {
     perror("init memory heap fail");
     return false;
@@ -455,7 +461,51 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
       remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
                    sizeof(CmdMsgRespBlock), request->resp_addr,
                    request->resp_rkey);
-    } else if (request->type == MSG_UNREGISTER) {
+    } else if (request->type == MSG_MW_BIND) {
+      MWbindRequest *resp_req = (MWbindRequest *)request;
+      MWbindResponse *resp_msg = (MWbindResponse *)cmd_resp;
+      uint64_t addr = resp_req->addr; 
+      uint32_t rkey = resp_req->rkey; 
+      uint64_t size = resp_req->size;
+      if(rkey == get_global_rkey()){
+        ibv_mw* mw_ = mw_queue_->dequeue();
+        struct ibv_send_wr wr_ = {};
+        struct ibv_send_wr* bad_wr_;
+        wr_.wr_id = 0;
+        wr_.num_sge = 0;
+        wr_.next = NULL;
+        wr_.opcode = IBV_WR_BIND_MW;
+        wr_.sg_list = NULL;
+        wr_.send_flags = IBV_SEND_SIGNALED;
+        wr_.bind_mw.mw = mw_;
+        wr_.bind_mw.rkey = rkey;
+        wr_.bind_mw.bind_info.addr = addr;
+        wr_.bind_mw.bind_info.length = size;
+        wr_.bind_mw.bind_info.mr = global_mr_;
+        wr_.bind_mw.bind_info.mw_access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | 
+                                  IBV_ACCESS_REMOTE_WRITE;
+        if (ibv_post_send(work_info->cm_id->qp, &wr_, &bad_wr_)) {
+          perror("ibv_post_send mw_bind fail");
+          resp_msg->status = RES_FAIL;
+        } else {
+          resp_msg->status = RES_OK;
+          resp_msg->addr = addr;
+          resp_msg->rkey = rkey;
+          resp_msg->size = size;
+        }
+      } else {
+        perror("recv wrong rkey");
+        resp_msg->status = RES_FAIL;
+      }
+      // printf("fetch 2MB memory, addr: %ld, rkey: %d\n", resp_msg->addr,
+      //        resp_msg->rkey);
+      /* write response */
+      remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                   sizeof(CmdMsgRespBlock), request->resp_addr,
+                   request->resp_rkey);
+
+    }
+    else if (request->type == MSG_UNREGISTER) {
       /* handle memory unregister requests */
       UnregisterRequest *unreg_req = (UnregisterRequest *)request;
       printf("receive a memory unregister message, addr: %ld\n",

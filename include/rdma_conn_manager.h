@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bits/stdint-uintn.h>
 #include <mutex>
 #include <queue>
 #include <thread>
@@ -51,6 +52,7 @@ class ConnectionManager {
                   uint32_t rkey);
   int remote_write(void *ptr, uint32_t size, uint64_t remote_addr,
                    uint32_t rkey);
+  int remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t newkey);
   int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size);
   int remote_fetch_fast_block(uint64_t &addr, uint32_t &rkey);
 

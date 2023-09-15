@@ -11,6 +11,7 @@
 #pragma once
 
 #include <assert.h>
+#include <bits/stdint-uintn.h>
 #include <stdint.h>
 #include <chrono>
 
@@ -18,7 +19,7 @@ namespace mralloc {
 
 #define NOTIFY_WORK 0xFF
 #define NOTIFY_IDLE 0x00
-#define MAX_MSG_SIZE 32
+#define MAX_MSG_SIZE 64
 #define MAX_SERVER_WORKER 4
 #define RESOLVE_TIMEOUT_MS 5000
 #define RDMA_TIMEOUT_US 10000000  // 10s
@@ -29,7 +30,7 @@ namespace mralloc {
   (std::chrono::duration_cast<std::chrono::microseconds>((END) - (START)) \
        .count())
 
-enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_FETCH_FAST };
+enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_FETCH_FAST, MSG_MW_BIND };
 
 enum ResStatus { RES_OK, RES_FAIL };
 
@@ -85,6 +86,24 @@ class RegisterResponse : public ResponseMsg {
   uint32_t rkey;
 };
 CHECK_RDMA_MSG_SIZE(RegisterResponse);
+
+class MWbindRequest : public RequestsMsg {
+ public:
+  uint64_t newkey;
+  uint64_t addr;
+  uint32_t rkey;
+  uint32_t size;
+};
+CHECK_RDMA_MSG_SIZE(MWbindRequest);
+
+class MWbindResponse : public ResponseMsg {
+ public:
+  uint64_t addr;
+  uint32_t rkey;
+  uint64_t size;
+};
+CHECK_RDMA_MSG_SIZE(MWbindRequest);
+
 
 struct UnregisterRequest : public RequestsMsg {
  public:

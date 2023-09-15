@@ -23,9 +23,16 @@ int main(int argc, char** argv){
     m_rdma_conn_->init("10.0.0.63", "1145", 4, 20);
     int k=1000;
     uint64_t addr; uint32_t rkey;
+    char buffer[5] = "aaaa";
+    char read_buffer[5];
     while(k--){
         cpu_cache_.fetch_cache(1, addr, rkey);
-        printf("alloc: %lx : %u\n", addr, rkey);
+        m_rdma_conn_->remote_write(buffer, 5, addr, rkey);
+        m_rdma_conn_->remote_read(read_buffer, 5, addr, rkey);
+        m_rdma_conn_->remote_mw(addr, rkey, cache_size, 114514);
+        m_rdma_conn_->remote_write(buffer, 5, addr, 114514);
+        m_rdma_conn_->remote_read(read_buffer, 5, addr, 114514);
+        printf("alloc: %lx : %u, content: %s\n", addr, rkey, read_buffer);
     }
     return 0;
 }
