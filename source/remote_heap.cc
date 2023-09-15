@@ -488,10 +488,39 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
           perror("ibv_post_send mw_bind fail");
           resp_msg->status = RES_FAIL;
         } else {
-          resp_msg->status = RES_OK;
-          resp_msg->addr = addr;
-          resp_msg->rkey = rkey;
-          resp_msg->size = size;
+            while (true) {
+              ibv_wc wc;
+              int rc = ibv_poll_cq(work_info->cq, 1, &wc);
+              if (rc > 0) {
+                if (IBV_WC_SUCCESS == wc.status) {
+                  // Break out as operation completed successfully
+                  // printf("Break out as operation completed successfully\n");
+                  resp_msg->status = RES_OK;
+                  resp_msg->addr = addr;
+                  resp_msg->rkey = rkey;
+                  resp_msg->size = size;
+                  break;
+                } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
+                  perror("cmd_send IBV_WC_WR_FLUSH_ERR");
+                  resp_msg->status = RES_FAIL;
+                  break;
+                } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
+                  perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
+                  resp_msg->status = RES_FAIL;
+                  break;
+                } else {
+                  perror("cmd_send ibv_poll_cq status error");
+                  resp_msg->status = RES_FAIL;
+                  break;
+                }
+              } else if (0 == rc) {
+                continue;
+              } else {
+                perror("ibv_poll_cq fail");
+                resp_msg->status = RES_FAIL;
+                break;
+              }
+            }
         }
       } else {
         perror("recv wrong rkey");

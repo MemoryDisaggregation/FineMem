@@ -421,7 +421,7 @@ int RDMAConnection::remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint3
   }
   FetchFastResponse *resp_msg = (FetchFastResponse *)m_cmd_resp_;
   if (resp_msg->status != RES_OK) {
-    printf("fetch fast block fail\n");
+    printf("mem window bind fail\n");
     return -1;
   }
   // printf("receive response: addr: %ld, key: %d\n", resp_msg->addr,

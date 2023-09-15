@@ -43,7 +43,9 @@ bool LocalHeap::start(const std::string addr, const std::string port){
     if (m_rdma_conn_->init(addr, port, 4, 20)) return false;
     // init free queue manager, using REMOTE_BLOCKSIZE as init size
     free_queue_manager = new FreeQueueManager(LOCAL_BLOCKSIZE);
-    fetch_mem_fast_remote(init_addr_, init_rkey_);
+    if(!fetch_mem_fast_remote(init_addr_, init_rkey_)){
+      printf("init fetch failed!\n");
+    }
     set_global_rkey(init_rkey_);
     free_queue_manager->init(init_addr_, REMOTE_BLOCKSIZE);
     // init cpu cache, insert a block for each cpu cache ring buffer
@@ -132,5 +134,11 @@ bool LocalHeap::fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey) {
   if (m_rdma_conn_->remote_fetch_fast_block(addr, rkey)) return false;
   return true;
 }
+
+bool LocalHeap::mr_bind_remote(uint64_t size, uint64_t addr, uint32_t rkey, uint64_t newkey) {
+  if (m_rdma_conn_->remote_mw(addr, rkey, size, newkey)) return false;
+  return true;
+}
+
 
 }

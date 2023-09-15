@@ -35,6 +35,8 @@ int main(int argc, char* argv[]){
     while(iter--){
       heap->fetch_cache(iter, addr, rkey);
       std::cout << "addr: " << std::hex << addr << " rkey: " <<rkey << std::endl;
+      heap->mr_bind_remote(2*1024*1024, addr, rkey, 114514);
+      std::cout << "addr mw bind success " << std::endl;
     }
     getchar();
     heap->stop();

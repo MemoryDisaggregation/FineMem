@@ -19,20 +19,26 @@ const uint64_t cache_size = 1024*1024*2;
 int main(int argc, char** argv){
     mralloc::cpu_cache cpu_cache_ = mralloc::cpu_cache(cache_size);
     mralloc::ConnectionManager* m_rdma_conn_ = new mralloc::ConnectionManager();
-    if (m_rdma_conn_ == nullptr) return -1;
-    m_rdma_conn_->init("10.0.0.63", "1145", 4, 20);
+    // if (m_rdma_conn_ == nullptr) return -1;
+    if (m_rdma_conn_ == nullptr || m_rdma_conn_->init("10.0.0.63", "1145", 4, 20) == -1 ){
+        printf("rdma connection create failed!\n");
+    }
     int k=1000;
     uint64_t addr; uint32_t rkey;
-    char buffer[5] = "aaaa";
+    char buffer1[5] = "aaaa";
+    char buffer2[5] = "bbbb";
     char read_buffer[5];
     while(k--){
         cpu_cache_.fetch_cache(1, addr, rkey);
-        m_rdma_conn_->remote_write(buffer, 5, addr, rkey);
+        m_rdma_conn_->remote_write(buffer1, 5, addr, rkey);
         m_rdma_conn_->remote_read(read_buffer, 5, addr, rkey);
-        m_rdma_conn_->remote_mw(addr, rkey, cache_size, 114514);
-        m_rdma_conn_->remote_write(buffer, 5, addr, 114514);
-        m_rdma_conn_->remote_read(read_buffer, 5, addr, 114514);
         printf("alloc: %lx : %u, content: %s\n", addr, rkey, read_buffer);
+        m_rdma_conn_->remote_fetch_fast_block(addr, rkey);
+        printf("alloc: %lx : %u \n", addr, rkey);
+        m_rdma_conn_->remote_mw(addr, rkey, cache_size, 114514);
+        m_rdma_conn_->remote_write(buffer2, 5, addr, 114514);
+        m_rdma_conn_->remote_read(read_buffer, 5, addr, 114514);
+        printf("alloc: %lx : %u, content: %s\n", addr, 114514, read_buffer);
     }
     return 0;
 }

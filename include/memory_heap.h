@@ -147,6 +147,8 @@ class LocalHeap: public MemHeap {
   // alloc 2MB aligned large blocks
   bool fetch_mem_align_remote(uint64_t size, uint64_t &addr, uint32_t &rkey);
 
+  bool mr_bind_remote(uint64_t size, uint64_t addr, uint32_t rkey, uint64_t newkey);
+
  private:
   void destory(){};
 
