@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-08-14 17:35:17
+ * @LastEditTime: 2023-09-15 16:51:12
  * @FilePath: /rmalloc_newbase/source/remote_heap.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -216,8 +216,9 @@ void RemoteHeap::handle_connection() {
 
     if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST) {
       struct rdma_cm_id *cm_id = event->id;
+      uint8_t type = *(uint8_t*)event->param.conn.private_data;
       rdma_ack_cm_event(event);
-      create_connection(cm_id);
+      create_connection(cm_id, type);
     } else if (event->event == RDMA_CM_EVENT_ESTABLISHED) {
       rdma_ack_cm_event(event);
     } else {
@@ -227,7 +228,7 @@ void RemoteHeap::handle_connection() {
   printf("exit handle_connection\n");
 }
 
-int RemoteHeap::create_connection(struct rdma_cm_id *cm_id) {
+int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type) {
   if (!m_pd_) {
     perror("ibv_pibv_alloc_pdoll_cq fail");
     return -1;
@@ -288,21 +289,23 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id) {
   rep_pdata.buf_addr = (uintptr_t)cmd_msg;
   rep_pdata.buf_rkey = msg_mr->rkey;
   rep_pdata.size = sizeof(CmdMsgRespBlock);
+  
+  if(connect_type == CONN_RPC){
+    int num = m_worker_num_++;
+    if (m_worker_num_ <= MAX_SERVER_WORKER) {
+      assert(m_worker_info_[num] == nullptr);
+      m_worker_info_[num] = new WorkerInfo();
+      m_worker_info_[num]->cmd_msg = cmd_msg;
+      m_worker_info_[num]->cmd_resp_msg = cmd_resp;
+      m_worker_info_[num]->msg_mr = msg_mr;
+      m_worker_info_[num]->resp_mr = resp_mr;
+      m_worker_info_[num]->cm_id = cm_id;
+      m_worker_info_[num]->cq = cq;
 
-  int num = m_worker_num_++;
-  if (m_worker_num_ <= MAX_SERVER_WORKER) {
-    assert(m_worker_info_[num] == nullptr);
-    m_worker_info_[num] = new WorkerInfo();
-    m_worker_info_[num]->cmd_msg = cmd_msg;
-    m_worker_info_[num]->cmd_resp_msg = cmd_resp;
-    m_worker_info_[num]->msg_mr = msg_mr;
-    m_worker_info_[num]->resp_mr = resp_mr;
-    m_worker_info_[num]->cm_id = cm_id;
-    m_worker_info_[num]->cq = cq;
-
-    assert(m_worker_threads_[num] == nullptr);
-    m_worker_threads_[num] =
-        new std::thread(&RemoteHeap::worker, this, m_worker_info_[num], num);
+      assert(m_worker_threads_[num] == nullptr);
+      m_worker_threads_[num] =
+          new std::thread(&RemoteHeap::worker, this, m_worker_info_[num], num);
+    }
   }
 
   struct rdma_conn_param conn_param;

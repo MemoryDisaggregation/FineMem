@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:26
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-08-14 16:48:16
+ * @LastEditTime: 2023-09-15 16:45:15
  * @FilePath: /rmalloc_newbase/include/rdma_conn.h
  * @Description: RDMA Connection functions, with RDMA read/write and fetch block, used by both LocalHeap and RemoteHeap
  * 
@@ -29,7 +29,7 @@ namespace mralloc {
 /* RDMA connection */
 class RDMAConnection {
  public:
-  int init(const std::string ip, const std::string port);
+  int init(const std::string ip, const std::string port, uint8_t access_type);
   int register_remote_memory(uint64_t &addr, uint32_t &rkey, uint64_t size);
   int remote_read(void *ptr, uint64_t size, uint64_t remote_addr,
                   uint32_t rkey);

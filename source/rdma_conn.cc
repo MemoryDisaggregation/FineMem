@@ -1,9 +1,10 @@
 #include "rdma_conn.h"
+#include <bits/stdint-uintn.h>
 #include "msg.h"
 
 namespace mralloc {
 
-int RDMAConnection::init(const std::string ip, const std::string port) {
+int RDMAConnection::init(const std::string ip, const std::string port, uint8_t access_type) {
   m_cm_channel_ = rdma_create_event_channel();
   if (!m_cm_channel_) {
     perror("rdma_create_event_channel fail");
@@ -101,7 +102,11 @@ int RDMAConnection::init(const std::string ip, const std::string port) {
     return -1;
   }
 
+  uint8_t access_type_ = access_type;
   struct rdma_conn_param conn_param = {};
+  conn_param.responder_resources = 1;
+  conn_param.private_data = &access_type_;
+  conn_param.private_data_len = sizeof(access_type_);
   conn_param.initiator_depth = 1;
   conn_param.retry_count = 7;
   if (rdma_connect(m_cm_id_, &conn_param)) {

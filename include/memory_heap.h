@@ -2,7 +2,7 @@
  * @Author: blahaj wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 16:09:32
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-09-14 15:23:43
+ * @LastEditTime: 2023-09-15 16:50:22
  * @FilePath: /rmalloc_newbase/include/memory_heap.h
  * @Description: memory heap for rmalloc
  */
@@ -187,7 +187,7 @@ class RemoteHeap : public MemHeap {
 
   void handle_connection();
 
-  int create_connection(struct rdma_cm_id *cm_id);
+  int create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type);
 
   struct ibv_mr *rdma_register_memory(void *ptr, uint64_t size);
 
