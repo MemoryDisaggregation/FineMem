@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-09-15 16:51:12
+ * @LastEditTime: 2023-09-15 17:31:24
  * @FilePath: /rmalloc_newbase/source/remote_heap.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -289,7 +289,7 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
   rep_pdata.buf_addr = (uintptr_t)cmd_msg;
   rep_pdata.buf_rkey = msg_mr->rkey;
   rep_pdata.size = sizeof(CmdMsgRespBlock);
-  
+
   if(connect_type == CONN_RPC){
     int num = m_worker_num_++;
     if (m_worker_num_ <= MAX_SERVER_WORKER) {
@@ -472,22 +472,13 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
       uint64_t size = resp_req->size;
       if(rkey == global_mr_->rkey){
         ibv_mw* mw_ = mw_queue_->dequeue();
-        struct ibv_send_wr wr_ = {};
-        struct ibv_send_wr* bad_wr_;
-        wr_.wr_id = 0;
-        wr_.num_sge = 0;
-        wr_.next = NULL;
-        wr_.opcode = IBV_WR_BIND_MW;
-        wr_.sg_list = NULL;
-        wr_.send_flags = IBV_SEND_SIGNALED;
-        wr_.bind_mw.mw = mw_;
-        wr_.bind_mw.rkey = rkey;
-        wr_.bind_mw.bind_info.addr = addr;
-        wr_.bind_mw.bind_info.length = size;
-        wr_.bind_mw.bind_info.mr = global_mr_;
-        wr_.bind_mw.bind_info.mw_access_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | 
-                                  IBV_ACCESS_REMOTE_WRITE;
-        if (ibv_post_send(work_info->cm_id->qp, &wr_, &bad_wr_)) {
+        struct ibv_mw_bind_info bind_info_ = {.mr = global_mr_, 
+                                        .addr = addr, 
+                                        .length = size,
+                                        .mw_access_flags = IBV_ACCESS_REMOTE_READ | 
+                                          IBV_ACCESS_REMOTE_WRITE} ;
+        struct ibv_mw_bind bind_ = {.wr_id = 0, .send_flags = IBV_SEND_SIGNALED, .bind_info = bind_info_};
+        if(ibv_bind_mw(work_info->cm_id->qp, mw_, &bind_)){
           perror("ibv_post_send mw_bind fail");
           resp_msg->status = RES_FAIL;
         } else {
@@ -500,7 +491,7 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
                   // printf("Break out as operation completed successfully\n");
                   resp_msg->status = RES_OK;
                   resp_msg->addr = addr;
-                  resp_msg->rkey = rkey;
+                  resp_msg->rkey = mw_->rkey;
                   resp_msg->size = size;
                   break;
                 } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
@@ -525,6 +516,59 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
               }
             }
         }
+        // struct ibv_send_wr wr_ = {};
+        // struct ibv_send_wr* bad_wr_;
+        // wr_.wr_id = 0;
+        // wr_.num_sge = 0;
+        // wr_.next = NULL;
+        // wr_.opcode = IBV_WR_BIND_MW;
+        // wr_.sg_list = NULL;
+        // wr_.send_flags = IBV_SEND_SIGNALED;
+        // wr_.bind_mw.mw = mw_;
+        // wr_.bind_mw.rkey = rkey;
+        // wr_.bind_mw.bind_info.addr = addr;
+        // wr_.bind_mw.bind_info.length = size;
+        // wr_.bind_mw.bind_info.mr = global_mr_;
+        // wr_.bind_mw.bind_info.mw_access_flags = IBV_ACCESS_REMOTE_READ | 
+        //                           IBV_ACCESS_REMOTE_WRITE;
+        // if (ibv_post_send(work_info->cm_id->qp, &wr_, &bad_wr_)) {
+        //   perror("ibv_post_send mw_bind fail");
+        //   resp_msg->status = RES_FAIL;
+        // } else {
+            // while (true) {
+            //   ibv_wc wc;
+            //   int rc = ibv_poll_cq(work_info->cq, 1, &wc);
+            //   if (rc > 0) {
+            //     if (IBV_WC_SUCCESS == wc.status) {
+            //       // Break out as operation completed successfully
+            //       // printf("Break out as operation completed successfully\n");
+            //       resp_msg->status = RES_OK;
+            //       resp_msg->addr = addr;
+            //       resp_msg->rkey = rkey;
+            //       resp_msg->size = size;
+            //       break;
+            //     } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
+            //       perror("cmd_send IBV_WC_WR_FLUSH_ERR");
+            //       resp_msg->status = RES_FAIL;
+            //       break;
+            //     } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
+            //       perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
+            //       resp_msg->status = RES_FAIL;
+            //       break;
+            //     } else {
+            //       perror("cmd_send ibv_poll_cq status error");
+            //       resp_msg->status = RES_FAIL;
+            //       break;
+            //     }
+            //   } else if (0 == rc) {
+            //     continue;
+            //   } else {
+            //     perror("ibv_poll_cq fail");
+            //     resp_msg->status = RES_FAIL;
+            //     break;
+            //   }
+            // }
+        // }
       } else {
         perror("recv wrong rkey");
         resp_msg->status = RES_FAIL;
