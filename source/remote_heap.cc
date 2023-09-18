@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-09-16 00:45:21
+ * @LastEditTime: 2023-09-18 17:13:41
  * @FilePath: /rmalloc_newbase/source/remote_heap.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -521,7 +521,6 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
         }
         }
         else {
-          for(int i=0;i<2;i++){
           struct ibv_send_wr wr_ = {};
           struct ibv_send_wr* bad_wr_;
           // struct ibv_sge sge_ = {};
@@ -538,8 +537,8 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
           wr_.send_flags = IBV_SEND_SIGNALED;
           wr_.bind_mw.mw = mw_;
           wr_.bind_mw.rkey = newkey;
-          wr_.bind_mw.bind_info.addr = addr + size/2*i;
-          wr_.bind_mw.bind_info.length = size/2*(i+1);
+          wr_.bind_mw.bind_info.addr = addr;
+          wr_.bind_mw.bind_info.length = size;
           wr_.bind_mw.bind_info.mr = global_mr_;
           wr_.bind_mw.bind_info.mw_access_flags = IBV_ACCESS_REMOTE_READ | 
                                     IBV_ACCESS_REMOTE_WRITE;
@@ -584,7 +583,6 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
                 }
               }
           }
-        }
         }
       } else {
         perror("recv wrong rkey");
