@@ -10,6 +10,7 @@
  */
 
 #include <bits/stdint-uintn.h>
+#include <infiniband/verbs.h>
 #include <cstdio>
 #include "cpu_cache.h"
 #include "rdma_conn_manager.h"
@@ -23,7 +24,7 @@ int main(int argc, char** argv){
     if (m_rdma_conn_ == nullptr || m_rdma_conn_->init("10.0.0.63", "1145", 2, 20) == -1 ){
         printf("rdma connection create failed!\n");
     }
-    int k=1000;
+    int k=1;
     uint64_t addr; uint32_t rkey;
     char buffer1[5] = "aaaa";
     char buffer2[5] = "bbbb";
@@ -33,12 +34,15 @@ int main(int argc, char** argv){
         m_rdma_conn_->remote_write(buffer1, 5, addr, rkey);
         m_rdma_conn_->remote_read(read_buffer, 5, addr, rkey);
         printf("alloc: %lx : %u, content: %s\n", addr, rkey, read_buffer);
-        m_rdma_conn_->remote_fetch_fast_block(addr, rkey);
-        printf("alloc: %lx : %u \n", addr, rkey);
-        m_rdma_conn_->remote_mw(addr, rkey, cache_size, 114514);
-        m_rdma_conn_->remote_write(buffer2, 5, addr, 114514);
-        m_rdma_conn_->remote_read(read_buffer, 5, addr, 114514);
-        printf("alloc: %lx : %u, content: %s\n", addr, 114514, read_buffer);
+        // rkey should be used by server side, client side has no necessary to support rkey
+        // uint32_t newkey = ibv_inc_rkey(rkey);
+        // m_rdma_conn_->remote_mw(addr, rkey, cache_size, newkey);
+        // m_rdma_conn_->remote_write(buffer2, 5, addr + cache_size/2, newkey);
+        // m_rdma_conn_->remote_read(read_buffer, 5, addr + cache_size/2, newkey);
+        // printf("using new key: %lx : %u, content: %s\n", addr, newkey, read_buffer);
+        // m_rdma_conn_->remote_write(buffer1, 5, addr, rkey);
+        // m_rdma_conn_->remote_read(read_buffer, 5, addr, rkey);
+        // printf("using old key: %lx : %u, content: %s\n", addr, rkey, read_buffer);
     }
     return 0;
 }

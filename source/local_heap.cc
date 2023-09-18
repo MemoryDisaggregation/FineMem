@@ -135,7 +135,7 @@ bool LocalHeap::fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey) {
   return true;
 }
 
-bool LocalHeap::mr_bind_remote(uint64_t size, uint64_t addr, uint32_t rkey, uint64_t newkey) {
+bool LocalHeap::mr_bind_remote(uint64_t size, uint64_t addr, uint32_t rkey, uint32_t &newkey) {
   if (m_rdma_conn_->remote_mw(addr, rkey, size, newkey)) return false;
   return true;
 }

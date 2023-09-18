@@ -221,6 +221,7 @@ int RDMAConnection::rdma_remote_read(uint64_t local_addr, uint32_t lkey,
         break;
       } else {
         perror("cmd_send ibv_poll_cq status error");
+        printf("%d\n", wc.status);
         break;
       }
     } else if (0 == rc) {
@@ -281,6 +282,7 @@ int RDMAConnection::rdma_remote_write(uint64_t local_addr, uint32_t lkey,
         break;
       } else {
         perror("cmd_send ibv_poll_cq status error");
+        printf("%d\n", wc.status);
         break;
       }
     } else if (0 == rc) {
@@ -393,7 +395,7 @@ int RDMAConnection::remote_fetch_fast_block(uint64_t &addr, uint32_t &rkey){
   return 0;
 }
 
-int RDMAConnection::remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t newkey){
+int RDMAConnection::remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t &newkey){
   memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
   memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));
   m_cmd_resp_->notify = NOTIFY_IDLE;
@@ -424,13 +426,13 @@ int RDMAConnection::remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint3
       return -1;
     }
   }
-  FetchFastResponse *resp_msg = (FetchFastResponse *)m_cmd_resp_;
+  MWbindResponse *resp_msg = (MWbindResponse *)m_cmd_resp_;
   if (resp_msg->status != RES_OK) {
     printf("mem window bind fail\n");
     return -1;
   }
-  // printf("receive response: addr: %ld, key: %d\n", resp_msg->addr,
-  //  resp_msg->rkey);
+  newkey = resp_msg->rkey;
+
   return 0;
 }
 

@@ -91,7 +91,7 @@ int ConnectionManager::remote_fetch_fast_block(uint64_t &addr, uint32_t &rkey) {
   return ret;
 }
 
-int ConnectionManager::remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t newkey){
+int ConnectionManager::remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t &newkey){
   RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
   assert(conn != nullptr);
   int ret = conn->remote_mw(addr, rkey, size, newkey);
