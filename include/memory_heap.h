@@ -2,7 +2,7 @@
  * @Author: blahaj wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 16:09:32
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-09-15 16:50:22
+ * @LastEditTime: 2023-09-16 00:42:58
  * @FilePath: /rmalloc_newbase/include/memory_heap.h
  * @Description: memory heap for rmalloc
  */
@@ -53,7 +53,8 @@ class MWQueue {
  public:
   MWQueue(ibv_pd *pd) :pd_(pd) {
     for(int i=0; i<10; i++){
-        ibv_mw* new_mw_ = ibv_alloc_mw(pd_, IBV_MW_TYPE_2);
+        ibv_mw* new_mw_ = ibv_alloc_mw(pd_, IBV_MW_TYPE_1);
+        // printf("generate rkey:%x\n", new_mw_->rkey);
         mw_queue_.push(new_mw_);
     }
   }
@@ -67,7 +68,7 @@ class MWQueue {
     std::unique_lock<std::mutex> lock(mw_mutex_);
     if(mw_queue_.empty()) {
       for(int i=0; i<10; i++){
-        ibv_mw* new_mw_ = ibv_alloc_mw(pd_, IBV_MW_TYPE_2);
+        ibv_mw* new_mw_ = ibv_alloc_mw(pd_, IBV_MW_TYPE_1);
         mw_queue_.push(new_mw_);
       }
     }
