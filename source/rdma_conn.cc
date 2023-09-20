@@ -131,6 +131,9 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
 
   m_server_cmd_msg_ = server_pdata.buf_addr;
   m_server_cmd_rkey_ = server_pdata.buf_rkey;
+  if (access_type == CONN_FUSEE){
+    m_fusee_rkey = server_pdata.init_rkey;
+  }
   assert(server_pdata.size == sizeof(CmdMsgBlock));
 
   // printf("private data, addr: %ld: rkey:%d, size: %d\n",

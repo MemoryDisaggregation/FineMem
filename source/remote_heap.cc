@@ -310,7 +310,7 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
   rep_pdata.buf_rkey = msg_mr->rkey;
   rep_pdata.size = sizeof(CmdMsgRespBlock);
 
-  if(connect_type == CONN_RPC){
+  if(connect_type == CONN_RPC || connect_type == CONN_FUSEE){
     int num = m_worker_num_++;
     if (m_worker_num_ <= MAX_SERVER_WORKER) {
       assert(m_worker_info_[num] == nullptr);
@@ -326,6 +326,10 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
       m_worker_threads_[num] =
           new std::thread(&RemoteHeap::worker, this, m_worker_info_[num], num);
     }
+  }
+
+  if (connect_type == CONN_FUSEE) {
+    rep_pdata.init_rkey = global_mr_->rkey;
   }
 
   struct rdma_conn_param conn_param;

@@ -34,7 +34,7 @@ enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_FETCH, MSG_FETCH_FAST, MSG_MW_B
 
 enum ResStatus { RES_OK, RES_FAIL };
 
-enum ConnType {CONN_RPC, CONN_ONESIDE};
+enum ConnMethod {CONN_RPC, CONN_ONESIDE, CONN_FUSEE};
 
 #define CHECK_RDMA_MSG_SIZE(T) \
   static_assert(sizeof(T) < MAX_MSG_SIZE, #T " msg size is too big!")
@@ -43,6 +43,7 @@ struct PData {
   uint64_t buf_addr;
   uint32_t buf_rkey;
   uint32_t size;
+  uint32_t init_rkey;
 };
 
 struct CmdMsgBlock {

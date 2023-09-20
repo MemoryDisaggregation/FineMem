@@ -40,6 +40,8 @@ class RDMAConnection {
   int remote_fetch_fast_block(uint64_t &addr, uint32_t &rkey);
   int remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t &newkey);
   int remote_fusee_alloc(uint64_t &addr, uint32_t &rkey);
+  uint32_t get_rkey() {return m_fusee_rkey;};
+  ibv_qp* get_qp() {return m_cm_id_->qp;};
 
  private:
   struct ibv_mr *rdma_register_memory(void *ptr, uint64_t size);
@@ -56,6 +58,7 @@ class RDMAConnection {
   struct rdma_cm_id *m_cm_id_;
   uint64_t m_server_cmd_msg_;
   uint32_t m_server_cmd_rkey_;
+  uint32_t m_fusee_rkey;
   uint32_t m_remote_size_;
   struct CmdMsgBlock *m_cmd_msg_;
   struct CmdMsgRespBlock *m_cmd_resp_;
