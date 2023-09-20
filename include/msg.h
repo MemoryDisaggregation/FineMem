@@ -30,7 +30,7 @@ namespace mralloc {
   (std::chrono::duration_cast<std::chrono::microseconds>((END) - (START)) \
        .count())
 
-enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_FETCH_FAST, MSG_MW_BIND };
+enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_FETCH, MSG_FETCH_FAST, MSG_MW_BIND, RPC_FUSEE_SUBTABLE };
 
 enum ResStatus { RES_OK, RES_FAIL };
 
@@ -106,6 +106,25 @@ class MWbindResponse : public ResponseMsg {
 };
 CHECK_RDMA_MSG_SIZE(MWbindRequest);
 
+class FetchRequest : public RequestsMsg {
+ public:
+  uint32_t size;
+};
+CHECK_RDMA_MSG_SIZE(MWbindRequest);
+
+class FetchResponse : public ResponseMsg {
+ public:
+  uint64_t addr;
+  uint32_t rkey;
+  uint64_t size;
+};
+CHECK_RDMA_MSG_SIZE(MWbindRequest);
+
+class FuseeSubtableResponse : public ResponseMsg {
+ public:
+  uint64_t addr;
+  uint32_t rkey;
+};
 
 struct UnregisterRequest : public RequestsMsg {
  public:

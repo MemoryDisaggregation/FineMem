@@ -50,6 +50,12 @@ public:
     
 private:
     std::queue<uint64_t> free_fast_queue;
+
+    const uint64_t queue_watermark = 1 << 30;
+
+    uint64_t raw_heap; 
+
+    uint64_t raw_size;
     
 };
 

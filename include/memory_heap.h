@@ -32,6 +32,7 @@
 #include "unordered_map"
 #include "free_block_manager.h"
 #include "cpu_cache.h"
+#include "rpc_server.h"
 
 #define RDMA_ALLOCATE_SIZE (1 << 26ul)
 
@@ -179,7 +180,8 @@ class RemoteHeap : public MemHeap {
   bool start(const std::string addr, const std::string port) override;
   void stop() override;
   bool alive() override;
-  bool fetch_mem_fast_local(uint64_t &addr, uint32_t &lkey);
+  bool fetch_mem_local(uint64_t &addr, uint64_t size, uint32_t &lkey, uint32_t &rkey);
+  bool fetch_mem_fast_local(uint64_t &addr, uint32_t &lkey, uint32_t &rkey);
   bool fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey);
 
  private:
@@ -211,6 +213,7 @@ class RemoteHeap : public MemHeap {
   uint32_t m_worker_num_;
   std::thread **m_worker_threads_;
   MWQueue* mw_queue_;
+  RPC_Fusee* rpc_fusee_;
 };
 
 }  // namespace kv

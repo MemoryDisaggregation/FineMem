@@ -14,6 +14,7 @@
 #include "msg.h"
 #include <bits/stdint-uintn.h>
 #include <infiniband/verbs.h>
+#include <netinet/in.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <linux/mman.h>
@@ -104,6 +105,13 @@ bool RemoteHeap::start(const std::string addr, const std::string port) {
 
   m_conn_handler_ = new std::thread(&RemoteHeap::handle_connection, this);
 
+  // optional init 
+  if(fusee_enable){
+    uint64_t fusee_addr; uint32_t fusee_lkey, fusee_rkey;
+    fetch_mem_local(fusee_addr, META_AREA_LEN + HASH_AREA_LEN, fusee_lkey, fusee_rkey);
+    rpc_fusee_ = new RPC_Fusee(fusee_addr, fusee_addr + META_AREA_LEN, fusee_rkey);
+  }
+
   // wait for all threads exit
   m_conn_handler_->join();
   for (uint32_t i = 0; i < MAX_SERVER_WORKER; i++) {
@@ -123,7 +131,7 @@ bool RemoteHeap::start(const std::string addr, const std::string port) {
  */
 bool RemoteHeap::init_memory_heap(uint64_t size) {
   free_queue_manager = new FreeQueueManager(REMOTE_MEM_SIZE);
-  void* init_addr = mmap((void*)SERVER_BASE_ADDR, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
+  void* init_addr = mmap((void*)(SERVER_BASE_ADDR - (1<<30)) , size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
   printf("init_addr: %p\n", init_addr);
   if (init_addr == MAP_FAILED) {
     perror("mmap fail");
@@ -139,13 +147,24 @@ bool RemoteHeap::init_memory_heap(uint64_t size) {
   return true;
 }
 
+bool RemoteHeap::fetch_mem_local(uint64_t &addr, uint64_t size, uint32_t &lkey, uint32_t &rkey) {
+  uint64_t mem_addr;
+  if(!(mem_addr = free_queue_manager->fetch(size))) {
+    perror("get mem fail");
+    return false;
+  }
+  addr = mem_addr;
+  lkey = global_mr_->lkey;
+  rkey = global_mr_->rkey;
+  return true;
+}
 /**
  * @description: fetch memory in local, provide lkey
  * @param {uint64_t} &addr: the address of memory
  * @param {uint32_t} &lkey: the lkey of memory
  * @return {bool} true for success
  */
-bool RemoteHeap::fetch_mem_fast_local(uint64_t &addr, uint32_t &lkey) {
+bool RemoteHeap::fetch_mem_fast_local(uint64_t &addr, uint32_t &lkey, uint32_t &rkey) {
   uint64_t mem_addr;
   if(!(mem_addr = free_queue_manager->fetch_fast())) {
     perror("get mem fail");
@@ -153,6 +172,7 @@ bool RemoteHeap::fetch_mem_fast_local(uint64_t &addr, uint32_t &lkey) {
   }
   addr = mem_addr;
   lkey = global_mr_->lkey;
+  rkey = global_mr_->rkey;
   return true;
 }
 
@@ -465,6 +485,7 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
                    sizeof(CmdMsgRespBlock), request->resp_addr,
                    request->resp_rkey);
     } else if (request->type == MSG_MW_BIND) {
+      // Attension: no actual used at the critical path
       MWbindRequest *resp_req = (MWbindRequest *)request;
       MWbindResponse *resp_msg = (MWbindResponse *)cmd_resp;
       uint64_t addr = resp_req->addr; 
@@ -474,52 +495,54 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
       if(rkey == global_mr_->rkey){
         ibv_mw* mw_ = mw_queue_->dequeue();
         newkey = ibv_inc_rkey(mw_->rkey);
+        // type 1 MW
         if(0){
-        struct ibv_mw_bind_info bind_info_ = {.mr = global_mr_, 
-                                        .addr = addr, 
-                                        .length = size,
-                                        .mw_access_flags = IBV_ACCESS_REMOTE_READ | 
-                                          IBV_ACCESS_REMOTE_WRITE} ;
-        struct ibv_mw_bind bind_ = {.wr_id = 0, .send_flags = IBV_SEND_SIGNALED, .bind_info = bind_info_};
-        if(ibv_bind_mw(work_info->cm_id->qp, mw_, &bind_)){
-          perror("ibv_post_send mw_bind fail");
-          resp_msg->status = RES_FAIL;
-        } else {
-            while (true) {
-              ibv_wc wc;
-              int rc = ibv_poll_cq(work_info->cq, 1, &wc);
-              if (rc > 0) {
-                if (IBV_WC_SUCCESS == wc.status) {
-                  // Break out as operation completed successfully
-                  // printf("Break out as operation completed successfully\n");
-                  resp_msg->status = RES_OK;
-                  resp_msg->addr = addr;
-                  resp_msg->rkey = mw_->rkey;
-                  resp_msg->size = size;
-                  break;
-                } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
-                  perror("cmd_send IBV_WC_WR_FLUSH_ERR");
-                  resp_msg->status = RES_FAIL;
-                  break;
-                } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
-                  perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
-                  resp_msg->status = RES_FAIL;
-                  break;
+          struct ibv_mw_bind_info bind_info_ = {.mr = global_mr_, 
+                                          .addr = addr, 
+                                          .length = size,
+                                          .mw_access_flags = IBV_ACCESS_REMOTE_READ | 
+                                            IBV_ACCESS_REMOTE_WRITE} ;
+          struct ibv_mw_bind bind_ = {.wr_id = 0, .send_flags = IBV_SEND_SIGNALED, .bind_info = bind_info_};
+          if(ibv_bind_mw(work_info->cm_id->qp, mw_, &bind_)){
+            perror("ibv_post_send mw_bind fail");
+            resp_msg->status = RES_FAIL;
+          } else {
+              while (true) {
+                ibv_wc wc;
+                int rc = ibv_poll_cq(work_info->cq, 1, &wc);
+                if (rc > 0) {
+                  if (IBV_WC_SUCCESS == wc.status) {
+                    // Break out as operation completed successfully
+                    // printf("Break out as operation completed successfully\n");
+                    resp_msg->status = RES_OK;
+                    resp_msg->addr = addr;
+                    resp_msg->rkey = mw_->rkey;
+                    resp_msg->size = size;
+                    break;
+                  } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
+                    perror("cmd_send IBV_WC_WR_FLUSH_ERR");
+                    resp_msg->status = RES_FAIL;
+                    break;
+                  } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
+                    perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
+                    resp_msg->status = RES_FAIL;
+                    break;
+                  } else {
+                    perror("cmd_send ibv_poll_cq status error");
+                    resp_msg->status = RES_FAIL;
+                    break;
+                  }
+                } else if (0 == rc) {
+                  continue;
                 } else {
-                  perror("cmd_send ibv_poll_cq status error");
+                  perror("ibv_poll_cq fail");
                   resp_msg->status = RES_FAIL;
                   break;
                 }
-              } else if (0 == rc) {
-                continue;
-              } else {
-                perror("ibv_poll_cq fail");
-                resp_msg->status = RES_FAIL;
-                break;
               }
-            }
+          }
         }
-        }
+        // type 2 MW
         else {
           struct ibv_send_wr wr_ = {};
           struct ibv_send_wr* bad_wr_;
@@ -595,6 +618,21 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
                    sizeof(CmdMsgRespBlock), request->resp_addr,
                    request->resp_rkey);
 
+    }
+    else if (request->type == RPC_FUSEE_SUBTABLE){
+      uint64_t addr = rpc_fusee_->mm_alloc_subtable();
+      uint32_t rkey = rpc_fusee_->get_rkey();
+      FuseeSubtableResponse* resp_msg = (FuseeSubtableResponse*)cmd_resp;
+      if(addr != 0){
+        resp_msg->addr = addr;
+        resp_msg->rkey = rkey;
+        resp_msg->status = RES_OK;
+      } else {
+        resp_msg->status = RES_FAIL;
+      }
+      remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+        sizeof(CmdMsgRespBlock), request->resp_addr,
+        request->resp_rkey);
     }
     else if (request->type == MSG_UNREGISTER) {
       /* handle memory unregister requests */
