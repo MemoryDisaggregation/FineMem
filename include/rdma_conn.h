@@ -12,6 +12,7 @@
 
 #include <arpa/inet.h>
 #include <bits/stdint-uintn.h>
+#include <infiniband/verbs.h>
 #include <netdb.h>
 #include <rdma/rdma_cma.h>
 #include <stdint.h>
@@ -31,6 +32,7 @@ namespace mralloc {
 class RDMAConnection {
  public:
   int init(const std::string ip, const std::string port, uint8_t access_type);
+  int init(const std::string ip, const std::string port, ibv_context* ctx, ibv_pd* pd, ibv_cq* cq, uint8_t access_type);
   int register_remote_memory(uint64_t &addr, uint32_t &rkey, uint64_t size);
   int remote_read(void *ptr, uint64_t size, uint64_t remote_addr,
                   uint32_t rkey);
