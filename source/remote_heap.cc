@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-09-18 17:13:41
+ * @LastEditTime: 2023-09-22 18:15:58
  * @FilePath: /rmalloc_newbase/source/remote_heap.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -21,7 +21,7 @@
 
 #define MEM_ALIGN_SIZE 4096
 
-#define REMOTE_MEM_SIZE 1024*1024*64
+#define REMOTE_MEM_SIZE 1024*4
 
 #define INIT_MEM_SIZE ((uint64_t)1 << 33ul)
 
@@ -131,7 +131,7 @@ bool RemoteHeap::start(const std::string addr, const std::string port) {
  */
 bool RemoteHeap::init_memory_heap(uint64_t size) {
   free_queue_manager = new FreeQueueManager(REMOTE_MEM_SIZE);
-  void* init_addr = mmap((void*)(SERVER_BASE_ADDR - (1<<30)) , size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
+  void* init_addr = mmap((void*)(SERVER_BASE_ADDR) , size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
   printf("init_addr: %p\n", init_addr);
   if (init_addr == MAP_FAILED) {
     perror("mmap fail");
@@ -233,7 +233,8 @@ void RemoteHeap::handle_connection() {
       perror("rdma_get_cm_event fail");
       return;
     }
-
+    printf("recieve create: %u\n", event->event);
+    
     if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST) {
       struct rdma_cm_id *cm_id = event->id;
       uint8_t type = *(uint8_t*)event->param.conn.private_data;
@@ -249,6 +250,7 @@ void RemoteHeap::handle_connection() {
 }
 
 int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type) {
+
   if (!m_pd_) {
     perror("ibv_pibv_alloc_pdoll_cq fail");
     return -1;
@@ -260,7 +262,7 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
     return -1;
   }
 
-  struct ibv_cq *cq = ibv_create_cq(m_context_, 2, NULL, comp_chan, 0);
+  struct ibv_cq *cq = ibv_create_cq(m_context_, 1, NULL, comp_chan, 0);
   if (!cq) {
     perror("ibv_create_cq fail");
     return -1;
@@ -276,6 +278,9 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
   qp_attr.cap.max_send_sge = 1;
   qp_attr.cap.max_recv_wr = 1;
   qp_attr.cap.max_recv_sge = 1;
+  qp_attr.cap.max_inline_data = 256;
+  qp_attr.sq_sig_all = 0;
+
   qp_attr.send_cq = cq;
   qp_attr.recv_cq = cq;
   qp_attr.qp_type = IBV_QPT_RC;
@@ -310,7 +315,7 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
   rep_pdata.buf_rkey = msg_mr->rkey;
   rep_pdata.size = sizeof(CmdMsgRespBlock);
 
-  if(connect_type == CONN_RPC || connect_type == CONN_FUSEE){
+  if(connect_type == CONN_RPC){
     int num = m_worker_num_++;
     if (m_worker_num_ <= MAX_SERVER_WORKER) {
       assert(m_worker_info_[num] == nullptr);
@@ -329,11 +334,12 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
   }
 
   if (connect_type == CONN_FUSEE) {
-    rep_pdata.init_rkey = global_mr_->rkey;
+    rep_pdata.buf_rkey = global_mr_->rkey;
   }
 
   struct rdma_conn_param conn_param;
-  conn_param.responder_resources = 1;
+  conn_param.responder_resources = 16;
+  conn_param.initiator_depth = 16;
   conn_param.private_data = &rep_pdata;
   conn_param.private_data_len = sizeof(rep_pdata);
 
@@ -353,7 +359,7 @@ struct ibv_mr *RemoteHeap::rdma_register_memory(void *ptr, uint64_t size) {
   struct ibv_mr *mr =
       ibv_reg_mr(m_pd_, ptr, size,
                  IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
-                     IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_MW_BIND);
+                     IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND);
   if (!mr) {
     perror("ibv_reg_mr fail");
     return nullptr;

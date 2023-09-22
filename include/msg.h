@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:26
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-09-15 16:43:55
+ * @LastEditTime: 2023-09-22 20:48:11
  * @FilePath: /rmalloc_newbase/include/msg.h
  * @Description: 
  * 
@@ -43,7 +43,7 @@ struct PData {
   uint64_t buf_addr;
   uint32_t buf_rkey;
   uint32_t size;
-  uint32_t init_rkey;
+  // uint32_t init_rkey;
 };
 
 struct CmdMsgBlock {

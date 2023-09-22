@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-11 16:42:26
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-08-14 16:14:27
+ * @LastEditTime: 2023-09-22 18:12:32
  * @FilePath: /rmalloc_newbase/include/free_block_manager.h
  * @Description: Buddy tree for memory management 
  * 
@@ -13,6 +13,8 @@
 #include <bits/stdint-uintn.h>
 #include <cstdio>
 #include <queue>
+#include <mutex>
+
 namespace mralloc {
 
 class FreeBlockManager{
@@ -56,6 +58,8 @@ private:
     uint64_t raw_heap; 
 
     uint64_t raw_size;
+
+    std::mutex m_mutex_;
     
 };
 

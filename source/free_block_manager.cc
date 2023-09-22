@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-14 09:42:48
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-08-14 16:15:17
+ * @LastEditTime: 2023-09-22 18:13:42
  * @FilePath: /rmalloc_newbase/source/free_block_manager.cc
  * @Description: 
  * 
@@ -32,6 +32,7 @@ namespace mralloc {
     }
 
     uint64_t FreeQueueManager::fetch(uint64_t size) {
+        std::unique_lock<std::mutex> lock(m_mutex_);
         if(size == fast_size_){
             return fetch_fast();
         }
@@ -47,6 +48,7 @@ namespace mralloc {
     }
 
     bool FreeQueueManager::return_back(uint64_t addr, uint64_t size) {
+        std::unique_lock<std::mutex> lock(m_mutex_);
         if (addr + size == raw_heap) {
             raw_heap -= size;
             raw_size += size;
@@ -62,6 +64,7 @@ namespace mralloc {
     }
 
     uint64_t FreeQueueManager::fetch_fast(){
+        std::unique_lock<std::mutex> lock(m_mutex_);
         if(free_fast_queue.empty()){
             for(uint64_t i = 0; i < 10; i++){
                 if(raw_size >= fast_size_){

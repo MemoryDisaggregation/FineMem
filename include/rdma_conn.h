@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:26
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-09-15 16:45:15
+ * @LastEditTime: 2023-09-22 20:48:01
  * @FilePath: /rmalloc_newbase/include/rdma_conn.h
  * @Description: RDMA Connection functions, with RDMA read/write and fetch block, used by both LocalHeap and RemoteHeap
  * 
@@ -31,6 +31,8 @@ namespace mralloc {
 /* RDMA connection */
 class RDMAConnection {
  public:
+  int init_async();
+  int connect_async(const std::string ip, const std::string port, uint8_t access_type);
   int init(const std::string ip, const std::string port, uint8_t access_type);
   int init(const std::string ip, const std::string port, ibv_context* ctx, ibv_pd* pd, ibv_cq* cq, uint8_t access_type);
   int register_remote_memory(uint64_t &addr, uint32_t &rkey, uint64_t size);
@@ -44,6 +46,9 @@ class RDMAConnection {
   int remote_fusee_alloc(uint64_t &addr, uint32_t &rkey);
   uint32_t get_rkey() {return m_fusee_rkey;};
   ibv_qp* get_qp() {return m_cm_id_->qp;};
+  ibv_cq* get_cq() {return m_cq_;};
+  ibv_pd* get_pd() {return m_pd_;};
+  ibv_context* get_ctx() {return m_cm_id_->verbs;};
 
  private:
   struct ibv_mr *rdma_register_memory(void *ptr, uint64_t size);
