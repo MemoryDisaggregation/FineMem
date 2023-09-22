@@ -1,5 +1,6 @@
 #include "rdma_conn.h"
 #include <bits/stdint-uintn.h>
+#include <cstdio>
 #include "msg.h"
 
 namespace mralloc {
@@ -415,7 +416,7 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
     return -1;
   }
 
-  m_cq_ = ibv_create_cq(m_cm_id_->verbs, 2, NULL, comp_chan, 0);
+  m_cq_ = ibv_create_cq(m_cm_id_->verbs, 1024, NULL, comp_chan, 0);
   if (!m_cq_) {
     perror("ibv_create_cq fail");
     return -1;
@@ -427,10 +428,12 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
   }
 
   struct ibv_qp_init_attr qp_attr = {};
-  qp_attr.cap.max_send_wr = 2;
-  qp_attr.cap.max_send_sge = 1;
+  qp_attr.cap.max_send_wr = 512;
+  qp_attr.cap.max_send_sge = 16;
   qp_attr.cap.max_recv_wr = 1;
-  qp_attr.cap.max_recv_sge = 1;
+  qp_attr.cap.max_recv_sge = 16;
+  qp_attr.sq_sig_all = 0;
+
 
   qp_attr.send_cq = m_cq_;
   qp_attr.recv_cq = m_cq_;
@@ -442,20 +445,23 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
 
   uint8_t access_type_ = access_type;
   struct rdma_conn_param conn_param = {};
-  conn_param.responder_resources = 1;
+  conn_param.responder_resources = 16;
   conn_param.private_data = &access_type_;
   conn_param.private_data_len = sizeof(access_type_);
-  conn_param.initiator_depth = 1;
+  conn_param.initiator_depth = 16;
   conn_param.retry_count = 7;
   if (rdma_connect(m_cm_id_, &conn_param)) {
     perror("rdma_connect fail");
     return -1;
   }
 
+  printf("start\n");
+
   if (rdma_get_cm_event(m_cm_channel_, &event)) {
     perror("rdma_get_cm_event fail");
     return -1;
   }
+  printf("end\n");
 
   if (event->event != RDMA_CM_EVENT_ESTABLISHED) {
     perror("RDMA_CM_EVENT_ESTABLISHED fail");
@@ -470,7 +476,7 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
   m_server_cmd_msg_ = server_pdata.buf_addr;
   m_server_cmd_rkey_ = server_pdata.buf_rkey;
   if (access_type == CONN_FUSEE){
-    m_fusee_rkey = server_pdata.buf_rkey;
+    m_fusee_rkey =  server_pdata.buf_rkey;
   }
   assert(server_pdata.size == sizeof(CmdMsgBlock));
 
