@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-14 09:42:48
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-09-22 18:13:42
+ * @LastEditTime: 2023-09-25 17:01:07
  * @FilePath: /rmalloc_newbase/source/free_block_manager.cc
  * @Description: 
  * 
@@ -28,6 +28,7 @@ namespace mralloc {
             free_fast_queue.push(addr + raw_size - fast_size_);
             raw_size -= fast_size_;
         }
+        total_used = 0;
         return true;
     }
 
@@ -40,6 +41,7 @@ namespace mralloc {
             uint64_t raw_alloc = raw_heap;
             raw_heap += size;
             raw_size -= size;
+            total_used += size;
             return raw_alloc;
         } else {
             perror("alloc failed, no free space\n");
@@ -52,6 +54,7 @@ namespace mralloc {
         if (addr + size == raw_heap) {
             raw_heap -= size;
             raw_size += size;
+            total_used -= size;
             return true;
         } else if (size % fast_size_ != 0){
             printf("Error: FreeQueueManager only support size that is multiple of %ld\n", fast_size_);
@@ -60,6 +63,7 @@ namespace mralloc {
         for(uint64_t i = 0; i < size / fast_size_; i++){
             free_fast_queue.push(addr + i * fast_size_);
         }
+        total_used -= size;
         return true;    
     }
 
@@ -78,8 +82,13 @@ namespace mralloc {
         }
         uint64_t addr = free_fast_queue.front();
         free_fast_queue.pop();
+        total_used += fast_size_;
+        // printf("mem used: %lu\n", total_used);
         return addr;
     }
 
+    void FreeQueueManager::print_state() {
+        printf("mem used: %lu\n", total_used);
+    }
 
 }

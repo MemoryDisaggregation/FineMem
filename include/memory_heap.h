@@ -2,7 +2,7 @@
  * @Author: blahaj wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 16:09:32
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-09-16 00:42:58
+ * @LastEditTime: 2023-09-25 16:59:19
  * @FilePath: /rmalloc_newbase/include/memory_heap.h
  * @Description: memory heap for rmalloc
  */
@@ -183,6 +183,8 @@ class RemoteHeap : public MemHeap {
   bool fetch_mem_local(uint64_t &addr, uint64_t size, uint32_t &lkey, uint32_t &rkey);
   bool fetch_mem_fast_local(uint64_t &addr, uint32_t &lkey, uint32_t &rkey);
   bool fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey);
+
+  void print_alloc_info();
 
  private:
 

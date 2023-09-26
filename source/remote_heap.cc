@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-09-22 18:15:58
+ * @LastEditTime: 2023-09-25 20:24:04
  * @FilePath: /rmalloc_newbase/source/remote_heap.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -21,13 +21,17 @@
 
 #define MEM_ALIGN_SIZE 4096
 
-#define REMOTE_MEM_SIZE 1024*4
+#define REMOTE_MEM_SIZE 1024*1024*64
 
 #define INIT_MEM_SIZE ((uint64_t)1 << 33ul)
 
 #define SERVER_BASE_ADDR 0x10000000
 
 namespace mralloc {
+
+void RemoteHeap::print_alloc_info() {
+  free_queue_manager->print_state();
+}
 
 /**
  * @description: start remote engine service
@@ -113,13 +117,13 @@ bool RemoteHeap::start(const std::string addr, const std::string port) {
   }
 
   // wait for all threads exit
-  m_conn_handler_->join();
-  for (uint32_t i = 0; i < MAX_SERVER_WORKER; i++) {
-    if (m_worker_threads_[i] != nullptr) {
-      m_worker_threads_[i]->join();
-    }
-  }
-
+  // m_conn_handler_->join();
+  // for (uint32_t i = 0; i < MAX_SERVER_WORKER; i++) {
+  //   if (m_worker_threads_[i] != nullptr) {
+  //     m_worker_threads_[i]->join();
+  //   }
+  // }
+  // getchar();
   return true;
 
 }
@@ -233,7 +237,7 @@ void RemoteHeap::handle_connection() {
       perror("rdma_get_cm_event fail");
       return;
     }
-    printf("recieve create: %u\n", event->event);
+    // printf("recieve create: %u\n", event->event);
     
     if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST) {
       struct rdma_cm_id *cm_id = event->id;
