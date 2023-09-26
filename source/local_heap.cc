@@ -13,14 +13,16 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include "memory_heap.h"
+#include <cassert>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <thread>
 
 namespace mralloc {
 
 const uint64_t REMOTE_BLOCKSIZE = 1024*1024*64;
-const uint64_t LOCAL_BLOCKSIZE = 1024*1024*2;
+const uint64_t LOCAL_BLOCKSIZE = 1024*256;
 
 void * run_heap(void* arg) {
   MemHeap *heap = (MemHeap*)arg;
@@ -40,7 +42,7 @@ bool LocalHeap::start(const std::string addr, const std::string port){
     uint32_t init_rkey_ = 0;
     m_rdma_conn_ = new ConnectionManager();
     if (m_rdma_conn_ == nullptr) return -1;
-    if (m_rdma_conn_->init(addr, port, 2, 20)) return false;
+    if (m_rdma_conn_->init(addr, port, 2, 2)) return false;
     // init free queue manager, using REMOTE_BLOCKSIZE as init size
     free_queue_manager = new FreeQueueManager(LOCAL_BLOCKSIZE);
     if(!fetch_mem_fast_remote(init_addr_, init_rkey_)){
@@ -53,11 +55,12 @@ bool LocalHeap::start(const std::string addr, const std::string port){
     for(int i = 0; i < nprocs; i++){
       if(cpu_cache_->is_empty(i)){
         // TODO: here we just fill 10 blocks, an automated or valified number should be tested
-        for( int j = 0; j < 10; j++){
+        for( int j = 0; j < 1; j++){
           fetch_mem_fast(init_addr_);
-          printf("init @%d, addr:%lx\n", i, init_addr_);
+          assert(init_addr_!=0);
           cpu_cache_->add_cache(i, init_addr_, get_global_rkey());
         }
+        // printf("init @%d, addr:%lx\n", i, init_addr_);
       }
     }
     // create a thread to run()
@@ -70,19 +73,25 @@ bool LocalHeap::start(const std::string addr, const std::string port){
 // who will call run()? the host may run with a readline to exit, and create a new thread to run.
 void LocalHeap::run() {
   // scan the cpu cache and refill them
+  bool cpu_cache_used[nprocs] = {false};
   uint64_t init_addr_ = 0;
   while(running) {
     for(int i = 0; i < nprocs; i++){
       // if empty, fill it with 10 blocks
       // TODO: a automated filler, will choose how much blocks to fill
-      if(cpu_cache_->is_empty(i)){
+      int free_ = cpu_cache_->get_length(i);
+      if(cpu_cache_->is_empty(i) || (cpu_cache_used[i] && free_ < 4)){
         // TODO: an iteration to call times of fetch blocks is somehow too ugly
-        for( int j = 0; j < 10; j++){
+        int free_ = cpu_cache_->get_length(i);
+        cpu_cache_used[i] = true;
+        for( int j = 0; j < 4; j++){
           fetch_mem_fast(init_addr_);
           cpu_cache_->add_cache(i, init_addr_, get_global_rkey());
         }
+        // printf("success add cache @ %d, %lu\n", i, init_addr_);
       }
     }
+    // printf("I'm running!\n");
   }
 }
 
@@ -119,6 +128,7 @@ bool LocalHeap::fetch_mem_fast(uint64_t &addr){
       return false;
     }
     addr = free_queue_manager->fetch_fast();
+    // printf("success get remote, %lu\n", addr);
   }
   return true;
 }

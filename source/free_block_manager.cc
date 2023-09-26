@@ -75,7 +75,7 @@ namespace mralloc {
                     free_fast_queue.push(raw_heap + raw_size - fast_size_);
                     raw_size -= fast_size_;
                 } else {
-                    perror("no enough cache!\n");
+                    // perror("no enough cache!\n");
                     return 0;
                 }
             }
