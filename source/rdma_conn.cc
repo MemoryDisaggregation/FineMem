@@ -455,13 +455,13 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
     return -1;
   }
 
-  printf("start\n");
+  // printf("start\n");
 
   if (rdma_get_cm_event(m_cm_channel_, &event)) {
     perror("rdma_get_cm_event fail");
     return -1;
   }
-  printf("end\n");
+  // printf("end\n");
 
   if (event->event != RDMA_CM_EVENT_ESTABLISHED) {
     perror("RDMA_CM_EVENT_ESTABLISHED fail");

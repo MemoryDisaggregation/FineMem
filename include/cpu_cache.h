@@ -78,10 +78,10 @@ public:
         // just fetch one block in the current cpu_id --> ring buffer
         item fetch_one = content_[nproc * max_item + read_p_[nproc]];
         if(fetch_one.addr != -1) {
-            content_[nproc * max_item + read_p_[nproc]].addr = -1;
-            read_p_[nproc] = (read_p_[nproc] + 1) % max_item;
             addr = fetch_one.addr;
             rkey = fetch_one.rkey;
+            content_[nproc * max_item + read_p_[nproc]].addr = -1;
+            read_p_[nproc] = (read_p_[nproc] + 1) % max_item;
             return true;
         }
         else{
@@ -112,6 +112,14 @@ public:
 
     bool is_empty(uint32_t nproc){
         return (write_p_[nproc] == read_p_[nproc] && content_[nproc * max_item + write_p_[nproc]].addr == -1);
+    }
+
+    uint32_t get_length(uint32_t nproc) {
+        if (write_p_[nproc] > read_p_[nproc]) {
+            return (write_p_[nproc] - read_p_[nproc]);
+        } else {
+            return (max_item - read_p_[nproc] + write_p_[nproc]);
+        }
     }
 
 private:
