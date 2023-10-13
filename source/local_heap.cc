@@ -22,7 +22,7 @@
 namespace mralloc {
 
 const uint64_t REMOTE_BLOCKSIZE = 1024*1024*64;
-const uint64_t LOCAL_BLOCKSIZE = 1024*256;
+const uint64_t LOCAL_BLOCKSIZE = 1024*4;
 
 void * run_heap(void* arg) {
   MemHeap *heap = (MemHeap*)arg;
@@ -66,24 +66,29 @@ bool LocalHeap::start(const std::string addr, const std::string port){
     // create a thread to run()
     running = 1;
     pthread_t running_thread;
-    pthread_create(&running_thread, NULL, run_heap, this);
+    heap_worker_id_ = 0;
+    heap_worker_num_ = 4;
+    for(int i =0;i< heap_worker_num_;i++)
+      pthread_create(&running_thread, NULL, run_heap, this);
     return true;
 }
 
 // who will call run()? the host may run with a readline to exit, and create a new thread to run.
 void LocalHeap::run() {
   // scan the cpu cache and refill them
-  bool cpu_cache_used[nprocs] = {false};
+  uint64_t cpu_cache_history[nprocs] = {1};
   uint64_t init_addr_ = 0;
+  uint8_t id = heap_worker_id_++;
   while(running) {
-    for(int i = 0; i < nprocs; i++){
+    for(int i = id; i < nprocs; i+=heap_worker_num_){
       // if empty, fill it with 10 blocks
       // TODO: a automated filler, will choose how much blocks to fill
       int free_ = cpu_cache_->get_length(i);
-      if(cpu_cache_->is_empty(i) || (cpu_cache_used[i] && free_ < 4)){
+      // if(cpu_cache_->is_empty(i)){
+      if(free_ != cpu_cache_history[i] && free_ < 256){
         // TODO: an iteration to call times of fetch blocks is somehow too ugly
-        int free_ = cpu_cache_->get_length(i);
-        cpu_cache_used[i] = true;
+        // int free_ = cpu_cache_->get_length(i);
+        cpu_cache_history[i] = free_ + 8;
         for( int j = 0; j < 4; j++){
           fetch_mem_fast(init_addr_);
           cpu_cache_->add_cache(i, init_addr_, get_global_rkey());
@@ -107,6 +112,7 @@ void LocalHeap::fetch_cache(uint8_t nproc, uint64_t &addr, uint32_t &rkey) {
 void LocalHeap::stop(){
   running = 0;
   cpu_cache_->free_cache();
+  free_queue_manager->print_state();
     // TODO
 };
 

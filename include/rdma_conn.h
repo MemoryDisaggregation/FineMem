@@ -73,6 +73,7 @@ class RDMAConnection {
   struct ibv_mr *m_resp_mr_;
   char *m_reg_buf_;
   struct ibv_mr *m_reg_buf_mr_;
+  uint8_t conn_id_;
 };
 
 }  // namespace kv
