@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:26
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-09-22 20:48:01
+ * @LastEditTime: 2023-10-10 18:25:54
  * @FilePath: /rmalloc_newbase/include/rdma_conn.h
  * @Description: RDMA Connection functions, with RDMA read/write and fetch block, used by both LocalHeap and RemoteHeap
  * 
@@ -73,6 +73,7 @@ class RDMAConnection {
   struct ibv_mr *m_resp_mr_;
   char *m_reg_buf_;
   struct ibv_mr *m_reg_buf_mr_;
+  uint8_t conn_id_;
 };
 
 }  // namespace kv

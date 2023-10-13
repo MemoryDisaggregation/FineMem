@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:26
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-09-25 21:07:50
+ * @LastEditTime: 2023-10-13 10:44:53
  * @FilePath: /rmalloc_newbase/include/msg.h
  * @Description: 
  * 
@@ -20,7 +20,8 @@ namespace mralloc {
 #define NOTIFY_WORK 0xFF
 #define NOTIFY_IDLE 0x00
 #define MAX_MSG_SIZE 64
-#define MAX_SERVER_WORKER 32
+#define MAX_SERVER_WORKER 6
+#define MAX_SERVER_CLIENT 40
 #define RESOLVE_TIMEOUT_MS 5000
 #define RDMA_TIMEOUT_US 10000000  // 10s
 #define MAX_REMOTE_SIZE (1UL << 25)
@@ -43,6 +44,7 @@ struct PData {
   uint64_t buf_addr;
   uint32_t buf_rkey;
   uint32_t size;
+  uint8_t id;
   // uint32_t init_rkey;
 };
 
@@ -60,6 +62,7 @@ class RequestsMsg {
  public:
   uint64_t resp_addr;
   uint32_t resp_rkey;
+  uint8_t id;
   uint8_t type;
 };
 CHECK_RDMA_MSG_SIZE(RequestsMsg);

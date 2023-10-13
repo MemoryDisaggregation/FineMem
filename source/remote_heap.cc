@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-09-25 20:24:04
+ * @LastEditTime: 2023-10-13 10:22:39
  * @FilePath: /rmalloc_newbase/source/remote_heap.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -21,9 +21,18 @@
 
 #define MEM_ALIGN_SIZE 4096
 
-#define REMOTE_MEM_SIZE 1024*1024*64
+// #define REMOTE_MEM_SIZE 134217728
+// #define REMOTE_MEM_SIZE 16777216
+// #define REMOTE_MEM_SIZE 67108864
+// #define REMOTE_MEM_SIZE 16384
+// #define REMOTE_MEM_SIZE 8192
+// #define REMOTE_MEM_SIZE 32768
+// #define REMOTE_MEM_SIZE 262144
+// #define REMOTE_MEM_SIZE 33554432
+// #define REMOTE_MEM_SIZE 2097152
+#define REMOTE_MEM_SIZE 4096
 
-#define INIT_MEM_SIZE ((uint64_t)1 << 33ul)
+#define INIT_MEM_SIZE ((uint64_t)32*1024*1024*1024)
 
 #define SERVER_BASE_ADDR 0x10000000
 
@@ -43,7 +52,7 @@ bool RemoteHeap::start(const std::string addr, const std::string port) {
 
   m_stop_ = false;
 
-  m_worker_info_ = new WorkerInfo *[MAX_SERVER_WORKER];
+  m_worker_info_ = new WorkerInfo *[MAX_SERVER_WORKER*MAX_SERVER_CLIENT];
   m_worker_threads_ = new std::thread *[MAX_SERVER_WORKER];
   for (uint32_t i = 0; i < MAX_SERVER_WORKER; i++) {
     m_worker_info_[i] = nullptr;
@@ -102,7 +111,7 @@ bool RemoteHeap::start(const std::string addr, const std::string port) {
     return false;
   }
 
-  if (rdma_listen(m_listen_id_, 1)) {
+  if (rdma_listen(m_listen_id_, 1024)) {
     perror("rdma_listen fail");
     return false;
   }
@@ -314,14 +323,10 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
     perror("ibv_reg_mr cmd_resp fail");
     return -1;
   }
-
-  rep_pdata.buf_addr = (uintptr_t)cmd_msg;
-  rep_pdata.buf_rkey = msg_mr->rkey;
-  rep_pdata.size = sizeof(CmdMsgRespBlock);
-
+  rep_pdata.id = -1;
   if(connect_type == CONN_RPC){
-    int num = m_worker_num_++;
-    if (m_worker_num_ <= MAX_SERVER_WORKER) {
+    int num = m_worker_num_;
+    if (num < MAX_SERVER_WORKER) {
       assert(m_worker_info_[num] == nullptr);
       m_worker_info_[num] = new WorkerInfo();
       m_worker_info_[num]->cmd_msg = cmd_msg;
@@ -334,8 +339,30 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
       assert(m_worker_threads_[num] == nullptr);
       m_worker_threads_[num] =
           new std::thread(&RemoteHeap::worker, this, m_worker_info_[num], num);
-    }
+    } else {
+      assert(m_worker_info_[num] == nullptr);
+      m_worker_info_[num] = new WorkerInfo();
+      // cmd_msg = m_worker_info_[num%MAX_SERVER_WORKER]->cmd_msg;
+      // cmd_resp = m_worker_info_[num%MAX_SERVER_WORKER]->cmd_resp_msg;
+      // msg_mr = m_worker_info_[num%MAX_SERVER_WORKER]->msg_mr;
+      // resp_mr = m_worker_info_[num%MAX_SERVER_WORKER]->resp_mr;
+      m_worker_info_[num]->cmd_msg = cmd_msg;
+      m_worker_info_[num]->cmd_resp_msg = cmd_resp;
+      m_worker_info_[num]->msg_mr = msg_mr;
+      m_worker_info_[num]->resp_mr = resp_mr;
+      m_worker_info_[num]->cm_id = cm_id;
+      m_worker_info_[num]->cq = cq;
+
+      // assert(m_worker_threads_[num] == nullptr);
+
+    } 
+    rep_pdata.id = num;
+    m_worker_num_ += 1;
   }
+
+  rep_pdata.buf_addr = (uintptr_t)cmd_msg;
+  rep_pdata.buf_rkey = msg_mr->rkey;
+  rep_pdata.size = sizeof(CmdMsgRespBlock);
 
   if (connect_type == CONN_FUSEE) {
     rep_pdata.buf_rkey = global_mr_->rkey;
@@ -436,6 +463,7 @@ int RemoteHeap::remote_write(WorkerInfo *work_info, uint64_t local_addr,
         break;
       } else {
         perror("cmd_send ibv_poll_cq status error");
+        printf("%d\n", wc.status);
         break;
       }
     } else if (0 == rc) {
@@ -457,11 +485,25 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
   struct ibv_mr *resp_mr = work_info->resp_mr;
   cmd_resp->notify = NOTIFY_WORK;
   RequestsMsg request;
+  int active_id = -1;
   while (true) {
     if (m_stop_) break;
-    if (cmd_msg->notify == NOTIFY_IDLE) continue;
+    for (int i = num; i < m_worker_num_; i+=MAX_SERVER_WORKER) {
+      if (m_worker_info_[i]->cmd_msg->notify != NOTIFY_IDLE){
+        active_id = i;
+        cmd_msg = m_worker_info_[i]->cmd_msg;
+      }
+    }
+    if (active_id == -1) continue;
     cmd_msg->notify = NOTIFY_IDLE;
     RequestsMsg *request = (RequestsMsg *)cmd_msg;
+    assert(active_id == request->id);
+    // printf("receive from id:%d\n", request->id);
+    work_info = m_worker_info_[request->id];
+    cmd_resp = work_info->cmd_resp_msg;
+    resp_mr = work_info->resp_mr;
+    cmd_resp->notify = NOTIFY_WORK;
+    active_id = -1;
     if (request->type == MSG_REGISTER) {
       /* handle memory register requests */
       RegisterRequest *reg_req = (RegisterRequest *)request;
