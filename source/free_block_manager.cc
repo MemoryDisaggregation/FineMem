@@ -51,10 +51,11 @@ namespace mralloc {
 
     bool FreeQueueManager::return_back(uint64_t addr, uint64_t size) {
         std::unique_lock<std::mutex> lock(m_mutex_);
-        if (addr + size == raw_heap) {
+        // if (addr + size == raw_heap) {
+        if (0) {
             raw_heap -= size;
             raw_size += size;
-            total_used -= size;
+            // total_used -= size;
             return true;
         } else if (size % fast_size_ != 0){
             printf("Error: FreeQueueManager only support size that is multiple of %ld\n", fast_size_);
@@ -63,14 +64,14 @@ namespace mralloc {
         for(uint64_t i = 0; i < size / fast_size_; i++){
             free_fast_queue.push(addr + i * fast_size_);
         }
-        total_used -= size;
+        // total_used -= size;
         return true;    
     }
 
     uint64_t FreeQueueManager::fetch_fast(){
         std::unique_lock<std::mutex> lock(m_mutex_);
         if(free_fast_queue.empty()){
-            for(uint64_t i = 0; i < 10; i++){
+            // for(uint64_t i = 0; i < 10; i++){
                 if(raw_size >= fast_size_){
                     free_fast_queue.push(raw_heap + raw_size - fast_size_);
                     raw_size -= fast_size_;
@@ -78,7 +79,7 @@ namespace mralloc {
                     // perror("no enough cache!\n");
                     return 0;
                 }
-            }
+            // }
         }
         uint64_t addr = free_fast_queue.front();
         free_fast_queue.pop();

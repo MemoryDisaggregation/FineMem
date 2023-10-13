@@ -11,6 +11,7 @@
 #include <bits/stdint-uintn.h>
 #include <infiniband/verbs.h>
 #include <sched.h>
+#include <atomic>
 #include <queue>
 #include <unordered_map>
 #include <sys/sysinfo.h>
@@ -159,6 +160,8 @@ class LocalHeap: public MemHeap {
   // std::unordered_map<uint64_t, pid_t>* cpu_allocated_pages_[nprocs];
   cpu_cache* cpu_cache_;
   ConnectionManager *m_rdma_conn_;
+  std::atomic<uint8_t> heap_worker_id_;
+  uint8_t heap_worker_num_;
   uint32_t global_rkey_;
   std::vector<rdma_mem_t> m_used_mem_; /* the used mem */
   std::mutex m_mutex_;                 /* used for concurrent mem allocation */

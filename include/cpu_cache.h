@@ -12,7 +12,7 @@
 
 namespace mralloc {
 
-const uint32_t nprocs = 32;
+const uint32_t nprocs = 80;
 const uint32_t max_item = 1024;
 
 class cpu_cache{
@@ -115,7 +115,7 @@ public:
     }
 
     uint32_t get_length(uint32_t nproc) {
-        if (write_p_[nproc] > read_p_[nproc]) {
+        if (write_p_[nproc] >= read_p_[nproc]) {
             return (write_p_[nproc] - read_p_[nproc]);
         } else {
             return (max_item - read_p_[nproc] + write_p_[nproc]);
