@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-11 16:42:26
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-09-25 17:00:15
+ * @LastEditTime: 2023-10-20 15:24:07
  * @FilePath: /rmalloc_newbase/include/free_block_manager.h
  * @Description: Buddy tree for memory management 
  * 
@@ -11,6 +11,7 @@
 #pragma once
 
 #include <bits/stdint-uintn.h>
+#include <cassert>
 #include <cstdio>
 #include <queue>
 #include <mutex>
@@ -19,18 +20,96 @@ namespace mralloc {
 
 class FreeBlockManager{
 public:
+struct remote_addr {
+    uint64_t addr;
+    uint32_t rkey;
+} ;
     FreeBlockManager(uint64_t fast_size): fast_size_(fast_size) {};
     ~FreeBlockManager() {};
-    virtual bool init(uint64_t addr, uint64_t size) {return true;};
-    virtual uint64_t fetch(uint64_t size) {return 0;};
-    virtual bool return_back(uint64_t addr, uint64_t size) {return 0;};
-    virtual uint64_t fetch_fast() {return 0;};
+    virtual bool init(uint64_t addr, uint64_t size, uint32_t rkey) {return true;};
+    virtual bool fetch(uint64_t size, uint64_t &addr, uint32_t &rkey) {};
+    virtual bool fetch(uint64_t start_addr, uint64_t size, uint64_t &addr, uint32_t &rkey) {};
+    virtual bool return_back(uint64_t addr, uint64_t size, uint32_t rkey) {return 0;};
+    virtual bool fetch_fast(uint64_t &addr, uint32_t &rkey) {};
     virtual void print_state() {};
     uint64_t get_fast_size() {return fast_size_;};
 protected:
     uint64_t fast_size_;
 };
+
+class ServerBlockManager: public FreeBlockManager{
+public:
+struct block_header {
+    uint8_t max_length;
+    uint8_t alloc_history;
+    uint16_t flag;
+    uint32_t bitmap;
+};
+    ServerBlockManager(uint64_t block_size, uint64_t base_size):FreeBlockManager(block_size), base_size(base_size) {
+        if(fast_size_/base_size > 32) {
+            printf("bitmap cannot store too much bsae page!\n");
+        }
+    };
+    ~ServerBlockManager() {};
     
+    bool init(uint64_t addr, uint64_t size, uint32_t rkey) override;
+
+    inline bool set_block_rkey(uint64_t index, uint32_t rkey) {block_rkey_list[index] = rkey; return true;};
+
+    bool set_block_base_rkey(uint64_t index, uint64_t offset, uint32_t rkey) {
+        uint64_t start_addr = get_block_addr(index);
+        // assert(get_base_num() == size);
+        // for(int i = 0; i< size;i++)
+        *(uint32_t*)(start_addr + offset*base_size) = rkey;
+        return true;
+    };
+
+    inline uint64_t get_base_num() {return fast_size_/base_size;};
+
+    inline uint64_t get_block_num() {return block_num;};
+
+    inline uint64_t get_block_addr(uint64_t index) {return heap_start + index * fast_size_;};
+
+    inline block_header get_block_header(uint64_t index) {return header_list[index];};
+
+    inline block_header* get_metadata() {return header_list;};
+
+    inline uint32_t get_block_rkey(uint64_t index) {return block_rkey_list[index];};
+
+    inline uint64_t get_block_index(uint64_t addr) {return (addr-heap_start)/fast_size_;}
+
+    bool fetch(uint64_t size, uint64_t &addr, uint32_t &rkey) override {return true;};
+
+    bool fetch(uint64_t start_addr, uint64_t size, uint64_t &addr, uint32_t &rkey) override;
+
+    bool return_back(uint64_t addr, uint64_t size, uint32_t rkey) override {return true;};
+
+    bool fetch_fast(uint64_t &addr, uint32_t &rkey) override ;
+
+    void print_state() override {};
+    
+private:
+
+    std::mutex m_mutex_;
+
+    uint64_t base_size;
+
+    uint32_t global_rkey;
+
+    block_header* header_list;
+
+    uint32_t* block_rkey_list;
+
+    uint64_t heap_start;
+
+    uint64_t heap_size;
+
+    uint64_t block_num;
+
+    uint64_t last_alloc;
+    
+};
+
 class FreeQueueManager: public FreeBlockManager{
 public:
     FreeQueueManager(uint64_t fast_size):FreeBlockManager(fast_size) {};
@@ -40,20 +119,20 @@ public:
         }
     };
     
-    bool init(uint64_t addr, uint64_t size) override;
+    bool init(uint64_t addr, uint64_t size, uint32_t rkey) override;
 
-    uint64_t fetch(uint64_t size) override;
+    bool fetch(uint64_t size, uint64_t &addr, uint32_t &rkey) override;
 
-    bool return_back(uint64_t addr, uint64_t size) override;
+    bool return_back(uint64_t addr, uint64_t size, uint32_t rkey) override;
 
-    uint64_t fetch_fast() override;
+    bool fetch_fast(uint64_t &addr, uint32_t &rkey) override;
 
     void print_state() override;
     
 private:
-    std::queue<uint64_t> free_fast_queue;
+    std::queue<remote_addr> free_fast_queue;
 
-    const uint64_t queue_watermark = 1 << 30;
+    const uint64_t queue_watermark = (uint64_t)1 << 30;
 
     uint64_t raw_heap; 
 
@@ -62,6 +141,8 @@ private:
     std::mutex m_mutex_;
 
     uint64_t total_used;
+
+    uint32_t raw_rkey;
     
 };
 

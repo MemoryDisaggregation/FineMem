@@ -97,7 +97,7 @@ public:
             rkey_ = rkey;
             init_hashtable();
         } else {
-            perror("meta addr is not set as default size!");
+            printf("meta addr %lx is not set as base_addr %lx!\n", meta_addr, server_base_addr);
         }
     }
 

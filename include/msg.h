@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:26
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-10-13 10:44:53
+ * @LastEditTime: 2023-10-17 17:31:09
  * @FilePath: /rmalloc_newbase/include/msg.h
  * @Description: 
  * 
@@ -20,7 +20,7 @@ namespace mralloc {
 #define NOTIFY_WORK 0xFF
 #define NOTIFY_IDLE 0x00
 #define MAX_MSG_SIZE 64
-#define MAX_SERVER_WORKER 6
+#define MAX_SERVER_WORKER 1
 #define MAX_SERVER_CLIENT 40
 #define RESOLVE_TIMEOUT_MS 5000
 #define RDMA_TIMEOUT_US 10000000  // 10s

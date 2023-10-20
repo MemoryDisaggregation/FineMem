@@ -2,7 +2,7 @@
  * @Author: blahaj wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 16:09:32
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-10-10 18:32:36
+ * @LastEditTime: 2023-10-20 15:22:27
  * @FilePath: /rmalloc_newbase/include/memory_heap.h
  * @Description: memory heap for rmalloc
  */
@@ -50,7 +50,7 @@ struct cpu_cache {
 };
 */
 
-/* The RDMA connection queue */
+/* The memory window queue, not used now */
 class MWQueue {
  public:
   MWQueue(ibv_pd *pd) :pd_(pd) {
@@ -140,7 +140,7 @@ class LocalHeap: public MemHeap {
 
   void fetch_cache(uint8_t nproc, uint64_t &addr, uint32_t &rkey);
 
-  bool fetch_mem_fast(uint64_t &addr);
+  bool fetch_mem_fast(uint64_t &addr, uint32_t &rkey);
 
   bool fetch_mem_remote(uint64_t size, uint64_t &addr, uint32_t &rkey);
 
@@ -184,10 +184,14 @@ class RemoteHeap : public MemHeap {
   void stop() override;
   bool alive() override;
   bool fetch_mem_local(uint64_t &addr, uint64_t size, uint32_t &lkey, uint32_t &rkey);
+  bool fetch_mem_local(uint64_t start_addr, uint64_t &addr, uint64_t size, uint32_t &lkey, uint32_t &rkey);
   bool fetch_mem_fast_local(uint64_t &addr, uint32_t &lkey, uint32_t &rkey);
   bool fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey);
 
   void print_alloc_info();
+
+  bool init_mw(ibv_qp* qp, ibv_cq *cq);
+  bool bind_mw(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq *cq);
 
  private:
 
@@ -218,7 +222,17 @@ class RemoteHeap : public MemHeap {
   uint32_t m_worker_num_;
   std::thread **m_worker_threads_;
   MWQueue* mw_queue_;
+  ibv_mw **m_mw_handler;
   RPC_Fusee* rpc_fusee_;
+  uint64_t heap_total_size_;
+  uint64_t heap_start_addr_;
+  bool mw_binded;
+  ibv_cq* mw_cq;
+  ibv_qp* mw_qp;
+
+  ibv_mw** block_mw;
+  ibv_mw** base_mw;
+
 };
 
 }  // namespace kv
