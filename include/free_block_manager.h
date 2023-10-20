@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-11 16:42:26
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-10-20 16:08:14
+ * @LastEditTime: 2023-10-20 16:11:52
  * @FilePath: /rmalloc_newbase/include/free_block_manager.h
  * @Description: Buddy tree for memory management 
  * 
@@ -20,10 +20,6 @@ namespace mralloc {
 
 class FreeBlockManager{
 public:
-struct remote_addr {
-    uint64_t addr;
-    uint32_t rkey;
-} ;
 struct remote_addr {
     uint64_t addr;
     uint32_t rkey;
