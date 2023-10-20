@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-10-20 15:56:23
+ * @LastEditTime: 2023-10-20 16:10:36
  * @FilePath: /rmalloc_newbase/source/remote_heap.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -188,7 +188,7 @@ bool RemoteHeap::fetch_mem_local(uint64_t start_addr, uint64_t &addr, uint64_t s
 }
 
 bool RemoteHeap::fetch_mem_local(uint64_t &addr, uint64_t size, uint32_t &lkey, uint32_t &rkey) {
-  // uint64_t mem_addr;
+  uint64_t mem_addr;
   if(!free_queue_manager->fetch(size, addr, rkey)) {
     perror("get mem fail");
     return false;
@@ -204,8 +204,8 @@ bool RemoteHeap::fetch_mem_local(uint64_t &addr, uint64_t size, uint32_t &lkey, 
  * @return {bool} true for success
  */
 bool RemoteHeap::fetch_mem_fast_local(uint64_t &addr, uint32_t &lkey, uint32_t &rkey) {
-  // uint64_t mem_addr;
-  if(!(free_queue_manager->fetch_fast(addr, rkey))) {
+  uint64_t mem_addr;
+  if(!free_queue_manager->fetch_fast(addr, rkey)) {
     perror("get mem fail");
     return false;
   }
@@ -222,7 +222,7 @@ bool RemoteHeap::fetch_mem_fast_local(uint64_t &addr, uint32_t &lkey, uint32_t &
  * @return {bool} true for success
  */
 bool RemoteHeap::fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey) {
-  // uint64_t mem_addr;
+  uint64_t mem_addr;
   if(!free_queue_manager->fetch_fast(addr, rkey)) {
     perror("get mem fail");
     return false;

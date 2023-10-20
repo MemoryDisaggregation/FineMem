@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 16:08:03
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-10-16 20:49:04
+ * @LastEditTime: 2023-10-20 16:10:07
  * @FilePath: /rmalloc_newbase/source/local_heap.cc
  * @Description: 
  * 
@@ -85,11 +85,11 @@ void LocalHeap::run() {
       // TODO: a automated filler, will choose how much blocks to fill
       int free_ = cpu_cache_->get_length(i);
       // if(cpu_cache_->is_empty(i)){
-      if(free_ != cpu_cache_history[i] && free_ < 256){
+      if(free_ != cpu_cache_history[i] && free_ < 1){
         // TODO: an iteration to call times of fetch blocks is somehow too ugly
         // int free_ = cpu_cache_->get_length(i);
         cpu_cache_history[i] = free_ + 8;
-        for( int j = 0; j < 4; j++){
+        for( int j = 0; j < 1; j++){
           fetch_mem_fast(init_addr_, init_rkey_);
           cpu_cache_->add_cache(i, init_addr_, init_rkey_);
         }

@@ -152,6 +152,8 @@ class LocalHeap: public MemHeap {
 
   bool mr_bind_remote(uint64_t size, uint64_t addr, uint32_t rkey, uint32_t &newkey);
 
+  ConnectionManager* get_conn(){return m_rdma_conn_;};
+
  private:
   void destory(){};
 

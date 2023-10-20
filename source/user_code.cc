@@ -35,11 +35,11 @@ int main(int argc, char** argv){
         m_rdma_conn_->remote_read(read_buffer, 5, addr, rkey);
         printf("alloc: %lx : %u, content: %s\n", addr, rkey, read_buffer);
         // rkey should be used by server side, client side has no necessary to support rkey
-        // uint32_t newkey = ibv_inc_rkey(rkey);
-        // m_rdma_conn_->remote_mw(addr, rkey, cache_size, newkey);
-        // m_rdma_conn_->remote_write(buffer2, 5, addr + cache_size/2, newkey);
-        // m_rdma_conn_->remote_read(read_buffer, 5, addr + cache_size/2, newkey);
-        // printf("using new key: %lx : %u, content: %s\n", addr, newkey, read_buffer);
+        uint32_t newkey;
+        m_rdma_conn_->remote_mw(addr, rkey, cache_size, newkey);
+        m_rdma_conn_->remote_write(buffer2, 5, addr + cache_size/2, newkey);
+        m_rdma_conn_->remote_read(read_buffer, 5, addr + cache_size/2, newkey);
+        printf("using new key: %lx : %u, content: %s\n", addr, newkey, read_buffer);
         // m_rdma_conn_->remote_write(buffer1, 5, addr, rkey);
         // m_rdma_conn_->remote_read(read_buffer, 5, addr, rkey);
         // printf("using old key: %lx : %u, content: %s\n", addr, rkey, read_buffer);
