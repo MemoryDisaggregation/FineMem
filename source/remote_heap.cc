@@ -153,7 +153,7 @@ bool RemoteHeap::init_memory_heap(uint64_t size) {
 
   global_mr_ = rdma_register_memory(init_addr, size);
 
-  if(!free_queue_manager->init((uint64_t)init_addr, size)) {
+  if(!free_queue_manager->init((uint64_t)init_addr, size, 0)) {
     perror("init free queue manager fail");
     return false;
   }
@@ -162,7 +162,7 @@ bool RemoteHeap::init_memory_heap(uint64_t size) {
 
 bool RemoteHeap::fetch_mem_local(uint64_t &addr, uint64_t size, uint32_t &lkey, uint32_t &rkey) {
   uint64_t mem_addr;
-  if(!(mem_addr = free_queue_manager->fetch(size))) {
+  if(!free_queue_manager->fetch(size, addr, rkey)) {
     perror("get mem fail");
     return false;
   }
@@ -179,7 +179,7 @@ bool RemoteHeap::fetch_mem_local(uint64_t &addr, uint64_t size, uint32_t &lkey, 
  */
 bool RemoteHeap::fetch_mem_fast_local(uint64_t &addr, uint32_t &lkey, uint32_t &rkey) {
   uint64_t mem_addr;
-  if(!(mem_addr = free_queue_manager->fetch_fast())) {
+  if(!free_queue_manager->fetch_fast(addr, rkey)) {
     perror("get mem fail");
     return false;
   }
@@ -197,7 +197,7 @@ bool RemoteHeap::fetch_mem_fast_local(uint64_t &addr, uint32_t &lkey, uint32_t &
  */
 bool RemoteHeap::fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey) {
   uint64_t mem_addr;
-  if(!(mem_addr = free_queue_manager->fetch_fast())) {
+  if(!free_queue_manager->fetch_fast(addr, rkey)) {
     perror("get mem fail");
     return false;
   }

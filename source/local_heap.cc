@@ -21,8 +21,8 @@
 
 namespace mralloc {
 
-const uint64_t REMOTE_BLOCKSIZE = 1024*1024*64;
-const uint64_t LOCAL_BLOCKSIZE = 1024*4;
+const uint64_t REMOTE_BLOCKSIZE = 1024*1024*2;
+const uint64_t LOCAL_BLOCKSIZE = 1024*1024*2;
 
 void * run_heap(void* arg) {
   MemHeap *heap = (MemHeap*)arg;
@@ -49,16 +49,16 @@ bool LocalHeap::start(const std::string addr, const std::string port){
       printf("init fetch failed!\n");
     }
     set_global_rkey(init_rkey_);
-    free_queue_manager->init(init_addr_, REMOTE_BLOCKSIZE);
+    free_queue_manager->init(init_addr_, REMOTE_BLOCKSIZE, init_rkey_);
     // init cpu cache, insert a block for each cpu cache ring buffer
     cpu_cache_ = new cpu_cache(LOCAL_BLOCKSIZE);
     for(int i = 0; i < nprocs; i++){
       if(cpu_cache_->is_empty(i)){
         // TODO: here we just fill 10 blocks, an automated or valified number should be tested
         for( int j = 0; j < 1; j++){
-          fetch_mem_fast(init_addr_);
+          fetch_mem_fast(init_addr_, init_rkey_);
           assert(init_addr_!=0);
-          cpu_cache_->add_cache(i, init_addr_, get_global_rkey());
+          cpu_cache_->add_cache(i, init_addr_, init_rkey_);
         }
         // printf("init @%d, addr:%lx\n", i, init_addr_);
       }
@@ -77,7 +77,7 @@ bool LocalHeap::start(const std::string addr, const std::string port){
 void LocalHeap::run() {
   // scan the cpu cache and refill them
   uint64_t cpu_cache_history[nprocs] = {1};
-  uint64_t init_addr_ = 0;
+  uint64_t init_addr_ = 0; uint32_t init_rkey_;
   uint8_t id = heap_worker_id_++;
   while(running) {
     for(int i = id; i < nprocs; i+=heap_worker_num_){
@@ -85,13 +85,13 @@ void LocalHeap::run() {
       // TODO: a automated filler, will choose how much blocks to fill
       int free_ = cpu_cache_->get_length(i);
       // if(cpu_cache_->is_empty(i)){
-      if(free_ != cpu_cache_history[i] && free_ < 256){
+      if(free_ != cpu_cache_history[i] && free_ < 1){
         // TODO: an iteration to call times of fetch blocks is somehow too ugly
         // int free_ = cpu_cache_->get_length(i);
         cpu_cache_history[i] = free_ + 8;
-        for( int j = 0; j < 4; j++){
-          fetch_mem_fast(init_addr_);
-          cpu_cache_->add_cache(i, init_addr_, get_global_rkey());
+        for( int j = 0; j < 1; j++){
+          fetch_mem_fast(init_addr_, init_rkey_);
+          cpu_cache_->add_cache(i, init_addr_, init_rkey_);
         }
         // printf("success add cache @ %d, %lu\n", i, init_addr_);
       }
@@ -123,17 +123,16 @@ void LocalHeap::stop(){
 bool LocalHeap::alive() { return true; }
 
 // fetch memory in local side
-bool LocalHeap::fetch_mem_fast(uint64_t &addr){
-  uint32_t rkey;
-  addr = free_queue_manager->fetch_fast();
-  if(addr == 0) {
-    uint64_t fetch_addr_;
-    fetch_mem_fast_remote(fetch_addr_, rkey);
-    if (!free_queue_manager->return_back(fetch_addr_, REMOTE_BLOCKSIZE) || rkey != get_global_rkey()){
+bool LocalHeap::fetch_mem_fast(uint64_t &addr, uint32_t &rkey){
+  // free_queue_manager->fetch_fast(addr, rkey);
+  if(!free_queue_manager->fetch_fast(addr, rkey)) {
+    uint64_t fetch_addr_; uint32_t fetch_rkey_;
+    fetch_mem_fast_remote(fetch_addr_, fetch_rkey_);
+    if (!free_queue_manager->return_back(fetch_addr_, REMOTE_BLOCKSIZE, fetch_rkey_)){
       printf("Remote fetch failed!\n");
       return false;
     }
-    addr = free_queue_manager->fetch_fast();
+    free_queue_manager->fetch_fast(addr, rkey);
     // printf("success get remote, %lu\n", addr);
   }
   return true;

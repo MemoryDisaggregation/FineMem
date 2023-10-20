@@ -19,12 +19,16 @@ namespace mralloc {
 
 class FreeBlockManager{
 public:
+struct remote_addr {
+    uint64_t addr;
+    uint32_t rkey;
+} ;
     FreeBlockManager(uint64_t fast_size): fast_size_(fast_size) {};
     ~FreeBlockManager() {};
-    virtual bool init(uint64_t addr, uint64_t size) {return true;};
-    virtual uint64_t fetch(uint64_t size) {return 0;};
-    virtual bool return_back(uint64_t addr, uint64_t size) {return 0;};
-    virtual uint64_t fetch_fast() {return 0;};
+    virtual bool init(uint64_t addr, uint64_t size, uint32_t rkey) {return true;};
+    virtual bool fetch(uint64_t size, uint64_t &addr, uint32_t &rkey) {};
+    virtual bool return_back(uint64_t addr, uint64_t size, uint32_t rkey) {return 0;};
+    virtual bool fetch_fast(uint64_t &addr, uint32_t &rkey) {};
     virtual void print_state() {};
     uint64_t get_fast_size() {return fast_size_;};
 protected:
@@ -40,18 +44,18 @@ public:
         }
     };
     
-    bool init(uint64_t addr, uint64_t size) override;
+    bool init(uint64_t addr, uint64_t size, uint32_t rkey) override;
 
-    uint64_t fetch(uint64_t size) override;
+    bool fetch(uint64_t size, uint64_t &addr, uint32_t &rkey) override;
 
-    bool return_back(uint64_t addr, uint64_t size) override;
+    bool return_back(uint64_t addr, uint64_t size, uint32_t rkey) override;
 
-    uint64_t fetch_fast() override;
+    bool fetch_fast(uint64_t &addr, uint32_t &rkey) override;
 
     void print_state() override;
     
 private:
-    std::queue<uint64_t> free_fast_queue;
+    std::queue<remote_addr> free_fast_queue;
 
     const uint64_t queue_watermark = 1 << 30;
 
@@ -62,6 +66,8 @@ private:
     std::mutex m_mutex_;
 
     uint64_t total_used;
+
+    uint32_t raw_rkey;
     
 };
 

@@ -140,7 +140,7 @@ class LocalHeap: public MemHeap {
 
   void fetch_cache(uint8_t nproc, uint64_t &addr, uint32_t &rkey);
 
-  bool fetch_mem_fast(uint64_t &addr);
+  bool fetch_mem_fast(uint64_t &addr, uint32_t &rkey);
 
   bool fetch_mem_remote(uint64_t size, uint64_t &addr, uint32_t &rkey);
 
@@ -151,6 +151,8 @@ class LocalHeap: public MemHeap {
   bool fetch_mem_align_remote(uint64_t size, uint64_t &addr, uint32_t &rkey);
 
   bool mr_bind_remote(uint64_t size, uint64_t addr, uint32_t rkey, uint32_t &newkey);
+
+  ConnectionManager* get_conn(){return m_rdma_conn_;};
 
  private:
   void destory(){};
