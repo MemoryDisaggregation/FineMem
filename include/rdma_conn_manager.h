@@ -1,3 +1,13 @@
+/*
+ * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @Date: 2023-10-23 15:05:13
+ * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-10-23 15:38:13
+ * @FilePath: /rmalloc_newbase/include/rdma_conn_manager.h
+ * @Description: 
+ * 
+ * Copyright (c) 2023 by wxy1999@mail.ustc.edu.cn, All Rights Reserved. 
+ */
 #pragma once
 
 #include <bits/stdint-uintn.h>
@@ -58,6 +68,8 @@ class ConnectionManager {
   int remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t &newkey);
   int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size);
   int remote_fetch_fast_block(uint64_t &addr, uint32_t &rkey);
+  uint32_t get_global_rkey() {return global_rkey_;};
+
 
  private:
   
@@ -65,6 +77,7 @@ class ConnectionManager {
   ConnQue *m_one_sided_conn_queue_;
 
   one_side_info m_one_side_info_;
+  uint32_t global_rkey_;
 
 };
 

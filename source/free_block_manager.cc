@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-14 09:42:48
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-10-20 16:09:22
+ * @LastEditTime: 2023-10-23 15:28:09
  * @FilePath: /rmalloc_newbase/source/free_block_manager.cc
  * @Description: 
  * 
@@ -37,6 +37,8 @@ namespace mralloc {
         block_num = size/fast_size_;
         uint64_t metadata_size = block_num*sizeof(header_list);
         uint64_t rkey_size = block_num*sizeof(uint32_t);
+        uint64_t block_align_offset = (metadata_size + rkey_size - 1)/fast_size_*fast_size_ + fast_size_;
+        block_num -= block_align_offset/fast_size_;
         header_list = (block_header*)addr;
         for(int i=0; i<block_num; i++){
             header_list[i].alloc_history = 0;
@@ -45,7 +47,6 @@ namespace mralloc {
             header_list[i].bitmap &= (uint32_t)0;
         }
         block_rkey_list = (uint32_t*)(addr + metadata_size);
-        uint64_t block_align_offset = (metadata_size + rkey_size - 1)/fast_size_*fast_size_ + fast_size_;
         heap_start = addr + block_align_offset;
         heap_size = size - block_align_offset;
         global_rkey = rkey;

@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-11 16:42:26
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-10-20 16:11:52
+ * @LastEditTime: 2023-10-23 15:16:24
  * @FilePath: /rmalloc_newbase/include/free_block_manager.h
  * @Description: Buddy tree for memory management 
  * 
@@ -59,8 +59,6 @@ public:
 
     bool set_block_base_rkey(uint64_t index, uint64_t offset, uint32_t rkey) {
         uint64_t start_addr = get_block_addr(index);
-        // assert(get_base_num() == size);
-        // for(int i = 0; i< size;i++)
         *(uint32_t*)(start_addr + offset*base_size) = rkey;
         return true;
     };

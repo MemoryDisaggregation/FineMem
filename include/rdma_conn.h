@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:26
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-10-10 18:25:54
+ * @LastEditTime: 2023-10-23 15:38:05
  * @FilePath: /rmalloc_newbase/include/rdma_conn.h
  * @Description: RDMA Connection functions, with RDMA read/write and fetch block, used by both LocalHeap and RemoteHeap
  * 
@@ -57,6 +57,7 @@ class RDMAConnection {
   int remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t &newkey);
   int remote_fusee_alloc(uint64_t &addr, uint32_t &rkey);
   uint32_t get_rkey() {return m_fusee_rkey;};
+  uint32_t get_global_rkey() {return global_rkey_;};
   ibv_qp* get_qp() {return m_cm_id_->qp;};
   ibv_cq* get_cq() {return m_cq_;};
   ibv_pd* get_pd() {return m_pd_;};
@@ -89,6 +90,7 @@ class RDMAConnection {
 
   // << one-sided support >>
   one_side_info m_one_side_info_;
+  uint32_t global_rkey_;
 
 };
 
