@@ -46,6 +46,7 @@ bool LocalHeap::start(const std::string addr, const std::string port){
     if (m_rdma_conn_ == nullptr) return -1;
     if (m_rdma_conn_->init(addr, port, 2, 2)) return false;
     // init free queue manager, using REMOTE_BLOCKSIZE as init size
+    sleep(10);
     if(one_side_enabled_) {
       m_one_side_info_ = m_rdma_conn_->get_one_side_info();
       header_list = (block_header*)malloc(m_one_side_info_.m_block_num*sizeof(block_header));

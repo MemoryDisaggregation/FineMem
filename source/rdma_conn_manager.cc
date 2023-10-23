@@ -19,7 +19,7 @@ int ConnectionManager::init(const std::string ip, const std::string port,
                             uint32_t one_sided_conn_num) {
   m_rpc_conn_queue_ = new ConnQue();
   m_one_sided_conn_queue_ = new ConnQue();
-  if (rpc_conn_num > MAX_SERVER_WORKER) {
+  if (rpc_conn_num > MAX_SERVER_WORKER * MAX_SERVER_CLIENT) {
     printf(
         "max server worker is %d, rpc_conn_num is: %d, reset rpc_conn_num to "
         "%d\n",
