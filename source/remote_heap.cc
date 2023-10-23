@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-10-20 16:10:36
+ * @LastEditTime: 2023-10-23 15:35:41
  * @FilePath: /rmalloc_newbase/source/remote_heap.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -162,6 +162,8 @@ bool RemoteHeap::init_memory_heap(uint64_t size) {
   heap_total_size_ = size; heap_start_addr_ = SERVER_BASE_ADDR;
   
   global_mr_ = rdma_register_memory(init_addr, size);
+
+  set_global_rkey(global_mr_->rkey);
 
   m_mw_handler = (ibv_mw**)malloc(size / base_block_size * sizeof(ibv_mw*));
 
@@ -399,6 +401,8 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
     rep_pdata.fast_size = (uint64_t)server_manager_handler->get_fast_size();
     rep_pdata.block_addr = (uint64_t)server_manager_handler->get_block_addr();
   }
+
+  rep_pdata.global_rkey = global_rkey_;
 
   if (connect_type == CONN_FUSEE) {
     rep_pdata.buf_rkey = global_mr_->rkey;

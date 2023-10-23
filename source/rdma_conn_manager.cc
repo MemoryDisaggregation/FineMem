@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-09-15 16:46:00
+ * @LastEditTime: 2023-10-23 15:38:31
  * @FilePath: /rmalloc_newbase/source/rdma_conn_manager.cc
  * @Description: 
  * 
@@ -34,6 +34,7 @@ int ConnectionManager::init(const std::string ip, const std::string port,
       return -1;
     }
     m_one_side_info_ = conn->get_one_side_info();
+    global_rkey_ = conn->get_global_rkey();
     m_rpc_conn_queue_->enqueue(conn);
   }
 

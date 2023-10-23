@@ -486,6 +486,7 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
                       server_pdata.block_num, 
                       server_pdata.base_size, 
                       server_pdata.fast_size};
+  global_rkey_ = server_pdata.global_rkey;
   conn_id_ = server_pdata.id;
   assert(server_pdata.size == sizeof(CmdMsgBlock));
 
