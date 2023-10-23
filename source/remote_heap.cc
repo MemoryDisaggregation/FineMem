@@ -390,6 +390,16 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
   rep_pdata.buf_rkey = msg_mr->rkey;
   rep_pdata.size = sizeof(CmdMsgRespBlock);
 
+  if(one_sided_enabled_) {
+    ServerBlockManager* server_manager_handler = (ServerBlockManager*)free_queue_manager;
+    rep_pdata.header_addr = (uint64_t)server_manager_handler->get_metadata();
+    rep_pdata.rkey_addr = (uint64_t)server_manager_handler->get_rkey_list_addr();
+    rep_pdata.block_num = (uint64_t)server_manager_handler->get_block_num();
+    rep_pdata.base_size = (uint64_t)server_manager_handler->get_base_size();
+    rep_pdata.fast_size = (uint64_t)server_manager_handler->get_fast_size();
+    rep_pdata.block_addr = (uint64_t)server_manager_handler->get_block_addr();
+  }
+
   if (connect_type == CONN_FUSEE) {
     rep_pdata.buf_rkey = global_mr_->rkey;
   }

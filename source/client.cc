@@ -25,7 +25,7 @@ int main(int argc, char* argv[]){
     std::string ip = argv[1];
     std::string port = argv[2];
 
-    mralloc::LocalHeap* heap = new mralloc::LocalHeap();
+    mralloc::LocalHeap* heap = new mralloc::LocalHeap(true, true, true);
     heap->start(ip, port);
 
     // fetch remote memory

@@ -18,6 +18,13 @@
 
 namespace mralloc {
 
+struct block_header {
+    uint8_t max_length;
+    uint8_t alloc_history;
+    uint16_t flag;
+    uint32_t bitmap;
+};
+
 class FreeBlockManager{
 public:
 struct remote_addr {
@@ -27,10 +34,10 @@ struct remote_addr {
     FreeBlockManager(uint64_t fast_size): fast_size_(fast_size) {};
     ~FreeBlockManager() {};
     virtual bool init(uint64_t addr, uint64_t size, uint32_t rkey) {return true;};
-    virtual bool fetch(uint64_t size, uint64_t &addr, uint32_t &rkey) {};
-    virtual bool fetch(uint64_t start_addr, uint64_t size, uint64_t &addr, uint32_t &rkey) {};
+    virtual bool fetch(uint64_t size, uint64_t &addr, uint32_t &rkey) {return true;};
+    virtual bool fetch(uint64_t start_addr, uint64_t size, uint64_t &addr, uint32_t &rkey) {return true;};
     virtual bool return_back(uint64_t addr, uint64_t size, uint32_t rkey) {return 0;};
-    virtual bool fetch_fast(uint64_t &addr, uint32_t &rkey) {};
+    virtual bool fetch_fast(uint64_t &addr, uint32_t &rkey) {return true;};
     virtual void print_state() {};
     uint64_t get_fast_size() {return fast_size_;};
 protected:
@@ -39,12 +46,6 @@ protected:
 
 class ServerBlockManager: public FreeBlockManager{
 public:
-struct block_header {
-    uint8_t max_length;
-    uint8_t alloc_history;
-    uint16_t flag;
-    uint32_t bitmap;
-};
     ServerBlockManager(uint64_t block_size, uint64_t base_size):FreeBlockManager(block_size), base_size(base_size) {
         if(fast_size_/base_size > 32) {
             printf("bitmap cannot store too much bsae page!\n");
@@ -70,6 +71,8 @@ struct block_header {
 
     inline uint64_t get_block_addr(uint64_t index) {return heap_start + index * fast_size_;};
 
+    inline uint64_t get_block_addr() {return heap_start;};
+
     inline block_header get_block_header(uint64_t index) {return header_list[index];};
 
     inline block_header* get_metadata() {return header_list;};
@@ -77,6 +80,10 @@ struct block_header {
     inline uint32_t get_block_rkey(uint64_t index) {return block_rkey_list[index];};
 
     inline uint64_t get_block_index(uint64_t addr) {return (addr-heap_start)/fast_size_;}
+
+    inline uint64_t get_base_size() {return base_size;};
+
+    inline uint64_t get_rkey_list_addr() {return (uint64_t)block_rkey_list;};
 
     bool fetch(uint64_t size, uint64_t &addr, uint32_t &rkey) override {return true;};
 
@@ -101,6 +108,80 @@ private:
     uint32_t* block_rkey_list;
 
     uint64_t heap_start;
+
+    uint64_t heap_size;
+
+    uint64_t block_num;
+
+    uint64_t last_alloc;
+    
+};
+
+class ClientBlockManager: public FreeBlockManager{
+public:
+
+    ClientBlockManager(uint64_t block_size, uint64_t base_size):FreeBlockManager(block_size), base_size(base_size) {
+        if(fast_size_/base_size > 32) {
+            printf("bitmap cannot store too much bsae page!\n");
+        }
+    };
+    ~ClientBlockManager() {};
+    
+    bool init(uint64_t addr, uint64_t size, uint32_t rkey) override;
+
+    // bool init(uint64_t header_addr, uint64_t rkey_addr, uint64_t base_addr, uint64_t size, uint32_t rkey) {return true;};
+
+    inline bool set_block_rkey(uint64_t index, uint32_t rkey) {block_rkey_list[index] = rkey; return true;};
+
+    bool set_block_base_rkey(uint64_t index, uint64_t offset, uint32_t rkey) {
+        uint64_t start_addr = get_block_addr(index);
+        // assert(get_base_num() == size);
+        // for(int i = 0; i< size;i++)
+        *(uint32_t*)(start_addr + offset*base_size) = rkey;
+        return true;
+    };
+
+    inline uint64_t get_base_num() {return fast_size_/base_size;};
+
+    inline uint64_t get_block_num() {return block_num;};
+
+    inline uint64_t get_block_addr(uint64_t index) {return mm_header_addr + index * fast_size_;};
+
+    inline block_header get_block_header(uint64_t index) {return header_list[index];};
+
+    inline block_header* get_metadata() {return header_list;};
+
+    inline uint32_t get_block_rkey(uint64_t index) {return block_rkey_list[index];};
+
+    inline uint64_t get_block_index(uint64_t addr) {return (addr-mm_heap_addr)/fast_size_;}
+
+    bool fetch(uint64_t size, uint64_t &addr, uint32_t &rkey) override {return true;};
+
+    bool fetch(uint64_t start_addr, uint64_t size, uint64_t &addr, uint32_t &rkey) override {return true;};
+
+    bool return_back(uint64_t addr, uint64_t size, uint32_t rkey) override {return true;};
+
+    bool fetch_fast(uint64_t &addr, uint32_t &rkey) override {return true;};
+
+    void print_state() override {};
+    
+private:
+
+    std::mutex m_mutex_;
+
+    uint64_t base_size;
+
+    uint32_t global_rkey;
+
+    uint64_t mm_header_addr;
+
+    uint64_t mm_rkey_addr;
+
+    uint64_t mm_heap_addr;
+
+    block_header* header_list;
+
+    uint32_t* block_rkey_list;
 
     uint64_t heap_size;
 

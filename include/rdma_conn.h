@@ -28,6 +28,15 @@ namespace mralloc {
 
 #define RESOLVE_TIMEOUT_MS 5000
 
+struct one_side_info {
+  uint64_t m_header_addr_;
+  uint64_t m_rkey_addr_;
+  uint64_t m_block_addr_;
+  uint64_t m_block_num;
+  uint64_t m_base_size;
+  uint64_t m_fast_size;
+};
+
 /* RDMA connection */
 class RDMAConnection {
  public:
@@ -35,11 +44,14 @@ class RDMAConnection {
   int connect_async(const std::string ip, const std::string port, uint8_t access_type);
   int init(const std::string ip, const std::string port, uint8_t access_type);
   int init(const std::string ip, const std::string port, ibv_context* ctx, ibv_pd* pd, ibv_cq* cq, uint8_t access_type);
+  one_side_info get_one_side_info() {return m_one_side_info_;};
   int register_remote_memory(uint64_t &addr, uint32_t &rkey, uint64_t size);
   int remote_read(void *ptr, uint64_t size, uint64_t remote_addr,
                   uint32_t rkey);
   int remote_write(void *ptr, uint64_t size, uint64_t remote_addr,
                    uint32_t rkey);
+  uint64_t remote_CAS(uint64_t swap, uint64_t compare, uint64_t remote_addr, 
+                    uint32_t rkey);
   int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size);
   int remote_fetch_fast_block(uint64_t &addr, uint32_t &rkey);
   int remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t &newkey);
@@ -74,6 +86,10 @@ class RDMAConnection {
   char *m_reg_buf_;
   struct ibv_mr *m_reg_buf_mr_;
   uint8_t conn_id_;
+
+  // << one-sided support >>
+  one_side_info m_one_side_info_;
+
 };
 
 }  // namespace kv

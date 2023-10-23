@@ -1,6 +1,8 @@
 #include "rdma_conn.h"
 #include <bits/stdint-uintn.h>
+#include <infiniband/verbs.h>
 #include <cstdio>
+#include <type_traits>
 #include "msg.h"
 
 namespace mralloc {
@@ -478,6 +480,12 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
   if (access_type == CONN_FUSEE){
     m_fusee_rkey =  server_pdata.buf_rkey;
   }
+  m_one_side_info_ = {server_pdata.header_addr, 
+                      server_pdata.rkey_addr,
+                      server_pdata.block_addr, 
+                      server_pdata.block_num, 
+                      server_pdata.base_size, 
+                      server_pdata.fast_size};
   conn_id_ = server_pdata.id;
   assert(server_pdata.size == sizeof(CmdMsgBlock));
 
@@ -661,7 +669,67 @@ int RDMAConnection::remote_write(void *ptr, uint64_t size, uint64_t remote_addr,
                            remote_addr, rkey);
 }
 
+uint64_t RDMAConnection::remote_CAS(uint64_t swap, uint64_t compare, uint64_t remote_addr, uint32_t rkey) {
 
+  struct ibv_sge sge;
+  sge.addr = (uintptr_t)m_reg_buf_;
+  sge.length = sizeof(uint64_t);
+  sge.lkey = m_reg_buf_mr_->lkey;
+
+  struct ibv_send_wr send_wr = {};
+  struct ibv_send_wr *bad_send_wr;
+  send_wr.wr_id = 0;
+  send_wr.num_sge = 1;
+  send_wr.next = NULL;
+  send_wr.opcode = IBV_WR_ATOMIC_CMP_AND_SWP;
+  send_wr.sg_list = &sge;
+  send_wr.send_flags = IBV_SEND_SIGNALED;
+  send_wr.wr.atomic.remote_addr = remote_addr;
+  send_wr.wr.atomic.rkey = rkey;
+  send_wr.wr.atomic.compare_add = compare;
+  send_wr.wr.atomic.swap = swap;
+  if (ibv_post_send(m_cm_id_->qp, &send_wr, &bad_send_wr)) {
+    perror("ibv_post_send fail");
+    return -1;
+  }
+
+  // printf("remote write %ld %d\n", remote_addr, rkey);
+
+  auto start = TIME_NOW;
+  int ret = -1;
+  struct ibv_wc wc;
+  while (true) {
+    if (TIME_DURATION_US(start, TIME_NOW) > RDMA_TIMEOUT_US) {
+      printf("rdma_remote_write timeout\n");
+      return -1;
+    }
+    int rc = ibv_poll_cq(m_cq_, 1, &wc);
+    if (rc > 0) {
+      if (IBV_WC_SUCCESS == wc.status) {
+        // Break out as operation completed successfully
+        // printf("Break out as operation completed successfully\n");
+        ret = 0;
+        break;
+      } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
+        perror("cmd_send IBV_WC_WR_FLUSH_ERR");
+        break;
+      } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
+        perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
+        break;
+      } else {
+        perror("cmd_send ibv_poll_cq status error");
+        printf("%d\n", wc.status);
+        break;
+      }
+    } else if (0 == rc) {
+      continue;
+    } else {
+      perror("ibv_poll_cq fail");
+      break;
+    }
+  }
+  return *((uint64_t*)m_reg_buf_);
+}
 
 int RDMAConnection::register_remote_memory(uint64_t &addr, uint32_t &rkey,
                                            uint64_t size) {

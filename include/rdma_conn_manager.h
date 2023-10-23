@@ -47,18 +47,25 @@ class ConnectionManager {
 
   int init(const std::string ip, const std::string port, uint32_t rpc_conn_num,
            uint32_t one_sided_conn_num);
+  one_side_info get_one_side_info() {return m_one_side_info_;};
   int register_remote_memory(uint64_t &addr, uint32_t &rkey, uint64_t size);
   int remote_read(void *ptr, uint32_t size, uint64_t remote_addr,
                   uint32_t rkey);
   int remote_write(void *ptr, uint32_t size, uint64_t remote_addr,
                    uint32_t rkey);
+  uint64_t remote_CAS(uint64_t swap, uint64_t compare, uint64_t remote_addr, 
+                    uint32_t rkey);
   int remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t &newkey);
   int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size);
   int remote_fetch_fast_block(uint64_t &addr, uint32_t &rkey);
 
  private:
+  
   ConnQue *m_rpc_conn_queue_;
   ConnQue *m_one_sided_conn_queue_;
+
+  one_side_info m_one_side_info_;
+
 };
 
 };  // namespace kv

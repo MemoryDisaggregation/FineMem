@@ -13,8 +13,25 @@
 #include <sys/types.h>
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 
 namespace mralloc {
+
+    bool ClientBlockManager::init(uint64_t addr, uint64_t size, uint32_t rkey) {
+        block_num = size/fast_size_;
+        uint64_t metadata_size = block_num*sizeof(header_list);
+        uint64_t rkey_size = block_num*sizeof(uint32_t);
+        header_list = (block_header*)malloc(metadata_size);
+        block_rkey_list = (uint32_t*)malloc(rkey_size);
+        uint64_t block_align_offset = (metadata_size + rkey_size - 1)/fast_size_*fast_size_ + fast_size_;
+        mm_header_addr = addr;
+        mm_rkey_addr = addr + metadata_size;
+        mm_heap_addr = addr + block_align_offset;
+        heap_size = size - block_align_offset;
+        global_rkey = rkey;
+        last_alloc = 0;
+        return true;
+    }
 
     bool ServerBlockManager::init(uint64_t addr, uint64_t size, uint32_t rkey) {
         block_num = size/fast_size_;

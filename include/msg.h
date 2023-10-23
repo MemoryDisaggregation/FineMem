@@ -45,6 +45,12 @@ struct PData {
   uint32_t buf_rkey;
   uint32_t size;
   uint8_t id;
+  uint64_t header_addr;
+  uint64_t rkey_addr;
+  uint64_t block_addr;
+  uint64_t block_num;
+  uint64_t base_size;
+  uint64_t fast_size;
   // uint32_t init_rkey;
 };
 

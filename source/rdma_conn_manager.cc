@@ -33,6 +33,7 @@ int ConnectionManager::init(const std::string ip, const std::string port,
       // TODO: release resources
       return -1;
     }
+    m_one_side_info_ = conn->get_one_side_info();
     m_rpc_conn_queue_->enqueue(conn);
   }
 
@@ -70,6 +71,14 @@ int ConnectionManager::remote_write(void *ptr, uint32_t size,
   RDMAConnection *conn = m_one_sided_conn_queue_->dequeue();
   assert(conn != nullptr);
   int ret = conn->remote_write(ptr, size, remote_addr, rkey);
+  m_one_sided_conn_queue_->enqueue(conn);
+  return ret;
+}
+
+uint64_t ConnectionManager::remote_CAS(uint64_t swap, uint64_t compare, uint64_t remote_addr, uint32_t rkey) {
+  RDMAConnection *conn = m_one_sided_conn_queue_->dequeue();
+  assert(conn != nullptr);
+  uint64_t ret = conn->remote_CAS(swap, compare, remote_addr, rkey);
   m_one_sided_conn_queue_->enqueue(conn);
   return ret;
 }

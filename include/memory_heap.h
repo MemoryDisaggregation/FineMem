@@ -26,6 +26,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include "msg.h"
+#include "rdma_conn.h"
 #include "rdma_conn_manager.h"
 #include "rdma_mem_pool.h"
 #include "string"
@@ -124,8 +125,8 @@ class LocalHeap: public MemHeap {
     uint32_t rkey;
   } rdma_mem_t;
 
-  LocalHeap() {
-
+  LocalHeap(bool heap_enabled, bool cache_enabled, bool one_side_enabled): heap_enabled_(heap_enabled), cpu_cache_enabled_(cache_enabled), one_side_enabled_(one_side_enabled) {
+    if(cpu_cache_enabled_)  assert(heap_enabled_);
   }
 
   bool start(const std::string addr, const std::string port) override;
@@ -138,18 +139,20 @@ class LocalHeap: public MemHeap {
 
   ~LocalHeap() { destory(); }
 
+  // << one-sided block fetch >>
+  bool update_mem_metadata();
+  bool update_rkey_metadata();
+  bool fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey);
+  bool fetch_rkey_list_one_sided(uint64_t addr, uint32_t* rkey_list);
+
+  // << RPC block fetch & local heap/cache fetch >>
   void fetch_cache(uint8_t nproc, uint64_t &addr, uint32_t &rkey);
-
   bool fetch_mem_fast(uint64_t &addr, uint32_t &rkey);
-
   bool fetch_mem_remote(uint64_t size, uint64_t &addr, uint32_t &rkey);
-
   // alloc 2MB memory blocks
   bool fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey);
-
   // alloc 2MB aligned large blocks
   bool fetch_mem_align_remote(uint64_t size, uint64_t &addr, uint32_t &rkey);
-
   bool mr_bind_remote(uint64_t size, uint64_t addr, uint32_t rkey, uint32_t &newkey);
 
   ConnectionManager* get_conn(){return m_rdma_conn_;};
@@ -157,16 +160,28 @@ class LocalHeap: public MemHeap {
  private:
   void destory(){};
 
-  // TODO: cpu cache using shm_open;
-  // std::queue<uint64_t> cpu_free_pages_[nprocs];
-  // std::unordered_map<uint64_t, pid_t>* cpu_allocated_pages_[nprocs];
+  // << function enabled >>
+  bool heap_enabled_;
+  bool cpu_cache_enabled_;
+  bool one_side_enabled_;
+
+  // << cpu cache >>
   cpu_cache* cpu_cache_;
-  ConnectionManager *m_rdma_conn_;
   std::atomic<uint8_t> heap_worker_id_;
   uint8_t heap_worker_num_;
+
+  // << one-side metadata >>
+  one_side_info m_one_side_info_;
+  block_header* header_list;
+  uint32_t* rkey_list;
+  uint64_t last_alloc_;
+  
+  ConnectionManager *m_rdma_conn_;
   uint32_t global_rkey_;
   std::vector<rdma_mem_t> m_used_mem_; /* the used mem */
   std::mutex m_mutex_;                 /* used for concurrent mem allocation */
+
+
 };
 
 class RemoteHeap : public MemHeap {
@@ -179,7 +194,7 @@ class RemoteHeap : public MemHeap {
     rdma_cm_id *cm_id;
     struct ibv_cq *cq;
   };
-
+  RemoteHeap(bool one_sided_enabled): one_sided_enabled_(one_sided_enabled) {};
   ~RemoteHeap(){};
 
   bool start(const std::string addr, const std::string port) override;
@@ -212,6 +227,9 @@ class RemoteHeap : public MemHeap {
                                    uint64_t size);
 
   void worker(WorkerInfo *work_info, uint32_t num);
+
+  // << function enabled >>
+  bool one_sided_enabled_;
 
   struct ibv_mr *global_mr_;
   struct rdma_event_channel *m_cm_channel_;

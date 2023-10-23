@@ -12,7 +12,9 @@
 #include <bits/stdint-uintn.h>
 #include <pthread.h>
 #include <sys/types.h>
+#include "free_block_manager.h"
 #include "memory_heap.h"
+#include "rdma_conn.h"
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -44,32 +46,42 @@ bool LocalHeap::start(const std::string addr, const std::string port){
     if (m_rdma_conn_ == nullptr) return -1;
     if (m_rdma_conn_->init(addr, port, 2, 2)) return false;
     // init free queue manager, using REMOTE_BLOCKSIZE as init size
-    free_queue_manager = new FreeQueueManager(LOCAL_BLOCKSIZE);
-    if(!fetch_mem_fast_remote(init_addr_, init_rkey_)){
-      printf("init fetch failed!\n");
+    if(one_side_enabled_) {
+      m_one_side_info_ = m_rdma_conn_->get_one_side_info();
+      header_list = (block_header*)malloc(m_one_side_info_.m_block_num*sizeof(block_header));
+      rkey_list = (uint32_t*)malloc(m_one_side_info_.m_block_num*sizeof(uint32_t));
+      update_mem_metadata();
+      update_rkey_metadata();
     }
-    set_global_rkey(init_rkey_);
-    free_queue_manager->init(init_addr_, REMOTE_BLOCKSIZE, init_rkey_);
-    // init cpu cache, insert a block for each cpu cache ring buffer
-    cpu_cache_ = new cpu_cache(LOCAL_BLOCKSIZE);
-    for(int i = 0; i < nprocs; i++){
-      if(cpu_cache_->is_empty(i)){
-        // TODO: here we just fill 10 blocks, an automated or valified number should be tested
-        for( int j = 0; j < 1; j++){
-          fetch_mem_fast(init_addr_, init_rkey_);
-          assert(init_addr_!=0);
-          cpu_cache_->add_cache(i, init_addr_, init_rkey_);
-        }
-        // printf("init @%d, addr:%lx\n", i, init_addr_);
+    if(heap_enabled_) {
+      free_queue_manager = new FreeQueueManager(LOCAL_BLOCKSIZE);
+      if(!fetch_mem_fast_remote(init_addr_, init_rkey_)){
+        printf("init fetch failed!\n");
       }
+      set_global_rkey(init_rkey_);
+      free_queue_manager->init(init_addr_, REMOTE_BLOCKSIZE, init_rkey_);
     }
-    // create a thread to run()
-    running = 1;
-    pthread_t running_thread;
-    heap_worker_id_ = 0;
-    heap_worker_num_ = 4;
-    for(int i =0;i< heap_worker_num_;i++)
-      pthread_create(&running_thread, NULL, run_heap, this);
+    // init cpu cache, insert a block for each cpu cache ring buffer
+    if(cpu_cache_enabled_) {
+      cpu_cache_ = new cpu_cache(LOCAL_BLOCKSIZE);
+      for(int i = 0; i < nprocs; i++){
+        if(cpu_cache_->is_empty(i)){
+          // TODO: here we just fill 10 blocks, an automated or valified number should be tested
+          for( int j = 0; j < 1; j++){
+            fetch_mem_fast(init_addr_, init_rkey_);
+            assert(init_addr_!=0);
+            cpu_cache_->add_cache(i, init_addr_, init_rkey_);
+          }
+          // printf("init @%d, addr:%lx\n", i, init_addr_);
+        }
+      }
+      running = 1;
+      pthread_t running_thread;
+      heap_worker_id_ = 0;
+      heap_worker_num_ = 4;
+      for(int i =0;i< heap_worker_num_;i++)
+        pthread_create(&running_thread, NULL, run_heap, this);
+    }
     return true;
 }
 
@@ -98,6 +110,45 @@ void LocalHeap::run() {
     }
     // printf("I'm running!\n");
   }
+}
+
+bool LocalHeap::update_rkey_metadata() {
+  uint64_t rkey_size = m_one_side_info_.m_block_num * sizeof(uint32_t);
+  m_rdma_conn_->remote_read(rkey_list, rkey_size, m_one_side_info_.m_rkey_addr_, global_rkey_);
+  return true;
+}
+
+bool LocalHeap::update_mem_metadata() {
+  uint64_t metadata_size = m_one_side_info_.m_block_num * sizeof(block_header);
+  m_rdma_conn_->remote_read(header_list, metadata_size, m_one_side_info_.m_header_addr_, global_rkey_);
+  return true;
+}
+
+bool LocalHeap::fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey) {
+  uint64_t block_num = m_one_side_info_.m_block_num;
+  uint64_t fast_size = m_one_side_info_.m_fast_size;
+  uint64_t base_size = m_one_side_info_.m_base_size;
+  for(int i = 0; i< block_num; i++){
+    uint64_t index = (i+last_alloc_)%block_num;
+    if(header_list[index].max_length == fast_size/base_size && (header_list[index].flag & (uint64_t)1) == 1){
+      block_header update_header = header_list[index];
+      update_header.flag &= ~((uint64_t)1);
+      uint64_t swap_value = *(uint64_t*)(&update_header); 
+      uint64_t cmp_value = *(uint64_t*)(&header_list[index]);
+      uint64_t result = m_rdma_conn_->remote_CAS(swap_value, cmp_value, 
+                                                  m_one_side_info_.m_header_addr_ + index * sizeof(block_header), 
+                                                  global_rkey_);
+      if (result != cmp_value) {
+        update_mem_metadata();
+      } else {
+        last_alloc_ = index;
+        addr = m_one_side_info_.m_block_addr_ + index * m_one_side_info_.m_fast_size;
+        rkey = rkey_list[index];
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 void LocalHeap::fetch_cache(uint8_t nproc, uint64_t &addr, uint32_t &rkey) {
