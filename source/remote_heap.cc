@@ -402,7 +402,7 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
     rep_pdata.block_addr = (uint64_t)server_manager_handler->get_block_addr();
   }
 
-  rep_pdata.global_rkey = global_rkey_;
+  rep_pdata.global_rkey = get_global_rkey();
 
   if (connect_type == CONN_FUSEE) {
     rep_pdata.buf_rkey = global_mr_->rkey;

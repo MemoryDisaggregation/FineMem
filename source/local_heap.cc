@@ -116,13 +116,13 @@ void LocalHeap::run() {
 
 bool LocalHeap::update_rkey_metadata() {
   uint64_t rkey_size = m_one_side_info_.m_block_num * sizeof(uint32_t);
-  m_rdma_conn_->remote_read(rkey_list, rkey_size, m_one_side_info_.m_rkey_addr_, global_rkey_);
+  m_rdma_conn_->remote_read(rkey_list, rkey_size, m_one_side_info_.m_rkey_addr_, get_global_rkey());
   return true;
 }
 
 bool LocalHeap::update_mem_metadata() {
   uint64_t metadata_size = m_one_side_info_.m_block_num * sizeof(block_header);
-  m_rdma_conn_->remote_read(header_list, metadata_size, m_one_side_info_.m_header_addr_, global_rkey_);
+  m_rdma_conn_->remote_read(header_list, metadata_size, m_one_side_info_.m_header_addr_, get_global_rkey());
   return true;
 }
 
@@ -139,7 +139,7 @@ bool LocalHeap::fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey) {
       uint64_t cmp_value = *(uint64_t*)(&header_list[index]);
       uint64_t result = m_rdma_conn_->remote_CAS(swap_value, cmp_value, 
                                                   m_one_side_info_.m_header_addr_ + index * sizeof(block_header), 
-                                                  global_rkey_);
+                                                  get_global_rkey());
       if (result != cmp_value) {
         update_mem_metadata();
       } else {
