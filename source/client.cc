@@ -37,10 +37,10 @@ int main(int argc, char* argv[]){
     while(iter--){
         heap->fetch_mem_one_sided(addr, rkey);
         std::cout << "write addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
-        for(int i = 0; i < 1024; i++)
-            heap->get_conn()->remote_write(buffer[iter%2], 64*1024, addr+i*64*1024, rkey);
+        for(int i = 0; i < 2; i++)
+            heap->get_conn()->remote_write(buffer[iter%2], 64, addr+i*64, rkey);
         std::cout << "read addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
-        for(int i = 0; i < 1024; i++)
+        for(int i = 0; i < 2; i++)
             heap->get_conn()->remote_read(read_buffer, 4, addr, rkey);
         printf("alloc: %lx : %u, content: %s\n", addr, rkey, read_buffer);
       // heap->mr_bind_remote(2*1024*1024, addr, rkey, 114514);

@@ -23,8 +23,8 @@
 
 namespace mralloc {
 
-const uint64_t REMOTE_BLOCKSIZE = 1024*1024*2;
-const uint64_t LOCAL_BLOCKSIZE = 1024*1024*2;
+const uint64_t REMOTE_BLOCKSIZE = 1024*1024*32;
+const uint64_t LOCAL_BLOCKSIZE = 1024*1024*32;
 
 void * run_heap(void* arg) {
   MemHeap *heap = (MemHeap*)arg;
@@ -44,7 +44,7 @@ bool LocalHeap::start(const std::string addr, const std::string port){
     uint32_t init_rkey_ = 0;
     m_rdma_conn_ = new ConnectionManager();
     if (m_rdma_conn_ == nullptr) return -1;
-    if (m_rdma_conn_->init(addr, port, 2, 2)) return false;
+    if (m_rdma_conn_->init(addr, port, 1, 1)) return false;
     // init free queue manager, using REMOTE_BLOCKSIZE as init size
     sleep(10);
     if(one_side_enabled_) {
@@ -192,7 +192,7 @@ bool LocalHeap::fetch_mem_fast(uint64_t &addr, uint32_t &rkey){
 }
 
 /**
- * @description: get 2MB memory chunk address from remote heap
+ * @description: get block memory chunk address from remote heap
  * @param {uint64_t} &addr
  * @param {uint32_t} &rkey
  * @return {bool} 

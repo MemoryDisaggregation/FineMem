@@ -28,7 +28,6 @@
 #include "msg.h"
 #include "rdma_conn.h"
 #include "rdma_conn_manager.h"
-#include "rdma_mem_pool.h"
 #include "string"
 #include "thread"
 #include "unordered_map"
