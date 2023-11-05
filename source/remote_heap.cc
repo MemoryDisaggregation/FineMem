@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-10-23 15:35:41
+ * @LastEditTime: 2023-11-03 09:58:41
  * @FilePath: /rmalloc_newbase/source/remote_heap.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -27,12 +27,12 @@
 
 // #define REMOTE_MEM_SIZE 134217728
 // #define REMOTE_MEM_SIZE 16777216
-#define REMOTE_MEM_SIZE 67108864
+// #define REMOTE_MEM_SIZE 67108864
 // #define REMOTE_MEM_SIZE 16384
 // #define REMOTE_MEM_SIZE 8192
 // #define REMOTE_MEM_SIZE 32768
 // #define REMOTE_MEM_SIZE 262144
-// #define REMOTE_MEM_SIZE 33554432
+#define REMOTE_MEM_SIZE 33554432
 // #define REMOTE_MEM_SIZE 2097152
 // #define REMOTE_MEM_SIZE 4096
 
@@ -509,6 +509,7 @@ bool RemoteHeap::init_mw(ibv_qp *qp, ibv_cq *cq) {
     printf("start bind block mw: %lx ", block_addr_);
     bind_mw(block_mw[i], block_addr_, REMOTE_MEM_SIZE, qp, cq);
     printf("first time: %u ", block_mw[i]->rkey);
+    // unbind_mw_type2(block_mw[i], block_addr_, REMOTE_MEM_SIZE, qp, cq);
     bind_mw(block_mw[i], block_addr_, REMOTE_MEM_SIZE, qp, cq);
     printf("second time: %u\n", block_mw[i]->rkey);
     queue_manager_->set_block_rkey(i, block_mw[i]->rkey);
@@ -574,6 +575,111 @@ bool RemoteHeap::bind_mw(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, i
                 }
               }
           }
+  return true;
+}
+
+bool RemoteHeap::bind_mw_type2(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq* cq){
+  if(mw == NULL){
+  // assert(size == base_block_size);
+    int index = (addr - heap_start_addr_)/base_block_size;
+    // if(m_mw_handler[index] == NULL) 
+    m_mw_handler[index] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_2);
+    printf("addr:%lx rkey_old: %u",  addr, m_mw_handler[index]->rkey);
+      // uint32_t newkey = ibv_inc_rkey(m_mw_handler[i]->rkey);
+    mw = m_mw_handler[index];
+  }
+
+  struct ibv_send_wr wr_ = {};
+  struct ibv_send_wr* bad_wr_;
+  wr_.wr_id = 0;
+  wr_.num_sge = 0;
+  wr_.next = NULL;
+  wr_.opcode = IBV_WR_BIND_MW;
+  wr_.sg_list = NULL;
+  wr_.send_flags = IBV_SEND_SIGNALED;
+  wr_.bind_mw.mw = mw;
+  wr_.bind_mw.rkey = mw->rkey;
+  wr_.bind_mw.bind_info.addr = addr;
+  wr_.bind_mw.bind_info.length = size;
+  wr_.bind_mw.bind_info.mr = global_mr_;
+  wr_.bind_mw.bind_info.mw_access_flags = IBV_ACCESS_REMOTE_READ | 
+                            IBV_ACCESS_REMOTE_WRITE;
+  // printf("try to bind with rkey: %d, old_rkey is %d, old mw is %d\n", mw->rkey, mw->rkey, mw->rkey);
+  if (ibv_post_send(qp, &wr_, &bad_wr_)) {
+    perror("ibv_post_send mw_bind fail");
+  } else {
+      while (true) {
+        ibv_wc wc;
+        int rc = ibv_poll_cq(cq, 1, &wc);
+        if (rc > 0) {
+          if (IBV_WC_SUCCESS == wc.status) {
+
+            // printf("bind success! rkey = %d, mw.rkey = %d \n", wr_.bind_mw.rkey, mw->rkey);
+            break;
+          } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
+            perror("cmd_send IBV_WC_WR_FLUSH_ERR");
+            break;
+          } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
+            perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
+            break;
+          } else {
+            perror("cmd_send ibv_poll_cq status error");
+            printf("%d\n", wc.status);
+            break;
+          }
+        } else if (0 == rc) {
+          continue;
+        } else {
+          perror("ibv_poll_cq fail");
+          break;
+        }
+      }
+  }
+  return true;
+}
+
+bool RemoteHeap::unbind_mw_type2(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq* cq){
+
+  struct ibv_send_wr wr_ = {};
+  struct ibv_send_wr* bad_wr_;
+  wr_.wr_id = 0;
+  wr_.num_sge = 0;
+  wr_.next = NULL;
+  wr_.opcode = IBV_WR_LOCAL_INV;
+  wr_.sg_list = NULL;
+  wr_.send_flags = IBV_SEND_SIGNALED;
+  wr_.invalidate_rkey = mw->rkey;
+  // printf("try to bind with rkey: %d, old_rkey is %d, old mw is %d\n", mw->rkey, mw->rkey, mw->rkey);
+  if (ibv_post_send(qp, &wr_, &bad_wr_)) {
+    perror("ibv_post_send mw_bind fail");
+  } else {
+      while (true) {
+        ibv_wc wc;
+        int rc = ibv_poll_cq(cq, 1, &wc);
+        if (rc > 0) {
+          if (IBV_WC_SUCCESS == wc.status) {
+
+            // printf("bind success! rkey = %d, mw.rkey = %d \n", wr_.bind_mw.rkey, mw->rkey);
+            break;
+          } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
+            perror("cmd_send IBV_WC_WR_FLUSH_ERR");
+            break;
+          } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
+            perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
+            break;
+          } else {
+            perror("cmd_send ibv_poll_cq status error");
+            printf("%d\n", wc.status);
+            break;
+          }
+        } else if (0 == rc) {
+          continue;
+        } else {
+          perror("ibv_poll_cq fail");
+          break;
+        }
+      }
+  }
   return true;
 }
 

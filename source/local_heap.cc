@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 16:08:03
- * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-10-23 15:39:11
+ * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-11-05 11:16:52
  * @FilePath: /rmalloc_newbase/source/local_heap.cc
  * @Description: 
  * 
@@ -46,9 +46,8 @@ bool LocalHeap::start(const std::string addr, const std::string port){
     if (m_rdma_conn_ == nullptr) return -1;
     if (m_rdma_conn_->init(addr, port, 2, 2)) return false;
     // init free queue manager, using REMOTE_BLOCKSIZE as init size
-    sleep(10);
+    set_global_rkey(m_rdma_conn_->get_global_rkey());
     if(one_side_enabled_) {
-      set_global_rkey(m_rdma_conn_->get_global_rkey());
       m_one_side_info_ = m_rdma_conn_->get_one_side_info();
       header_list = (block_header*)malloc(m_one_side_info_.m_block_num*sizeof(block_header));
       rkey_list = (uint32_t*)malloc(m_one_side_info_.m_block_num*sizeof(uint32_t));

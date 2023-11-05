@@ -1,8 +1,8 @@
 /*
  * @Author: blahaj wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 16:09:32
- * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-10-20 15:22:27
+ * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-11-05 11:14:07
  * @FilePath: /rmalloc_newbase/include/memory_heap.h
  * @Description: memory heap for rmalloc
  */
@@ -145,14 +145,16 @@ class LocalHeap: public MemHeap {
   bool fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey);
   bool fetch_rkey_list_one_sided(uint64_t addr, uint32_t* rkey_list);
 
+  // << RPC block fetch >>
+  bool fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey);
+  bool fetch_mem_align_remote(uint64_t size, uint64_t &addr, uint32_t &rkey);
+
   // << RPC block fetch & local heap/cache fetch >>
   void fetch_cache(uint8_t nproc, uint64_t &addr, uint32_t &rkey);
   bool fetch_mem_fast(uint64_t &addr, uint32_t &rkey);
   bool fetch_mem_remote(uint64_t size, uint64_t &addr, uint32_t &rkey);
-  // alloc 2MB memory blocks
-  bool fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey);
-  // alloc 2MB aligned large blocks
-  bool fetch_mem_align_remote(uint64_t size, uint64_t &addr, uint32_t &rkey);
+
+  // UNUSED
   bool mr_bind_remote(uint64_t size, uint64_t addr, uint32_t rkey, uint32_t &newkey);
 
   ConnectionManager* get_conn(){return m_rdma_conn_;};
@@ -209,6 +211,8 @@ class RemoteHeap : public MemHeap {
 
   bool init_mw(ibv_qp* qp, ibv_cq *cq);
   bool bind_mw(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq *cq);
+  bool bind_mw_type2(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq *cq);
+  bool unbind_mw_type2(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq *cq);
 
  private:
 
