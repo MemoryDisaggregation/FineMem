@@ -13,6 +13,7 @@
 #include <arpa/inet.h>
 #include <bits/stdint-uintn.h>
 #include <infiniband/verbs.h>
+#include <map>
 #include <netdb.h>
 #include <rdma/rdma_cma.h>
 #include <stdint.h>
@@ -23,6 +24,7 @@
 #include <unistd.h>
 #include <string>
 #include "msg.h"
+#include "free_block_manager.h"
 
 namespace mralloc {
 
@@ -63,9 +65,23 @@ class RDMAConnection {
   ibv_pd* get_pd() {return m_pd_;};
   ibv_context* get_ctx() {return m_cm_id_->verbs;};
 
+  // << one-sided fetch API >>
+  bool fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey);
+  bool malloc_hint(uint64_t start, uint64_t idx);
+
  private:
+  inline uint64_t find_free_index_from_bitmap(uint64_t bitmap) {
+    return __builtin_ctzll(~bitmap);
+  }
   struct ibv_mr *rdma_register_memory(void *ptr, uint64_t size);
 
+  // << one-sided support functions >>
+  bool update_mem_metadata(uint64_t index);
+  bool update_mem_bitmap(uint64_t index);
+  bool update_rkey_metadata();
+  bool fetch_rkey_list_one_sided(uint64_t addr, uint32_t* rkey_list);
+
+  // << one-sided read/write >>
   int rdma_remote_read(uint64_t local_addr, uint32_t lkey, uint64_t length,
                        uint64_t remote_addr, uint32_t rkey);
 
@@ -91,7 +107,15 @@ class RDMAConnection {
   // << one-sided support >>
   one_side_info m_one_side_info_;
   uint32_t global_rkey_;
+  large_block_lockless block_;
+  uint32_t* rkey_list;
+  uint64_t last_alloc_;
+  uint64_t user_start_;
+  int total_old_= 0;
 
 };
+
+static bool* full_bitmap;
+
 
 }  // namespace kv

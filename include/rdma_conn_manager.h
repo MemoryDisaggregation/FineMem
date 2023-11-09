@@ -69,7 +69,9 @@ class ConnectionManager {
   int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size);
   int remote_fetch_fast_block(uint64_t &addr, uint32_t &rkey);
   uint32_t get_global_rkey() {return global_rkey_;};
-
+  
+  // << one side alloc API >>
+  bool fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey);
 
  private:
   

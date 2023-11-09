@@ -3,6 +3,7 @@
 #include <infiniband/verbs.h>
 #include <cstdio>
 #include <type_traits>
+#include "free_block_manager.h"
 #include "msg.h"
 
 namespace mralloc {
@@ -477,9 +478,9 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
 
   m_server_cmd_msg_ = server_pdata.buf_addr;
   m_server_cmd_rkey_ = server_pdata.buf_rkey;
-  if (access_type == CONN_FUSEE){
-    m_fusee_rkey =  server_pdata.buf_rkey;
-  }
+  // if (access_type == CONN_FUSEE){
+  //   m_fusee_rkey =  server_pdata.buf_rkey;
+  // }
   m_one_side_info_ = {server_pdata.header_addr, 
                       server_pdata.rkey_addr,
                       server_pdata.block_addr, 
@@ -517,6 +518,14 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
     perror("ibv_reg_mr m_reg_buf_mr_ fail");
     return -1;
   }
+
+  // TODO: add support for one_sided
+  // header_list = (block_header_e*)malloc(m_one_side_info_.m_block_num*sizeof(block_header));
+  // rkey_list = (uint32_t*)malloc(m_one_side_info_.m_block_num*sizeof(uint32_t));
+  // update_mem_metadata();
+  // update_rkey_metadata();
+  last_alloc_ = 0;
+  full_bitmap = (bool*)malloc(m_one_side_info_.m_block_num*sizeof(bool));
 
   return 0;
 }
@@ -937,5 +946,123 @@ int RDMAConnection::remote_fusee_alloc(uint64_t &addr, uint32_t &rkey){
   return 0;
 }
 
+bool RDMAConnection::update_rkey_metadata() {
+  if(rkey_list != 0){
+    uint64_t rkey_size = m_one_side_info_.m_block_num * sizeof(uint32_t);
+    remote_read(rkey_list, rkey_size, m_one_side_info_.m_rkey_addr_, get_global_rkey());
+    return true;
+  }
+  return false;
+}
+
+bool RDMAConnection::update_mem_metadata(uint64_t index) {
+  uint64_t metadata_size = sizeof(large_block);
+  assert(sizeof(large_block) == sizeof(large_block_lockless));
+  remote_read(&block_, metadata_size, m_one_side_info_.m_header_addr_ + index*sizeof(large_block), get_global_rkey());
+  return true;
+}
+
+bool RDMAConnection::update_mem_bitmap(uint64_t index) {
+  assert(sizeof(large_block) == sizeof(large_block_lockless));
+  remote_read(&block_.bitmap, sizeof(uint64_t), m_one_side_info_.m_header_addr_ + index*sizeof(large_block), get_global_rkey());
+  return true;
+}
+
+
+bool RDMAConnection::malloc_hint(uint64_t start, uint64_t idx) {
+  user_start_ = (start - m_one_side_info_.m_block_addr_)/m_one_side_info_.m_fast_size/large_block_items;
+  last_alloc_ = idx%40 * (m_one_side_info_.m_block_num - user_start_ - 1)/40;
+  if(user_start_ > m_one_side_info_.m_block_num || last_alloc_ > m_one_side_info_.m_block_num)
+    return false;
+  printf("usert_start_=%lu, last_alloc_=%lu\n", user_start_, last_alloc_);
+  update_mem_metadata((last_alloc_)%(m_one_side_info_.m_block_num-user_start_) + user_start_);
+  return true;
+}
+
+bool RDMAConnection::fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey) {
+  uint64_t block_num = m_one_side_info_.m_block_num;
+  uint64_t fast_size = m_one_side_info_.m_fast_size;
+  uint64_t base_size = m_one_side_info_.m_base_size;
+  int old_item = 0;
+  uint64_t free_index;
+  for(int i = 0; i < block_num-user_start_; i++) {
+    while(block_.bitmap != ~(uint64_t)0) {
+        // find valid bit, try to allocate 
+        uint64_t result;
+        do{
+            free_index = find_free_index_from_bitmap(block_.bitmap);
+            uint64_t bitmap_ = block_.bitmap;
+            bitmap_ |= (uint64_t)1<<free_index;
+            result = remote_CAS(bitmap_, block_.bitmap, 
+              m_one_side_info_.m_header_addr_ + block_.offset*sizeof(large_block),
+              get_global_rkey());
+            // printf("bitmap result = %lu\n", result);
+        } while (result != block_.bitmap && (block_.bitmap = result) != ~(uint64_t)0);
+        if(block_.bitmap == ~(uint64_t)0) {
+          // printf("block full\n");
+          break;
+        }
+        // if(block_.header[free_index].flag % 2 == 1){
+        //   printf("old value!\n");
+        //   update_mem_metadata(block_.offset);
+        //   continue;
+        // }
+        // block_header_e header_new = block_.header[free_index];
+        // header_new.flag |= 1;
+        // // printf("old value:%lu\n", *(uint64_t*)&block_.header[free_index]);
+        // result = remote_CAS(*(uint64_t*)&header_new, *(uint64_t*)&block_.header[free_index], 
+        //     m_one_side_info_.m_header_addr_ + block_.offset*sizeof(large_block) + sizeof(uint64_t) + sizeof(block_header_e)*free_index,
+        //     get_global_rkey());
+        // if (result != *(uint64_t*)&block_.header[free_index]) {
+        //   printf("block header %lu result = %lu\n", free_index, result);
+        //   old_item++;
+        //   update_mem_metadata(block_.offset);
+        // } else {
+          addr = m_one_side_info_.m_block_addr_ + (block_.offset * large_block_items + free_index) * m_one_side_info_.m_fast_size;
+          // rkey = rkey_list[index];
+          rkey = get_global_rkey();
+          // printf("addr:%lx, rkey:%u\n", addr, rkey);
+          return true;
+        // }
+    }
+    full_bitmap[block_.offset] = true;
+    int offset = (block_.offset - user_start_ + 1)%(block_num-user_start_) + user_start_;
+    while(full_bitmap[offset]){
+      offset = (offset - user_start_ + 1)%(block_num-user_start_) + user_start_;
+    }
+    block_.offset = offset;
+    update_mem_bitmap(offset);
+    // printf("costly operations\n");
+    // update_mem_metadata(offset);
+  }
+  // for(int i = 0; i< block_num-user_start_; i++){
+  //   uint64_t index = (i+last_alloc_)%(block_num-user_start_) + user_start_;
+  //   if(header_list[index].max_length == fast_size/base_size && (header_list[index].flag & (uint64_t)1) == 1){
+  //     block_header_e update_header = header_list[index];
+  //     update_header.flag &= ~((uint64_t)1);
+  //     uint64_t swap_value = *(uint64_t*)(&update_header); 
+  //     uint64_t cmp_value = *(uint64_t*)(&header_list[index]);
+  //     uint64_t result = remote_CAS(swap_value, cmp_value, 
+  //                                                 m_one_side_info_.m_header_addr_ + index * sizeof(block_header), 
+  //                                                 get_global_rkey());
+  //     if (result != cmp_value) {
+  //       old_item++;
+  //       // total_old_++;
+  //       if(old_item % 100 == 0){
+  //         // printf("total out of time:%d, update metadata\n", old_item);
+  //         update_mem_metadata();
+  //       }
+  //     } else {
+  //       last_alloc_ = index + 1;
+  //       addr = m_one_side_info_.m_block_addr_ + index * m_one_side_info_.m_fast_size;
+  //       // rkey = rkey_list[index];
+  //       rkey = get_global_rkey();
+  //       // printf("addr:%lx, rkey:%u\n", addr, rkey);
+  //       return true;
+  //     }
+  //   }
+  // }
+  return false;
+}
 
 }  // namespace kv

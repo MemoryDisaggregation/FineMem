@@ -139,10 +139,10 @@ class LocalHeap: public MemHeap {
   ~LocalHeap() { destory(); }
 
   // << one-sided block fetch >>
-  bool update_mem_metadata();
-  bool update_rkey_metadata();
+  // bool update_mem_metadata();
+  // bool update_rkey_metadata();
   bool fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey);
-  bool fetch_rkey_list_one_sided(uint64_t addr, uint32_t* rkey_list);
+  // bool fetch_rkey_list_one_sided(uint64_t addr, uint32_t* rkey_list);
 
   // << RPC block fetch >>
   bool fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey);

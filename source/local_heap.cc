@@ -44,16 +44,16 @@ bool LocalHeap::start(const std::string addr, const std::string port){
     uint32_t init_rkey_ = 0;
     m_rdma_conn_ = new ConnectionManager();
     if (m_rdma_conn_ == nullptr) return -1;
-    if (m_rdma_conn_->init(addr, port, 1, 1)) return false;
+    if (m_rdma_conn_->init(addr, port, 20, 20)) return false;
     // init free queue manager, using REMOTE_BLOCKSIZE as init size
     set_global_rkey(m_rdma_conn_->get_global_rkey());
-    if(one_side_enabled_) {
-      m_one_side_info_ = m_rdma_conn_->get_one_side_info();
-      header_list = (block_header*)malloc(m_one_side_info_.m_block_num*sizeof(block_header));
-      rkey_list = (uint32_t*)malloc(m_one_side_info_.m_block_num*sizeof(uint32_t));
-      update_mem_metadata();
-      update_rkey_metadata();
-    }
+    // if(one_side_enabled_) {
+    //   m_one_side_info_ = m_rdma_conn_->get_one_side_info();
+    //   header_list = (block_header*)malloc(m_one_side_info_.m_block_num*sizeof(block_header));
+    //   rkey_list = (uint32_t*)malloc(m_one_side_info_.m_block_num*sizeof(uint32_t));
+    //   update_mem_metadata();
+    //   update_rkey_metadata();
+    // }
     if(heap_enabled_) {
       free_queue_manager = new FreeQueueManager(LOCAL_BLOCKSIZE);
       if(!fetch_mem_fast_remote(init_addr_, init_rkey_)){
@@ -113,44 +113,48 @@ void LocalHeap::run() {
   }
 }
 
-bool LocalHeap::update_rkey_metadata() {
-  uint64_t rkey_size = m_one_side_info_.m_block_num * sizeof(uint32_t);
-  m_rdma_conn_->remote_read(rkey_list, rkey_size, m_one_side_info_.m_rkey_addr_, get_global_rkey());
-  return true;
-}
-
-bool LocalHeap::update_mem_metadata() {
-  uint64_t metadata_size = m_one_side_info_.m_block_num * sizeof(block_header);
-  m_rdma_conn_->remote_read(header_list, metadata_size, m_one_side_info_.m_header_addr_, get_global_rkey());
-  return true;
-}
-
 bool LocalHeap::fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey) {
-  uint64_t block_num = m_one_side_info_.m_block_num;
-  uint64_t fast_size = m_one_side_info_.m_fast_size;
-  uint64_t base_size = m_one_side_info_.m_base_size;
-  for(int i = 0; i< block_num; i++){
-    uint64_t index = (i+last_alloc_)%block_num;
-    if(header_list[index].max_length == fast_size/base_size && (header_list[index].flag & (uint64_t)1) == 1){
-      block_header update_header = header_list[index];
-      update_header.flag &= ~((uint64_t)1);
-      uint64_t swap_value = *(uint64_t*)(&update_header); 
-      uint64_t cmp_value = *(uint64_t*)(&header_list[index]);
-      uint64_t result = m_rdma_conn_->remote_CAS(swap_value, cmp_value, 
-                                                  m_one_side_info_.m_header_addr_ + index * sizeof(block_header), 
-                                                  get_global_rkey());
-      if (result != cmp_value) {
-        update_mem_metadata();
-      } else {
-        last_alloc_ = index;
-        addr = m_one_side_info_.m_block_addr_ + index * m_one_side_info_.m_fast_size;
-        rkey = rkey_list[index];
-        return true;
-      }
-    }
-  }
-  return false;
+  return m_rdma_conn_->fetch_mem_one_sided(addr, rkey);
 }
+
+// bool LocalHeap::update_rkey_metadata() {
+//   uint64_t rkey_size = m_one_side_info_.m_block_num * sizeof(uint32_t);
+//   m_rdma_conn_->remote_read(rkey_list, rkey_size, m_one_side_info_.m_rkey_addr_, get_global_rkey());
+//   return true;
+// }
+
+// bool LocalHeap::update_mem_metadata() {
+//   uint64_t metadata_size = m_one_side_info_.m_block_num * sizeof(block_header);
+//   m_rdma_conn_->remote_read(header_list, metadata_size, m_one_side_info_.m_header_addr_, get_global_rkey());
+//   return true;
+// }
+
+// bool LocalHeap::fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey) {
+//   uint64_t block_num = m_one_side_info_.m_block_num;
+//   uint64_t fast_size = m_one_side_info_.m_fast_size;
+//   uint64_t base_size = m_one_side_info_.m_base_size;
+//   for(int i = 0; i< block_num; i++){
+//     uint64_t index = (i+last_alloc_)%block_num;
+//     if(header_list[index].max_length == fast_size/base_size && (header_list[index].flag & (uint64_t)1) == 1){
+//       block_header update_header = header_list[index];
+//       update_header.flag &= ~((uint64_t)1);
+//       uint64_t swap_value = *(uint64_t*)(&update_header); 
+//       uint64_t cmp_value = *(uint64_t*)(&header_list[index]);
+//       uint64_t result = m_rdma_conn_->remote_CAS(swap_value, cmp_value, 
+//                                                   m_one_side_info_.m_header_addr_ + index * sizeof(block_header), 
+//                                                   get_global_rkey());
+//       if (result != cmp_value) {
+//         update_mem_metadata();
+//       } else {
+//         last_alloc_ = index;
+//         addr = m_one_side_info_.m_block_addr_ + index * m_one_side_info_.m_fast_size;
+//         rkey = rkey_list[index];
+//         return true;
+//       }
+//     }
+//   }
+//   return false;
+// }
 
 void LocalHeap::fetch_cache(uint8_t nproc, uint64_t &addr, uint32_t &rkey) {
   cpu_cache_->fetch_cache(nproc, addr, rkey);

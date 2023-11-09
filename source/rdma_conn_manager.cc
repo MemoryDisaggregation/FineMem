@@ -109,4 +109,12 @@ int ConnectionManager::remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, ui
   return ret;
 }
 
+bool ConnectionManager::fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey) {
+  RDMAConnection *conn = m_one_sided_conn_queue_->dequeue();
+  assert(conn != nullptr);
+  uint64_t ret = conn->fetch_mem_one_sided(addr, rkey);
+  m_one_sided_conn_queue_->enqueue(conn);
+  return ret;
+}
+
 }  // namespace kv
