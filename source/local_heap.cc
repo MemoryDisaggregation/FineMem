@@ -30,7 +30,7 @@ void * run_heap(void* arg) {
   MemHeap *heap = (MemHeap*)arg;
   heap->run();
   return NULL;
-}
+} 
 
 
 /**

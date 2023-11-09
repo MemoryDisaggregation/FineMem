@@ -17,7 +17,7 @@
 #include <cstdlib>
 
 namespace mralloc {
-
+ 
     bool ServerBlockManagerv2::init(uint64_t meta_addr, uint64_t addr, uint64_t size, uint32_t rkey) {
         uint64_t align = fast_size_ * large_block_items;
         assert(meta_addr % align == 0 && addr % align == 0 && size % align == 0);
