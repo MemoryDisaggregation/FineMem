@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-11 16:42:26
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-10-23 15:16:24
+ * @LastEditTime: 2023-11-09 08:19:52
  * @FilePath: /rmalloc_newbase/include/free_block_manager.h
  * @Description: Buddy tree for memory management 
  * 
@@ -11,6 +11,8 @@
 #pragma once
 
 #include <bits/stdint-uintn.h>
+#include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <cstdio>
 #include <queue>
@@ -18,11 +20,24 @@
 
 namespace mralloc {
 
-struct block_header {
+const uint64_t large_block_items = 64;
+
+struct block_header_e {
     uint8_t max_length;
     uint8_t alloc_history;
     uint16_t flag;
     uint32_t bitmap;
+};
+
+typedef std::atomic<block_header_e> block_header;
+typedef std::atomic<uint64_t> bitmap64;
+
+struct large_block {
+    bitmap64 bitmap;
+    block_header header[large_block_items];
+    uint32_t rkey[large_block_items];
+    large_block* next;
+    uint64_t offset;
 };
 
 class FreeBlockManager{
@@ -34,6 +49,8 @@ struct remote_addr {
     FreeBlockManager(uint64_t fast_size): fast_size_(fast_size) {};
     ~FreeBlockManager() {};
     virtual bool init(uint64_t addr, uint64_t size, uint32_t rkey) {return true;};
+    virtual bool init(uint64_t meta_addr, uint64_t addr, uint64_t size, uint32_t rkey) {return true;};
+    virtual void init_size_align(uint64_t addr, uint64_t size, uint64_t &init_addr, uint64_t &init_size) {};
     virtual bool fetch(uint64_t size, uint64_t &addr, uint32_t &rkey) {return true;};
     virtual bool fetch(uint64_t start_addr, uint64_t size, uint64_t &addr, uint32_t &rkey) {return true;};
     virtual bool return_back(uint64_t addr, uint64_t size, uint32_t rkey) {return 0;};
@@ -42,6 +59,89 @@ struct remote_addr {
     uint64_t get_fast_size() {return fast_size_;};
 protected:
     uint64_t fast_size_;
+};
+
+class ServerBlockManagerv2: public FreeBlockManager{
+public:
+    ServerBlockManagerv2(uint64_t block_size, uint64_t base_size):FreeBlockManager(block_size), base_size(base_size) {
+        if(fast_size_/base_size > 32) {
+            printf("bitmap cannot store too much bsae page!\n");
+        }
+    };
+    ~ServerBlockManagerv2() {};
+    
+    inline uint64_t num_align_upper(uint64_t num, uint64_t align) {
+        return (num + align - 1) - ((num + align - 1) % align);
+    }
+
+    void init_size_align(uint64_t addr, uint64_t size, uint64_t &init_addr, uint64_t &init_size) override {
+        uint64_t align = fast_size_*large_block_items < 1024*1024*2 ? 1024*1024*2 : fast_size_*large_block_items;
+        init_size = num_align_upper(size, align);
+        uint64_t block_header_size = num_align_upper(init_size / align * sizeof(large_block), align);
+        init_size += block_header_size;
+        init_addr = addr - block_header_size;
+        assert(init_addr % align == 0);
+    };
+
+    bool init(uint64_t meta_addr, uint64_t addr, uint64_t size, uint32_t rkey) override;
+
+    inline bool set_block_rkey(uint64_t index, uint32_t rkey) {block_info[index / large_block_items].rkey[index % large_block_items] = rkey; return true;};
+
+    bool set_block_base_rkey(uint64_t index, uint64_t offset, uint32_t rkey) {
+        perror("unimplemented!\n");
+        return false;
+    };
+
+    inline uint64_t get_base_num() {return fast_size_/base_size;};
+
+    inline uint64_t get_block_num() {return block_num;};
+
+    inline uint64_t get_block_addr(uint64_t index) {return heap_start + index * fast_size_;};
+
+    inline uint64_t get_block_addr() {return heap_start;};
+
+    // inline block_header get_block_header(uint64_t index) {return header_list[index];};
+
+    inline large_block* get_metadata() {return block_info;};
+
+    inline uint32_t get_block_rkey(uint64_t index) {return block_info[index / large_block_items].rkey[index % large_block_items];};
+
+    inline uint64_t get_block_index(uint64_t addr) {return (addr-heap_start)/fast_size_;}
+
+    inline uint64_t get_base_size() {return base_size;};
+
+    bool fetch(uint64_t size, uint64_t &addr, uint32_t &rkey) override {return true;};
+
+    bool fetch(uint64_t start_addr, uint64_t size, uint64_t &addr, uint32_t &rkey) override;
+
+    bool return_back(uint64_t addr, uint64_t size, uint32_t rkey) override {return true;};
+
+    bool fetch_fast(uint64_t &addr, uint32_t &rkey) override ;
+
+    void print_state() override {};
+    
+private:
+
+    std::mutex m_mutex_;
+
+    uint64_t base_size;
+
+    uint32_t global_rkey;
+
+    large_block* block_info;
+
+    std::atomic<large_block*> free_list;
+
+    uint64_t heap_start;
+
+    uint64_t heap_size;
+
+    uint64_t block_num;
+
+    uint64_t last_alloc;
+
+    uint64_t user_start;
+    
 };
 
 class ServerBlockManager: public FreeBlockManager{
@@ -53,7 +153,7 @@ public:
     };
     ~ServerBlockManager() {};
     
-    bool init(uint64_t addr, uint64_t size, uint32_t rkey) override;
+    bool init(uint64_t addr, uint64_t size, uint32_t rkey) override ;
 
     inline bool set_block_rkey(uint64_t index, uint32_t rkey) {block_rkey_list[index] = rkey; return true;};
 
@@ -71,7 +171,7 @@ public:
 
     inline uint64_t get_block_addr() {return heap_start;};
 
-    inline block_header get_block_header(uint64_t index) {return header_list[index];};
+    // inline block_header get_block_header(uint64_t index) {return header_list[index];};
 
     inline block_header* get_metadata() {return header_list;};
 
@@ -111,7 +211,9 @@ private:
 
     uint64_t block_num;
 
-    uint64_t last_alloc;
+    std::atomic<uint64_t> last_alloc;
+
+    uint64_t user_start;
     
 };
 
@@ -125,7 +227,7 @@ public:
     };
     ~ClientBlockManager() {};
     
-    bool init(uint64_t addr, uint64_t size, uint32_t rkey) override;
+    bool init(uint64_t addr, uint64_t size, uint32_t rkey) override {};
 
     // bool init(uint64_t header_addr, uint64_t rkey_addr, uint64_t base_addr, uint64_t size, uint32_t rkey) {return true;};
 
@@ -145,7 +247,7 @@ public:
 
     inline uint64_t get_block_addr(uint64_t index) {return mm_header_addr + index * fast_size_;};
 
-    inline block_header get_block_header(uint64_t index) {return header_list[index];};
+    // inline block_header get_block_header(uint64_t index) {return header_list[index];};
 
     inline block_header* get_metadata() {return header_list;};
 

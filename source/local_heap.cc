@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 16:08:03
- * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-05 11:16:52
+ * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-11-07 10:16:01
  * @FilePath: /rmalloc_newbase/source/local_heap.cc
  * @Description: 
  * 
@@ -49,7 +49,7 @@ bool LocalHeap::start(const std::string addr, const std::string port){
     set_global_rkey(m_rdma_conn_->get_global_rkey());
     if(one_side_enabled_) {
       m_one_side_info_ = m_rdma_conn_->get_one_side_info();
-      header_list = (block_header*)malloc(m_one_side_info_.m_block_num*sizeof(block_header));
+      header_list = (block_header_e*)malloc(m_one_side_info_.m_block_num*sizeof(block_header));
       rkey_list = (uint32_t*)malloc(m_one_side_info_.m_block_num*sizeof(uint32_t));
       update_mem_metadata();
       update_rkey_metadata();
@@ -132,7 +132,7 @@ bool LocalHeap::fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey) {
   for(int i = 0; i< block_num; i++){
     uint64_t index = (i+last_alloc_)%block_num;
     if(header_list[index].max_length == fast_size/base_size && (header_list[index].flag & (uint64_t)1) == 1){
-      block_header update_header = header_list[index];
+      block_header_e update_header = header_list[index];
       update_header.flag &= ~((uint64_t)1);
       uint64_t swap_value = *(uint64_t*)(&update_header); 
       uint64_t cmp_value = *(uint64_t*)(&header_list[index]);
