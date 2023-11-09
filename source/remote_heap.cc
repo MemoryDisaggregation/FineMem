@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-03 09:58:41
+ * @LastEditTime: 2023-11-09 09:49:29
  * @FilePath: /rmalloc_newbase/source/remote_heap.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -29,22 +29,25 @@
 // #define REMOTE_MEM_SIZE 16777216
 // #define REMOTE_MEM_SIZE 67108864
 // #define REMOTE_MEM_SIZE 16384
-// #define REMOTE_MEM_SIZE 8192
+#define REMOTE_MEM_SIZE 8192
 // #define REMOTE_MEM_SIZE 32768
 // #define REMOTE_MEM_SIZE 262144
-#define REMOTE_MEM_SIZE 33554432
+// #define REMOTE_MEM_SIZE 33554432
 // #define REMOTE_MEM_SIZE 2097152
 // #define REMOTE_MEM_SIZE 4096
 
-#define INIT_MEM_SIZE ((uint64_t)16*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)60*1024*1024*1024)
 
-#define SERVER_BASE_ADDR (uint64_t)0x4000000
+// #define SERVER_BASE_ADDR (uint64_t)0xfe00000
+
 // #define SERVER_BASE_ADDR (uint64_t)0x1000000
 
 namespace mralloc {
 
 const uint64_t base_block_size = (uint64_t)1024*1024*2;
 
+const uint64_t SERVER_BASE_ADDR = (uint64_t)0x10000000;
+// const uint64_t SERVER_BASE_ADDR = (uint64_t)0x10000000;
 
 void RemoteHeap::print_alloc_info() {
   free_queue_manager->print_state();
@@ -129,9 +132,10 @@ bool RemoteHeap::start(const std::string addr, const std::string port) {
   // optional init 
   if(fusee_enable){
     uint64_t fusee_addr; uint32_t fusee_lkey, fusee_rkey;
-    fetch_mem_local(server_base_addr, fusee_addr, META_AREA_LEN + HASH_AREA_LEN, fusee_lkey, fusee_rkey);
+    // fetch_mem_local(fusee_addr, round_up(META_AREA_LEN + HASH_AREA_LEN + GC_AREA_LEN, REMOTE_MEM_SIZE), fusee_lkey, fusee_rkey);
+    fetch_mem_local(server_base_addr, fusee_addr, round_up(META_AREA_LEN + HASH_AREA_LEN + GC_AREA_LEN, REMOTE_MEM_SIZE), fusee_lkey, fusee_rkey);
     // printf("fusee rkey:%u global rkey:%u", fusee_rkey, global_mr_->rkey);
-    rpc_fusee_ = new RPC_Fusee(fusee_addr, fusee_addr + META_AREA_LEN, fusee_rkey);
+    rpc_fusee_ = new RPC_Fusee(fusee_addr, fusee_addr + META_AREA_LEN, get_global_rkey());
   }
 
   // wait for all threads exit
@@ -152,16 +156,19 @@ bool RemoteHeap::start(const std::string addr, const std::string port) {
  * @return {bool} true for success
  */
 bool RemoteHeap::init_memory_heap(uint64_t size) {
-  void* init_addr = mmap((void*)(SERVER_BASE_ADDR) , size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
+  free_queue_manager = new ServerBlockManagerv2(REMOTE_MEM_SIZE, base_block_size);
+  uint64_t init_addr_, init_size_;
+  free_queue_manager->init_size_align(SERVER_BASE_ADDR, size, init_addr_, init_size_);
+  void* init_addr = mmap((void*)init_addr_ , init_size_, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
   printf("init_addr: %p\n", init_addr);
-  if (init_addr == MAP_FAILED || (uint64_t)init_addr != SERVER_BASE_ADDR) {
+  if (init_addr == MAP_FAILED || (uint64_t)init_addr != init_addr_) {
     perror("mmap fail");
     return false;
   }
-
+  assert(size == init_size_ - SERVER_BASE_ADDR + init_addr_); 
   heap_total_size_ = size; heap_start_addr_ = SERVER_BASE_ADDR;
   
-  global_mr_ = rdma_register_memory(init_addr, size);
+  global_mr_ = rdma_register_memory(init_addr, init_size_);
 
   set_global_rkey(global_mr_->rkey);
 
@@ -169,10 +176,8 @@ bool RemoteHeap::init_memory_heap(uint64_t size) {
 
   mw_binded = false;
 
-  free_queue_manager = new ServerBlockManager(REMOTE_MEM_SIZE, base_block_size);
-  // if(!free_queue_manager->init(0, 0, 0)) {
-  if(!free_queue_manager->init((uint64_t)init_addr, size, global_mr_->rkey)) {
-    perror("init free queue manager fail");
+  if(!free_queue_manager->init((uint64_t)init_addr, SERVER_BASE_ADDR, size, global_mr_->rkey)) {
+    perror("init free queue manager fail"); 
     return false;
   }
 
@@ -393,9 +398,10 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
   rep_pdata.size = sizeof(CmdMsgRespBlock);
 
   if(one_sided_enabled_) {
-    ServerBlockManager* server_manager_handler = (ServerBlockManager*)free_queue_manager;
+    ServerBlockManagerv2* server_manager_handler = (ServerBlockManagerv2*)free_queue_manager;
     rep_pdata.header_addr = (uint64_t)server_manager_handler->get_metadata();
-    rep_pdata.rkey_addr = (uint64_t)server_manager_handler->get_rkey_list_addr();
+    // rep_pdata.rkey_addr = (uint64_t)server_manager_handler->get_rkey_list_addr();
+    rep_pdata.rkey_addr = (uint64_t)0;
     rep_pdata.block_num = (uint64_t)server_manager_handler->get_block_num();
     rep_pdata.base_size = (uint64_t)server_manager_handler->get_base_size();
     rep_pdata.fast_size = (uint64_t)server_manager_handler->get_fast_size();
@@ -404,9 +410,9 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
 
   rep_pdata.global_rkey = get_global_rkey();
 
-  if (connect_type == CONN_FUSEE) {
-    rep_pdata.buf_rkey = global_mr_->rkey;
-  }
+  // if (connect_type == CONN_FUSEE) {
+  //   rep_pdata.buf_rkey = global_mr_->rkey;
+  // }
 
   struct rdma_conn_param conn_param;
   conn_param.responder_resources = 16;
@@ -431,7 +437,7 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
   }
   
   if(!mw_binded) {
-    init_mw(cm_id->qp, cq);
+    // init_mw(cm_id->qp, cq);
     mw_binded = true;
   }
 
@@ -493,7 +499,7 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
 
 bool RemoteHeap::init_mw(ibv_qp *qp, ibv_cq *cq) {
 
-  ServerBlockManager* queue_manager_ = (ServerBlockManager*)free_queue_manager;
+  ServerBlockManagerv2* queue_manager_ = (ServerBlockManagerv2*)free_queue_manager;
 
   uint64_t block_num_ = queue_manager_->get_block_num();
 
@@ -819,7 +825,7 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
                    reg_req->resp_rkey);
     } else if (request->type == MSG_FETCH_FAST) {
       /* handle memory fetch requests */
-      printf("receive a memory fetch message\n");
+      // printf("receive a memory fetch message\n");
       FetchFastResponse *resp_msg = (FetchFastResponse *)cmd_resp;
       uint64_t addr;
       uint32_t rkey;
@@ -827,6 +833,9 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
       //   mw_binded = true;
       //   init_mw(work_info->cm_id->qp, work_info->cq);
       // }
+
+      // Warning: when using rkey, wait of mw bind should be used
+
       while(!mw_binded) ;
       // printf("mw init finished\n");
       if (fetch_mem_fast_remote(addr, rkey)) {
@@ -842,13 +851,13 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
           // printf("bind failed!\n");
         // }
         // resp_msg->rkey = m_mw_handler[(addr-heap_start_addr_)/base_block_size]->rkey;
-        resp_msg->rkey = rkey;
+        resp_msg->rkey = get_global_rkey();
         resp_msg->size = free_queue_manager->get_fast_size();
       } else {
         resp_msg->status = RES_FAIL;
       }
-      printf("fetch memory, addr: %lx, rkey: %d, start addr: %lx, global rkey: %u\n", resp_msg->addr,
-             resp_msg->rkey, heap_start_addr_, global_mr_->rkey);
+      // printf("fetch memory, addr: %lx, rkey: %d, start addr: %lx, global rkey: %u\n", resp_msg->addr,
+            //  resp_msg->rkey, heap_start_addr_, global_mr_->rkey);
       /* write response */
       remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
                    sizeof(CmdMsgRespBlock), request->resp_addr,
@@ -993,7 +1002,8 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
     }
     else if (request->type == RPC_FUSEE_SUBTABLE){
       uint64_t addr = rpc_fusee_->mm_alloc_subtable();
-      uint32_t rkey = rpc_fusee_->get_rkey();
+      // uint32_t rkey = rpc_fusee_->get_rkey();
+      uint32_t rkey = get_global_rkey();
       FuseeSubtableResponse* resp_msg = (FuseeSubtableResponse*)cmd_resp;
       if(addr != 0){
         resp_msg->addr = addr;

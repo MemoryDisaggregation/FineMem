@@ -1,8 +1,8 @@
 /*
  * @Author: blahaj wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 16:09:32
- * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-05 11:14:07
+ * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-11-07 10:15:51
  * @FilePath: /rmalloc_newbase/include/memory_heap.h
  * @Description: memory heap for rmalloc
  */
@@ -173,7 +173,7 @@ class LocalHeap: public MemHeap {
 
   // << one-side metadata >>
   one_side_info m_one_side_info_;
-  block_header* header_list;
+  block_header_e* header_list;
   uint32_t* rkey_list;
   uint64_t last_alloc_;
   

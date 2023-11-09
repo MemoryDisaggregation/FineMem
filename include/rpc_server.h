@@ -39,6 +39,10 @@ const bool fusee_enable = true;
 #define CLIENT_META_LEN       (1 * 1024 * 1024)
 #define CLIENT_GC_LEN         (1 * 1024 * 1024)
 
+static inline uint64_t round_up(uint64_t addr, uint32_t align) {
+    return ((addr) + align - 1) - ((addr + align - 1) % align);
+}
+
 typedef struct __attribute__((__packed__)) TagRaceHashSlot {
     uint8_t fp;
     uint8_t kv_len;
@@ -145,6 +149,7 @@ public:
         uint64_t subtable_st_addr = hash_addr_ + roundup_256(ROOT_RES_LEN);
         init_root((void *)(root_addr));
         init_subtable((void *)(subtable_st_addr));
+        printf("init success at %lx, %lx\n", root_addr, subtable_st_addr);
         return 0;
     }
 
