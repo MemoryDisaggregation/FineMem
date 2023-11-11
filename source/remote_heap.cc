@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
- * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-09 09:49:29
+ * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-11-10 21:45:52
  * @FilePath: /rmalloc_newbase/source/remote_heap.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -29,10 +29,10 @@
 // #define REMOTE_MEM_SIZE 16777216
 // #define REMOTE_MEM_SIZE 67108864
 // #define REMOTE_MEM_SIZE 16384
-#define REMOTE_MEM_SIZE 8192
+// #define REMOTE_MEM_SIZE 8192
 // #define REMOTE_MEM_SIZE 32768
 // #define REMOTE_MEM_SIZE 262144
-// #define REMOTE_MEM_SIZE 33554432
+#define REMOTE_MEM_SIZE 33554432
 // #define REMOTE_MEM_SIZE 2097152
 // #define REMOTE_MEM_SIZE 4096
 
@@ -44,7 +44,7 @@
 
 namespace mralloc {
 
-const uint64_t base_block_size = (uint64_t)1024*1024*2;
+const uint64_t base_block_size = (uint64_t)1024*2*1024;
 
 const uint64_t SERVER_BASE_ADDR = (uint64_t)0x10000000;
 // const uint64_t SERVER_BASE_ADDR = (uint64_t)0x10000000;

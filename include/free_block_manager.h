@@ -84,11 +84,12 @@ public:
 
     void init_size_align(uint64_t addr, uint64_t size, uint64_t &init_addr, uint64_t &init_size) override {
         uint64_t align = fast_size_*large_block_items < 1024*1024*2 ? 1024*1024*2 : fast_size_*large_block_items;
+        uint64_t base_align = fast_size_ < 1024*1024*2 ? 1024*1024*2 : fast_size_;
         init_size = num_align_upper(size, align);
-        uint64_t block_header_size = num_align_upper(init_size / align * sizeof(large_block), align);
+        uint64_t block_header_size = num_align_upper(init_size / align * sizeof(large_block),base_align);
         init_size += block_header_size;
         init_addr = addr - block_header_size;
-        assert(init_addr % align == 0);
+        assert(init_addr % base_align == 0);
     };
 
     bool init(uint64_t meta_addr, uint64_t addr, uint64_t size, uint32_t rkey) override;

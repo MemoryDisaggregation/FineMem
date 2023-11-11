@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-14 09:42:48
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-09 10:38:15
+ * @LastEditTime: 2023-11-10 08:18:21
  * @FilePath: /rmalloc_newbase/source/free_block_manager.cc
  * @Description: 
  * 
@@ -19,8 +19,9 @@
 namespace mralloc {
  
     bool ServerBlockManagerv2::init(uint64_t meta_addr, uint64_t addr, uint64_t size, uint32_t rkey) {
-        uint64_t align = fast_size_ * large_block_items;
-        assert(meta_addr % align == 0 && addr % align == 0 && size % align == 0);
+        uint64_t align = fast_size_*large_block_items < 1024*1024*2 ? 1024*1024*2 : fast_size_*large_block_items;
+        uint64_t base_align = fast_size_ < 1024*1024*2 ? 1024*1024*2 : fast_size_;
+        assert(meta_addr % base_align == 0 && addr % base_align == 0 && size % align == 0);
         block_num = size/align;
         block_info = (large_block*)meta_addr;
         heap_start = addr;
@@ -32,7 +33,7 @@ namespace mralloc {
         header_.flag &= (uint32_t)0;
         header_.bitmap &= (uint32_t)0;
         free_list.store(nullptr);
-        for(int i = 0; i < block_num; i++){
+        for(int i = block_num-1; i >= 0; i--){
             uint64_t bitmap_init = (uint64_t)0;
             block_info[i].bitmap.store(bitmap_init);
             for(int j = 0; j < large_block_items; j++){
