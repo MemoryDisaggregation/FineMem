@@ -44,6 +44,7 @@ int ConnectionManager::init(const std::string ip, const std::string port,
       // TODO: release resources
       return -1;
     }
+    conn->malloc_hint((uint64_t)0x28000000, i);
     m_one_sided_conn_queue_->enqueue(conn);
   }
   return 0;
