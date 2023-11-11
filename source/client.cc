@@ -9,11 +9,69 @@
  * Copyright (c) 2023 by wxy1999@mail.ustc.edu.cn, All Rights Reserved. 
  */
 
+#include <bits/floatn.h>
+#include <bits/types/FILE.h>
+#include <pthread.h>
+#include <atomic>
 #include <cstdio>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <iostream>
 #include "kv_engine.h"
 #include "memory_heap.h"
+#include <sys/time.h>
+
+const int thread_num = 36;
+
+pthread_barrier_t start_barrier;
+pthread_barrier_t end_barrier;
+std::ofstream result;
+pthread_mutex_t file_lock;
+
+std::atomic<int> record_global[10];
+std::atomic<uint64_t> avg;
+
+void* fetch_mem(void* arg) {
+    uint64_t avg_time_ = 0;
+    uint64_t count_ = 0;
+    uint64_t cdf_counter[10];
+    uint64_t max_time_ = 0;
+    struct timeval start, end;
+    mralloc::LocalHeap* heap = (mralloc::LocalHeap*)arg;
+    int record[10] = {0};
+    uint64_t addr; uint32_t rkey;
+    
+    for(int j = 0; j < 20; j ++) {
+        pthread_barrier_wait(&start_barrier);
+        gettimeofday(&start, NULL);
+        for(int i = 0; i < 1024; i ++){
+            // heap->fetch_mem_fast_remote(addr, rkey);
+            heap->fetch_mem_one_sided(addr, rkey);
+        }
+        gettimeofday(&end, NULL);
+        pthread_barrier_wait(&end_barrier);
+        uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
+        // uint64_t log10 = 0;
+        // while(time/10 > 0){
+        //     time = time / 10;
+        //     log10 += 1;           
+        // }
+        // record[log10] += 1;
+        // std::stringstream buffer;
+        // buffer << time << std::endl;
+        if(time > max_time_) max_time_ = time;
+        time = time / 1024.0;
+        avg_time_ = (avg_time_*count_ + time)/(count_ + 1);
+        count_ += 1;
+    }
+    printf("avg time:%lu, max_time:%lu\n", avg_time_, max_time_);
+    for(int i=0;i<10;i++){
+        record_global[i].fetch_add(record[i]);
+    }
+    avg.fetch_add(avg_time_);
+    return NULL;
+}
 
 int main(int argc, char* argv[]){
 
@@ -34,19 +92,37 @@ int main(int argc, char* argv[]){
     uint32_t rkey=0;
     char buffer[2][64*1024] = {"aaa", "bbb"};
     char read_buffer[4];
-    while(iter--){
-        heap->fetch_mem_one_sided(addr, rkey);
-        std::cout << "write addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
-        for(int i = 0; i < 2; i++)
-            heap->get_conn()->remote_write(buffer[iter%2], 64, addr+i*64, rkey);
-        std::cout << "read addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
-        for(int i = 0; i < 2; i++)
-            heap->get_conn()->remote_read(read_buffer, 4, addr, rkey);
-        printf("alloc: %lx : %u, content: %s\n", addr, rkey, read_buffer);
-      // heap->mr_bind_remote(2*1024*1024, addr, rkey, 114514);
-      // std::cout << "addr mw bind success " << std::endl;
+    // while(iter--){
+    //     heap->fetch_mem_one_sided(addr, rkey);
+    //     std::cout << "write addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
+    //     for(int i = 0; i < 2; i++)
+    //         heap->get_conn()->remote_write(buffer[iter%2], 64, addr+i*64, rkey);
+    //     std::cout << "read addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
+    //     for(int i = 0; i < 2; i++)
+    //         heap->get_conn()->remote_read(read_buffer, 4, addr, rkey);
+    //     printf("alloc: %lx : %u, content: %s\n", addr, rkey, read_buffer);
+    //   // heap->mr_bind_remote(2*1024*1024, addr, rkey, 114514);
+    //   // std::cout << "addr mw bind success " << std::endl;
+    // }
+    result.open("result.csv");
+    for(int i=0;i<10;i++)
+        record_global[i].store(0);
+    avg.store(0);
+    pthread_mutex_init(&file_lock, NULL);
+    pthread_barrier_init(&start_barrier, NULL, thread_num);
+    pthread_barrier_init(&end_barrier, NULL, thread_num);
+    pthread_t running_thread[thread_num];
+    for(int i = 0; i < thread_num; i++) {
+        pthread_create(&running_thread[i], NULL, fetch_mem, heap);
     }
-    getchar();
+    for(int i = 0; i < thread_num; i++) {
+        pthread_join(running_thread[i], NULL);
+    }
+    for(int i=0;i<10;i++)
+        result << record_global[i].load() << std::endl;
+    result.close();
+    printf("total avg: %luus\n", avg.load()/thread_num);
+    // getchar();
     heap->stop();
     delete heap;
     return 0;

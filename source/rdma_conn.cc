@@ -974,7 +974,7 @@ bool RDMAConnection::malloc_hint(uint64_t start, uint64_t idx) {
   last_alloc_ = idx%40 * (m_one_side_info_.m_block_num - user_start_ - 1)/40;
   if(user_start_ > m_one_side_info_.m_block_num || last_alloc_ > m_one_side_info_.m_block_num)
     return false;
-  printf("usert_start_=%lu, last_alloc_=%lu\n", user_start_, last_alloc_);
+  // printf("usert_start_=%lu, last_alloc_=%lu\n", user_start_, last_alloc_);
   update_mem_metadata((last_alloc_)%(m_one_side_info_.m_block_num-user_start_) + user_start_);
   return true;
 }
