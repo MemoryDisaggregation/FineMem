@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
- * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-10 21:45:52
+ * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-11-14 15:13:36
  * @FilePath: /rmalloc_newbase/source/remote_heap.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -36,7 +36,7 @@
 // #define REMOTE_MEM_SIZE 2097152
 // #define REMOTE_MEM_SIZE 4096
 
-#define INIT_MEM_SIZE ((uint64_t)60*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)24*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 
@@ -210,9 +210,9 @@ bool RemoteHeap::fetch_mem_local(uint64_t &addr, uint64_t size, uint32_t &lkey, 
  * @param {uint32_t} &lkey: the lkey of memory
  * @return {bool} true for success
  */
-bool RemoteHeap::fetch_mem_fast_local(uint64_t &addr, uint32_t &lkey, uint32_t &rkey) {
+bool RemoteHeap::fetch_mem_block_local(uint64_t &addr, uint32_t &lkey, uint32_t &rkey) {
   uint64_t mem_addr;
-  if(!free_queue_manager->fetch_fast(addr, rkey)) {
+  if(!free_queue_manager->fetch_block(addr, rkey)) {
     perror("get mem fail");
     return false;
   }
@@ -228,9 +228,9 @@ bool RemoteHeap::fetch_mem_fast_local(uint64_t &addr, uint32_t &lkey, uint32_t &
  * @param {uint32_t} &rkey: the rkey of memory
  * @return {bool} true for success
  */
-bool RemoteHeap::fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey) {
+bool RemoteHeap::fetch_mem_block_remote(uint64_t &addr, uint32_t &rkey) {
   uint64_t mem_addr;
-  if(!free_queue_manager->fetch_fast(addr, rkey)) {
+  if(!free_queue_manager->fetch_block(addr, rkey)) {
     perror("get mem fail");
     return false;
   }
@@ -402,9 +402,9 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
     rep_pdata.header_addr = (uint64_t)server_manager_handler->get_metadata();
     // rep_pdata.rkey_addr = (uint64_t)server_manager_handler->get_rkey_list_addr();
     rep_pdata.rkey_addr = (uint64_t)0;
-    rep_pdata.block_num = (uint64_t)server_manager_handler->get_block_num();
+    rep_pdata.large_block_num = (uint64_t)server_manager_handler->get_block_num();
     rep_pdata.base_size = (uint64_t)server_manager_handler->get_base_size();
-    rep_pdata.fast_size = (uint64_t)server_manager_handler->get_fast_size();
+    rep_pdata.block_size = (uint64_t)server_manager_handler->get_block_size();
     rep_pdata.block_addr = (uint64_t)server_manager_handler->get_block_addr();
   }
 
@@ -437,7 +437,7 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
   }
   
   if(!mw_binded) {
-    // init_mw(cm_id->qp, cq);
+    init_mw(cm_id->qp, cq);
     mw_binded = true;
   }
 
@@ -466,7 +466,7 @@ int RemoteHeap::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
                     // Break out as operation completed successfully
                     // printf("Break out as operation completed successfully\n");
                     printf("rkey_new: %u\n", m_mw_handler[i]->rkey);
-                    if(!free_queue_manager->return_back(heap_start_addr_ + base_block_size*i, base_block_size, m_mw_handler[i]->rkey)) {
+                    if(!free_queue_manager->fill_block(heap_start_addr_ + base_block_size*i, base_block_size, m_mw_handler[i]->rkey)) {
                       perror("init free queue manager fail");
                       return false;
                     }
@@ -501,13 +501,10 @@ bool RemoteHeap::init_mw(ibv_qp *qp, ibv_cq *cq) {
 
   ServerBlockManagerv2* queue_manager_ = (ServerBlockManagerv2*)free_queue_manager;
 
-  uint64_t block_num_ = queue_manager_->get_block_num();
-
-  uint64_t base_num = queue_manager_->get_base_num();
+  uint64_t block_num_ = queue_manager_->get_block_num() * large_block_items ;
 
   block_mw = (ibv_mw**)malloc(block_num_ * sizeof(uint64_t));
 
-  base_mw = (ibv_mw**)malloc(block_num_ * base_num * sizeof(uint64_t));
 
   for(int i = 0; i < block_num_; i++){
     uint64_t block_addr_ = queue_manager_->get_block_addr(i);
@@ -519,14 +516,14 @@ bool RemoteHeap::init_mw(ibv_qp *qp, ibv_cq *cq) {
     bind_mw(block_mw[i], block_addr_, REMOTE_MEM_SIZE, qp, cq);
     printf("second time: %u\n", block_mw[i]->rkey);
     queue_manager_->set_block_rkey(i, block_mw[i]->rkey);
-    for (int j = 0; j < base_num; j ++){
-      uint64_t index = i * base_num + j;
-      base_mw[index] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
-      // printf("start bind base mw: %lx\n", block_addr_ + j * base_block_size);
-      bind_mw(base_mw[index], block_addr_ + j * base_block_size, base_block_size, qp, cq);
-      bind_mw(base_mw[index], block_addr_ + j * base_block_size, base_block_size, qp, cq);
-      queue_manager_->set_block_base_rkey(i, j, base_mw[index]->rkey);
-    }
+    // for (int j = 0; j < base_num; j ++){
+    //   uint64_t index = i * base_num + j;
+    //   base_mw[index] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
+    //   // printf("start bind base mw: %lx\n", block_addr_ + j * base_block_size);
+    //   bind_mw(base_mw[index], block_addr_ + j * base_block_size, base_block_size, qp, cq);
+    //   bind_mw(base_mw[index], block_addr_ + j * base_block_size, base_block_size, qp, cq);
+    //   queue_manager_->set_block_base_rkey(i, j, base_mw[index]->rkey);
+    // }
   }
   // sleep(10);
   printf("bind finished\n");
@@ -826,7 +823,7 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
     } else if (request->type == MSG_FETCH_FAST) {
       /* handle memory fetch requests */
       // printf("receive a memory fetch message\n");
-      FetchFastResponse *resp_msg = (FetchFastResponse *)cmd_resp;
+      FetchBlockResponse *resp_msg = (FetchBlockResponse *)cmd_resp;
       uint64_t addr;
       uint32_t rkey;
       // if(!mw_binded) {
@@ -838,7 +835,7 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
 
       while(!mw_binded) ;
       // printf("mw init finished\n");
-      if (fetch_mem_fast_remote(addr, rkey)) {
+      if (fetch_mem_block_remote(addr, rkey)) {
         resp_msg->status = RES_OK;
         resp_msg->addr = addr;
         // if(!mw_binded) {
@@ -846,13 +843,14 @@ void RemoteHeap::worker(WorkerInfo *work_info, uint32_t num) {
         //   init_mw(work_info->cm_id->qp, work_info->cq);
         // }
         // if(m_mw_handler[0] == nullptr)
-        // if(!bind_mw(NULL, addr, free_queue_manager->get_fast_size(), work_info->cm_id->qp, work_info->cq)){
-        // if(m_mw_handler[(addr-heap_start_addr_)/base_block_size] == NULL && !bind_mw(addr, free_queue_manager->get_fast_size(), work_info->cm_id->qp, work_info->cq)){
+        // if(!bind_mw(NULL, addr, free_queue_manager->get_block_size(), work_info->cm_id->qp, work_info->cq)){
+        // if(m_mw_handler[(addr-heap_start_addr_)/base_block_size] == NULL && !bind_mw(addr, free_queue_manager->get_block_size(), work_info->cm_id->qp, work_info->cq)){
           // printf("bind failed!\n");
         // }
         // resp_msg->rkey = m_mw_handler[(addr-heap_start_addr_)/base_block_size]->rkey;
-        resp_msg->rkey = get_global_rkey();
-        resp_msg->size = free_queue_manager->get_fast_size();
+        resp_msg->rkey = rkey;
+        // resp_msg->rkey = get_global_rkey();
+        resp_msg->size = free_queue_manager->get_block_size();
       } else {
         resp_msg->status = RES_FAIL;
       }

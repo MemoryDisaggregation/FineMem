@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-14 09:21:21
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-08 14:33:59
+ * @LastEditTime: 2023-11-14 15:12:11
  * @FilePath: /rmalloc_newbase/source/server.cc
  * @Description: 
  * 
@@ -32,7 +32,7 @@ int main(int argc, char *argv[]) {
   // uint64_t addr;
   // uint32_t lkey;
   // while(iter--){
-  //   heap->fetch_mem_fast_remote(addr, lkey);
+  //   heap->fetch_mem_block_remote(addr, lkey);
   // }
   // std::cout << "addr: " << std::hex << addr << " rkey: " << lkey << std::endl;
   // while (getchar()) {

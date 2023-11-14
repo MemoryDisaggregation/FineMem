@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-10-23 15:05:13
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-10-23 15:38:13
+ * @LastEditTime: 2023-11-14 17:41:19
  * @FilePath: /rmalloc_newbase/include/rdma_conn_manager.h
  * @Description: 
  * 
@@ -67,11 +67,11 @@ class ConnectionManager {
                     uint32_t rkey);
   int remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t &newkey);
   int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size);
-  int remote_fetch_fast_block(uint64_t &addr, uint32_t &rkey);
+  int remote_fetch_block(uint64_t &addr, uint32_t &rkey);
   uint32_t get_global_rkey() {return global_rkey_;};
   
   // << one side alloc API >>
-  bool fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey);
+  bool remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey);
 
  private:
   

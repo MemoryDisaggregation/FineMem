@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:26
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-10 10:17:45
+ * @LastEditTime: 2023-11-14 15:14:32
  * @FilePath: /rmalloc_newbase/include/msg.h
  * @Description: 
  * 
@@ -48,9 +48,9 @@ struct PData {
   uint64_t header_addr;
   uint64_t rkey_addr;
   uint64_t block_addr;
-  uint64_t block_num;
+  uint64_t large_block_num;
   uint64_t base_size;
-  uint64_t fast_size;
+  uint64_t block_size;
   uint32_t global_rkey;
 };
 
@@ -79,7 +79,7 @@ class ResponseMsg {
 };
 CHECK_RDMA_MSG_SIZE(ResponseMsg);
 
-class FetchFastResponse : public ResponseMsg {
+class FetchBlockResponse : public ResponseMsg {
  public:
   uint64_t addr;
   uint32_t rkey;

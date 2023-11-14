@@ -484,9 +484,9 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
   m_one_side_info_ = {server_pdata.header_addr, 
                       server_pdata.rkey_addr,
                       server_pdata.block_addr, 
-                      server_pdata.block_num, 
+                      server_pdata.large_block_num, 
                       server_pdata.base_size, 
-                      server_pdata.fast_size};
+                      server_pdata.block_size};
   global_rkey_ = server_pdata.global_rkey;
   conn_id_ = server_pdata.id;
   assert(server_pdata.size == sizeof(CmdMsgBlock));
@@ -783,7 +783,7 @@ int RDMAConnection::register_remote_memory(uint64_t &addr, uint32_t &rkey,
   return 0;
 }
 
-int RDMAConnection::remote_fetch_fast_block(uint64_t &addr, uint32_t &rkey){
+int RDMAConnection::remote_fetch_block(uint64_t &addr, uint32_t &rkey){
   memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
   memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));
   m_cmd_resp_->notify = NOTIFY_IDLE;
@@ -811,9 +811,9 @@ int RDMAConnection::remote_fetch_fast_block(uint64_t &addr, uint32_t &rkey){
       return -1;
     }
   }
-  FetchFastResponse *resp_msg = (FetchFastResponse *)m_cmd_resp_;
+  FetchBlockResponse *resp_msg = (FetchBlockResponse *)m_cmd_resp_;
   if (resp_msg->status != RES_OK) {
-    printf("fetch fast block fail\n");
+    printf("fetch block block fail\n");
     return -1;
   }
   addr = resp_msg->addr;
@@ -896,7 +896,7 @@ int RDMAConnection::remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t 
   }
   FetchResponse *resp_msg = (FetchResponse *)m_cmd_resp_;
   if (resp_msg->status != RES_OK || size != resp_msg->size) {
-    printf("fetch fast block fail\n");
+    printf("fetch block block fail\n");
     return -1;
   }
   addr = resp_msg->addr;
@@ -936,7 +936,7 @@ int RDMAConnection::remote_fusee_alloc(uint64_t &addr, uint32_t &rkey){
   }
   FuseeSubtableResponse *resp_msg = (FuseeSubtableResponse *)m_cmd_resp_;
   if (resp_msg->status != RES_OK) {
-    printf("fetch fast block fail\n");
+    printf("fetch block block fail\n");
     return -1;
   }
   addr = resp_msg->addr;
@@ -970,7 +970,7 @@ bool RDMAConnection::update_mem_bitmap(uint64_t index) {
 
 
 bool RDMAConnection::malloc_hint(uint64_t start, uint64_t idx) {
-  user_start_ = (start - m_one_side_info_.m_block_addr_)/m_one_side_info_.m_fast_size/large_block_items;
+  user_start_ = (start - m_one_side_info_.m_block_addr_)/m_one_side_info_.m_block_size/large_block_items;
   last_alloc_ = idx%40 * (m_one_side_info_.m_block_num - user_start_ - 1)/40;
   if(user_start_ > m_one_side_info_.m_block_num || last_alloc_ > m_one_side_info_.m_block_num)
     return false;
@@ -979,13 +979,13 @@ bool RDMAConnection::malloc_hint(uint64_t start, uint64_t idx) {
   return true;
 }
 
-bool RDMAConnection::fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey) {
-  uint64_t block_num = m_one_side_info_.m_block_num;
-  uint64_t fast_size = m_one_side_info_.m_fast_size;
+bool RDMAConnection::remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey) {
+  uint64_t large_block_num = m_one_side_info_.m_block_num;
+  uint64_t block_size = m_one_side_info_.m_block_size;
   uint64_t base_size = m_one_side_info_.m_base_size;
   int old_item = 0;
   uint64_t free_index;
-  for(int i = 0; i < block_num-user_start_; i++) {
+  for(int i = 0; i < large_block_num-user_start_; i++) {
     while(block_.bitmap != ~(uint64_t)0) {
         // find valid bit, try to allocate 
         uint64_t result;
@@ -1018,7 +1018,7 @@ bool RDMAConnection::fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey) {
         //   old_item++;
         //   update_mem_metadata(block_.offset);
         // } else {
-          addr = m_one_side_info_.m_block_addr_ + (block_.offset * large_block_items + free_index) * m_one_side_info_.m_fast_size;
+          addr = m_one_side_info_.m_block_addr_ + (block_.offset * large_block_items + free_index) * m_one_side_info_.m_block_size;
           // rkey = rkey_list[index];
           rkey = get_global_rkey();
           // printf("addr:%lx, rkey:%u\n", addr, rkey);
@@ -1026,18 +1026,18 @@ bool RDMAConnection::fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey) {
         // }
     }
     full_bitmap[block_.offset] = true;
-    int offset = (block_.offset - user_start_ + 1)%(block_num-user_start_) + user_start_;
+    int offset = (block_.offset - user_start_ + 1)%(large_block_num-user_start_) + user_start_;
     while(full_bitmap[offset]){
-      offset = (offset - user_start_ + 1)%(block_num-user_start_) + user_start_;
+      offset = (offset - user_start_ + 1)%(large_block_num-user_start_) + user_start_;
     }
     block_.offset = offset;
     update_mem_bitmap(offset);
     // printf("costly operations\n");
     // update_mem_metadata(offset);
   }
-  // for(int i = 0; i< block_num-user_start_; i++){
-  //   uint64_t index = (i+last_alloc_)%(block_num-user_start_) + user_start_;
-  //   if(header_list[index].max_length == fast_size/base_size && (header_list[index].flag & (uint64_t)1) == 1){
+  // for(int i = 0; i< large_block_num-user_start_; i++){
+  //   uint64_t index = (i+last_alloc_)%(large_block_num-user_start_) + user_start_;
+  //   if(header_list[index].max_length == block_size/base_size && (header_list[index].flag & (uint64_t)1) == 1){
   //     block_header_e update_header = header_list[index];
   //     update_header.flag &= ~((uint64_t)1);
   //     uint64_t swap_value = *(uint64_t*)(&update_header); 
@@ -1054,7 +1054,7 @@ bool RDMAConnection::fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey) {
   //       }
   //     } else {
   //       last_alloc_ = index + 1;
-  //       addr = m_one_side_info_.m_block_addr_ + index * m_one_side_info_.m_fast_size;
+  //       addr = m_one_side_info_.m_block_addr_ + index * m_one_side_info_.m_block_size;
   //       // rkey = rkey_list[index];
   //       rkey = get_global_rkey();
   //       // printf("addr:%lx, rkey:%u\n", addr, rkey);

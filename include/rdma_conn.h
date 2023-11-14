@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:26
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-10-23 15:38:05
+ * @LastEditTime: 2023-11-14 15:10:44
  * @FilePath: /rmalloc_newbase/include/rdma_conn.h
  * @Description: RDMA Connection functions, with RDMA read/write and fetch block, used by both LocalHeap and RemoteHeap
  * 
@@ -36,7 +36,7 @@ struct one_side_info {
   uint64_t m_block_addr_;
   uint64_t m_block_num;
   uint64_t m_base_size;
-  uint64_t m_fast_size;
+  uint64_t m_block_size;
 };
 
 /* RDMA connection */
@@ -55,7 +55,7 @@ class RDMAConnection {
   uint64_t remote_CAS(uint64_t swap, uint64_t compare, uint64_t remote_addr, 
                     uint32_t rkey);
   int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size);
-  int remote_fetch_fast_block(uint64_t &addr, uint32_t &rkey);
+  int remote_fetch_block(uint64_t &addr, uint32_t &rkey);
   int remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t &newkey);
   int remote_fusee_alloc(uint64_t &addr, uint32_t &rkey);
   uint32_t get_rkey() {return m_fusee_rkey;};
@@ -66,7 +66,7 @@ class RDMAConnection {
   ibv_context* get_ctx() {return m_cm_id_->verbs;};
 
   // << one-sided fetch API >>
-  bool fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey);
+  bool remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey);
   bool malloc_hint(uint64_t start, uint64_t idx);
 
  private:

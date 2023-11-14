@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-12 22:24:28
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-09-15 16:23:58
+ * @LastEditTime: 2023-11-14 16:14:40
  * @FilePath: /rmalloc_newbase/source/client.cc
  * @Description: 
  * 
@@ -18,7 +18,6 @@
 #include <sstream>
 #include <string>
 #include <iostream>
-#include "kv_engine.h"
 #include "memory_heap.h"
 #include <sys/time.h>
 
@@ -46,8 +45,8 @@ void* fetch_mem(void* arg) {
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < 1024; i ++){
-            // heap->fetch_mem_fast_remote(addr, rkey);
-            heap->fetch_mem_one_sided(addr, rkey);
+            // heap->fetch_mem_block_remote(addr, rkey);
+            heap->remote_fetch_block_one_sided(addr, rkey);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
@@ -83,17 +82,17 @@ int main(int argc, char* argv[]){
     std::string ip = argv[1];
     std::string port = argv[2];
 
-    mralloc::LocalHeap* heap = new mralloc::LocalHeap(false, false, true);
+    mralloc::LocalHeap* heap = new mralloc::LocalHeap(true, true, true);
     heap->start(ip, port);
 
-    // fetch remote memory
-    int iter = 10;
-    uint64_t addr;
-    uint32_t rkey=0;
-    char buffer[2][64*1024] = {"aaa", "bbb"};
-    char read_buffer[4];
+    // << single thread, local test, fetch remote memory >>
+    // int iter = 10;
+    // uint64_t addr;
+    // uint32_t rkey=0;
+    // char buffer[2][64*1024] = {"aaa", "bbb"};
+    // char read_buffer[4];
     // while(iter--){
-    //     heap->fetch_mem_one_sided(addr, rkey);
+    //     heap->remote_fetch_block_one_sided(addr, rkey);
     //     std::cout << "write addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
     //     for(int i = 0; i < 2; i++)
     //         heap->get_conn()->remote_write(buffer[iter%2], 64, addr+i*64, rkey);
@@ -104,25 +103,27 @@ int main(int argc, char* argv[]){
     //   // heap->mr_bind_remote(2*1024*1024, addr, rkey, 114514);
     //   // std::cout << "addr mw bind success " << std::endl;
     // }
-    result.open("result.csv");
-    for(int i=0;i<10;i++)
-        record_global[i].store(0);
-    avg.store(0);
-    pthread_mutex_init(&file_lock, NULL);
-    pthread_barrier_init(&start_barrier, NULL, thread_num);
-    pthread_barrier_init(&end_barrier, NULL, thread_num);
-    pthread_t running_thread[thread_num];
-    for(int i = 0; i < thread_num; i++) {
-        pthread_create(&running_thread[i], NULL, fetch_mem, heap);
-    }
-    for(int i = 0; i < thread_num; i++) {
-        pthread_join(running_thread[i], NULL);
-    }
-    for(int i=0;i<10;i++)
-        result << record_global[i].load() << std::endl;
-    result.close();
-    printf("total avg: %luus\n", avg.load()/thread_num);
-    // getchar();
+
+    // << multiple thread, local test, fetch remote memory >>
+    // result.open("result.csv");
+    // for(int i=0;i<10;i++)
+    //     record_global[i].store(0);
+    // avg.store(0);
+    // pthread_mutex_init(&file_lock, NULL);
+    // pthread_barrier_init(&start_barrier, NULL, thread_num);
+    // pthread_barrier_init(&end_barrier, NULL, thread_num);
+    // pthread_t running_thread[thread_num];
+    // for(int i = 0; i < thread_num; i++) {
+    //     pthread_create(&running_thread[i], NULL, fetch_mem, heap);
+    // }
+    // for(int i = 0; i < thread_num; i++) {
+    //     pthread_join(running_thread[i], NULL);
+    // }
+    // for(int i=0;i<10;i++)
+    //     result << record_global[i].load() << std::endl;
+    // result.close();
+    // printf("total avg: %luus\n", avg.load()/thread_num);
+    getchar();
     heap->stop();
     delete heap;
     return 0;

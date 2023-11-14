@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-14 09:42:48
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-10 08:18:21
+ * @LastEditTime: 2023-11-14 17:33:02
  * @FilePath: /rmalloc_newbase/source/free_block_manager.cc
  * @Description: 
  * 
@@ -18,22 +18,73 @@
 
 namespace mralloc {
  
+    bool ClientBlockManager::init(uint64_t addr, uint64_t size, uint32_t rkey){
+        if (size % block_size_ != 0) {
+            printf("Error: FreeQueueManager only support size that is multiple of %ld \n", block_size_);
+            return false;
+        }
+        size_ = size;
+        if(size > 0) {
+            for(uint64_t i = 0; i < size / block_size_; i++) {
+                free_block_queue_.push({addr + i * block_size_, rkey});
+                size_ += block_size_;
+            }
+        }
+        total_used_ = 0;
+        return true;
+    }
+
+    bool ClientBlockManager::fetch(uint64_t size, uint64_t &addr, uint32_t &rkey) {
+        std::unique_lock<std::mutex> lock(m_mutex_);
+        if(size == block_size_){
+            return fetch_block(addr, rkey);
+        } else {
+            perror("alloc failed, no free space\n");
+            return false;
+        }
+    }
+
+    bool ClientBlockManager::fill_block(uint64_t addr, uint64_t size, uint32_t rkey) {
+        std::unique_lock<std::mutex> lock(m_mutex_);
+        for(uint64_t i = 0; i < size / block_size_; i++){
+            free_block_queue_.push({addr + i * block_size_, rkey});
+        }
+        return true;    
+    }
+
+    bool ClientBlockManager::fetch_block(uint64_t &addr, uint32_t &rkey){
+        std::unique_lock<std::mutex> lock(m_mutex_);
+        if(free_block_queue_.empty()){
+            perror("no enough cache!\n");
+            return false;
+        }
+        remote_addr rem_addr = free_block_queue_.front();
+        free_block_queue_.pop();
+        total_used_ += block_size_;
+        addr = rem_addr.addr; rkey = rem_addr.rkey;
+        return true;
+    }
+
+    void ClientBlockManager::print_state() {
+        printf("mem used: %lu MiB\n", total_used_/1024/1024);
+    }
+
     bool ServerBlockManagerv2::init(uint64_t meta_addr, uint64_t addr, uint64_t size, uint32_t rkey) {
-        uint64_t align = fast_size_*large_block_items < 1024*1024*2 ? 1024*1024*2 : fast_size_*large_block_items;
-        uint64_t base_align = fast_size_ < 1024*1024*2 ? 1024*1024*2 : fast_size_;
+        uint64_t align = block_size_*large_block_items < 1024*1024*2 ? 1024*1024*2 : block_size_*large_block_items;
+        uint64_t base_align = block_size_ < 1024*1024*2 ? 1024*1024*2 : block_size_;
         assert(meta_addr % base_align == 0 && addr % base_align == 0 && size % align == 0);
-        block_num = size/align;
+        large_block_num = size/align;
         block_info = (large_block*)meta_addr;
         heap_start = addr;
         heap_size = size;
         global_rkey = rkey;
         block_header_e header_; 
         header_.alloc_history = 0;
-        header_.max_length = fast_size_/base_size;
+        header_.max_length = block_size_/base_size;
         header_.flag &= (uint32_t)0;
         header_.bitmap &= (uint32_t)0;
         free_list.store(nullptr);
-        for(int i = block_num-1; i >= 0; i--){
+        for(int i = large_block_num-1; i >= 0; i--){
             uint64_t bitmap_init = (uint64_t)0;
             block_info[i].bitmap.store(bitmap_init);
             for(int j = 0; j < large_block_items; j++){
@@ -52,7 +103,7 @@ namespace mralloc {
         return __builtin_ctzll(~bitmap);
     }
 
-    bool ServerBlockManagerv2::fetch_fast(uint64_t &addr, uint32_t &rkey) {
+    bool ServerBlockManagerv2::fetch_block(uint64_t &addr, uint32_t &rkey) {
         uint64_t block_index, free_index;
         block_header_e header_old, header_new;
         large_block* free = free_list.load();
@@ -67,7 +118,7 @@ namespace mralloc {
             //         continue;
             //     }
             //     free->bitmap.fetch_or((uint64_t)1<<free_index);
-            //     addr = heap_start + (free->offset*large_block_items + free_index)*fast_size_;
+            //     addr = heap_start + (free->offset*large_block_items + free_index)*block_size_;
             //     rkey = global_rkey;
             //     return true;
             // }
@@ -81,16 +132,16 @@ namespace mralloc {
                 } while (!free->bitmap.compare_exchange_strong(bitmap_, bitmap_new_) && (bitmap_) != ~(uint64_t)0);
                 if(bitmap_ != ~(uint64_t)0) {
                     // printf("block full\n");
-                    addr = heap_start + (free->offset*large_block_items + free_index)*fast_size_;
-                    rkey = global_rkey;
+                    addr = heap_start + (free->offset*large_block_items + free_index)*block_size_;
+                    rkey = free->rkey[free_index];
                     return true;
                 }
             }
             free_list.compare_exchange_strong(free, free->next);
         }
         printf("freelist failed!\n");
-        for(int i = 0;i < block_num; i++){
-            block_index = (i + last_alloc ) % block_num;  
+        for(int i = 0;i < large_block_num; i++){
+            block_index = (i + last_alloc ) % large_block_num;  
             // load bitmap, and check if there are valid bit
             while((free_index = find_free_index_from_bitmap(block_info[block_index].bitmap.load())) != 64) {
                 // find valid bit, try to allocate
@@ -103,8 +154,8 @@ namespace mralloc {
                 }
                 last_alloc = block_index;
                 block_info[block_index].bitmap.fetch_or((uint64_t)1<<free_index);
-                addr = heap_start + (block_index*large_block_items + free_index)*fast_size_;
-                rkey = global_rkey;
+                addr = heap_start + (block_index*large_block_items + free_index)*block_size_;
+                rkey = block_info[block_index].rkey[free_index];
                 return true;
             }
         }
@@ -142,18 +193,18 @@ namespace mralloc {
     }
 
     bool ServerBlockManager::init(uint64_t addr, uint64_t size, uint32_t rkey) {
-        block_num = size/fast_size_;
-        uint64_t metadata_size = block_num*sizeof(header_list);
-        uint64_t rkey_size = block_num*sizeof(uint32_t);
-        uint64_t block_align_offset = (metadata_size + rkey_size - 1)/fast_size_*fast_size_ + fast_size_;
-        block_num -= block_align_offset/fast_size_;
+        large_block_num = size/block_size_;
+        uint64_t metadata_size = large_block_num*sizeof(header_list);
+        uint64_t rkey_size = large_block_num*sizeof(uint32_t);
+        uint64_t block_align_offset = (metadata_size + rkey_size - 1)/block_size_*block_size_ + block_size_;
+        large_block_num -= block_align_offset/block_size_;
         header_list = (block_header*)addr;
         block_header_e header_, old_header; 
         header_.alloc_history = 0;
-        header_.max_length = fast_size_/base_size;
+        header_.max_length = block_size_/base_size;
         header_.flag |= (uint32_t)1;
         header_.bitmap &= (uint32_t)0;
-        for(int i=0; i<block_num; i++){
+        for(int i=0; i<large_block_num; i++){
             do{
                 old_header = header_list[i].load();
             } while(!header_list[i].compare_exchange_weak(old_header, header_));
@@ -166,13 +217,13 @@ namespace mralloc {
         return true;
     }
     
-    bool ServerBlockManager::fetch_fast(uint64_t &addr, uint32_t &rkey) {
+    bool ServerBlockManager::fetch_block(uint64_t &addr, uint32_t &rkey) {
         block_header* header = get_metadata();
         uint64_t last_alloc_ = last_alloc.load();
-        for(int i = 0; i< block_num-user_start; i++){
-            uint64_t index = (i+last_alloc_)%(block_num - user_start) + user_start;
+        for(int i = 0; i< large_block_num-user_start; i++){
+            uint64_t index = (i+last_alloc_)%(large_block_num - user_start) + user_start;
             block_header_e header_old = header[index].load();
-            if(header_old.max_length == fast_size_/base_size && (header_old.flag & (uint16_t)1) == 1){
+            if(header_old.max_length == block_size_/base_size && (header_old.flag & (uint16_t)1) == 1){
                 block_header_e update_header = header_old;
                 update_header.flag &= ~((uint16_t)1);
                 if(header[index].compare_exchange_strong(header_old, update_header)){
@@ -190,7 +241,7 @@ namespace mralloc {
     bool ServerBlockManager::fetch(uint64_t start_addr, uint64_t size, uint64_t &addr, uint32_t &rkey) {
         uint64_t start_index = get_block_index(start_addr);
         uint64_t end_index = get_block_index(start_addr + size - 1);
-        // uint64_t end_index = (start_addr + size - heap_start - 1)/fast_size_ ;
+        // uint64_t end_index = (start_addr + size - heap_start - 1)/block_size_ ;
         block_header* header = get_metadata();
         for (int i = start_index; i <= end_index; i++) {
             block_header_e header_old = header[i].load();
@@ -219,8 +270,8 @@ namespace mralloc {
     }
 
     bool FreeQueueManager::init(uint64_t addr, uint64_t size, uint32_t rkey){
-        if (size % fast_size_ != 0){
-            printf("Error: FreeQueueManager only support size that is multiple of %ld \n", fast_size_);
+        if (size % block_size_ != 0){
+            printf("Error: FreeQueueManager only support size that is multiple of %ld \n", block_size_);
             return false;
         }
         uint64_t cache_size = std::min(queue_watermark, size);
@@ -228,10 +279,10 @@ namespace mralloc {
         raw_size = size;
         raw_rkey = rkey;
         uint64_t start_addr = addr + raw_size - cache_size;
-        for(uint64_t i = 0; i < cache_size / fast_size_; i++){
-            // free_fast_queue.push({addr + raw_size - fast_size_, rkey});
-            free_fast_queue.push({start_addr + i * fast_size_, rkey});
-            raw_size -= fast_size_;
+        for(uint64_t i = 0; i < cache_size / block_size_; i++){
+            // free_block_queue.push({addr + raw_size - block_size_, rkey});
+            free_block_queue.push({start_addr + i * block_size_, rkey});
+            raw_size -= block_size_;
         }
         total_used = 0;
         return true;
@@ -239,8 +290,8 @@ namespace mralloc {
 
     bool FreeQueueManager::fetch(uint64_t size, uint64_t &addr, uint32_t &rkey) {
         std::unique_lock<std::mutex> lock(m_mutex_);
-        if(size == fast_size_){
-            return fetch_fast(addr, rkey);
+        if(size == block_size_){
+            return fetch_block(addr, rkey);
         }
         else if (size <= raw_size) {
             uint64_t raw_alloc = raw_heap;
@@ -255,7 +306,7 @@ namespace mralloc {
         }
     }
 
-    bool FreeQueueManager::return_back(uint64_t addr, uint64_t size, uint32_t rkey) {
+    bool FreeQueueManager::fill_block(uint64_t addr, uint64_t size, uint32_t rkey) {
         std::unique_lock<std::mutex> lock(m_mutex_);
         // if (addr + size == raw_heap) {
         if (0) {
@@ -263,33 +314,33 @@ namespace mralloc {
             raw_size += size;
             // total_used -= size;
             return true;
-        } else if (size % fast_size_ != 0){
-            printf("Error: FreeQueueManager only support size that is multiple of %ld\n", fast_size_);
+        } else if (size % block_size_ != 0){
+            printf("Error: FreeQueueManager only support size that is multiple of %ld\n", block_size_);
             return false;
         }
-        for(uint64_t i = 0; i < size / fast_size_; i++){
-            free_fast_queue.push({addr + i * fast_size_, rkey});
+        for(uint64_t i = 0; i < size / block_size_; i++){
+            free_block_queue.push({addr + i * block_size_, rkey});
         }
         // total_used -= size;
         return true;    
     }
 
-    bool FreeQueueManager::fetch_fast(uint64_t &addr, uint32_t &rkey){
+    bool FreeQueueManager::fetch_block(uint64_t &addr, uint32_t &rkey){
         std::unique_lock<std::mutex> lock(m_mutex_);
-        if(free_fast_queue.empty()){
+        if(free_block_queue.empty()){
             // for(uint64_t i = 0; i < 10; i++){
-                if(raw_size >= fast_size_){
-                    free_fast_queue.push({raw_heap + raw_size - fast_size_, raw_rkey});
-                    raw_size -= fast_size_;
+                if(raw_size >= block_size_){
+                    free_block_queue.push({raw_heap + raw_size - block_size_, raw_rkey});
+                    raw_size -= block_size_;
                 } else {
                     // perror("no enough cache!\n");
                     return false;
                 }
             // }
         }
-        remote_addr rem_addr = free_fast_queue.front();
-        free_fast_queue.pop();
-        total_used += fast_size_;
+        remote_addr rem_addr = free_block_queue.front();
+        free_block_queue.pop();
+        total_used += block_size_;
         // printf("mem used: %lu\n", total_used);
         addr = rem_addr.addr; rkey = rem_addr.rkey;
         return true;

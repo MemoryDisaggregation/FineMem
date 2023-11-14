@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-10-23 15:38:31
+ * @LastEditTime: 2023-11-14 15:11:39
  * @FilePath: /rmalloc_newbase/source/rdma_conn_manager.cc
  * @Description: 
  * 
@@ -94,10 +94,10 @@ int ConnectionManager::remote_fetch_block(uint64_t &addr, uint32_t &rkey,
   return ret;
 }
 
-int ConnectionManager::remote_fetch_fast_block(uint64_t &addr, uint32_t &rkey) {
+int ConnectionManager::remote_fetch_block(uint64_t &addr, uint32_t &rkey) {
   RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
   assert(conn != nullptr);
-  int ret = conn->remote_fetch_fast_block(addr, rkey);
+  int ret = conn->remote_fetch_block(addr, rkey);
   m_rpc_conn_queue_->enqueue(conn);
   return ret;
 }
@@ -110,10 +110,10 @@ int ConnectionManager::remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, ui
   return ret;
 }
 
-bool ConnectionManager::fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey) {
+bool ConnectionManager::remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey) {
   RDMAConnection *conn = m_one_sided_conn_queue_->dequeue();
   assert(conn != nullptr);
-  uint64_t ret = conn->fetch_mem_one_sided(addr, rkey);
+  uint64_t ret = conn->remote_fetch_block_one_sided(addr, rkey);
   m_one_sided_conn_queue_->enqueue(conn);
   return ret;
 }

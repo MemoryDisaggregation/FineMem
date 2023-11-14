@@ -90,7 +90,7 @@ public:
     }
 
     void return_cache(uint32_t nproc, uint64_t addr, uint32_t rkey){
-        // using by local side, use to back a block at read_pointer as a fast return path
+        // using by local side, use to back a block at read_pointer as a block return path
         uint32_t prev = (read_p_[nproc] - 1) % max_item;
         if(content_[nproc * max_item + prev].addr == -1){
             content_[nproc * max_item + prev] = {addr, rkey};

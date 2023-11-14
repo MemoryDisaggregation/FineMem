@@ -2,7 +2,7 @@
  * @Author: blahaj wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 16:09:32
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-07 10:15:51
+ * @LastEditTime: 2023-11-14 16:11:09
  * @FilePath: /rmalloc_newbase/include/memory_heap.h
  * @Description: memory heap for rmalloc
  */
@@ -134,24 +134,25 @@ class LocalHeap: public MemHeap {
 
   bool alive() override;
 
-  void run() override;
+  void run() override {};
 
   ~LocalHeap() { destory(); }
+
+  void cache_filler() ;
 
   // << one-sided block fetch >>
   // bool update_mem_metadata();
   // bool update_rkey_metadata();
-  bool fetch_mem_one_sided(uint64_t &addr, uint32_t &rkey);
+  bool remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey);
   // bool fetch_rkey_list_one_sided(uint64_t addr, uint32_t* rkey_list);
 
   // << RPC block fetch >>
-  bool fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey);
-  bool fetch_mem_align_remote(uint64_t size, uint64_t &addr, uint32_t &rkey);
+  bool fetch_mem_block_remote(uint64_t &addr, uint32_t &rkey);
 
-  // << RPC block fetch & local heap/cache fetch >>
+  // << local heap/cache fetch >>
   void fetch_cache(uint8_t nproc, uint64_t &addr, uint32_t &rkey);
-  bool fetch_mem_fast(uint64_t &addr, uint32_t &rkey);
-  bool fetch_mem_remote(uint64_t size, uint64_t &addr, uint32_t &rkey);
+  bool fetch_mem_block(uint64_t &addr, uint32_t &rkey);
+  bool fetch_mem_block_local(uint64_t &addr, uint32_t &rkey);
 
   // UNUSED
   bool mr_bind_remote(uint64_t size, uint64_t addr, uint32_t rkey, uint32_t &newkey);
@@ -203,8 +204,8 @@ class RemoteHeap : public MemHeap {
   bool alive() override;
   bool fetch_mem_local(uint64_t &addr, uint64_t size, uint32_t &lkey, uint32_t &rkey);
   bool fetch_mem_local(uint64_t start_addr, uint64_t &addr, uint64_t size, uint32_t &lkey, uint32_t &rkey);
-  bool fetch_mem_fast_local(uint64_t &addr, uint32_t &lkey, uint32_t &rkey);
-  bool fetch_mem_fast_remote(uint64_t &addr, uint32_t &rkey);
+  bool fetch_mem_block_local(uint64_t &addr, uint32_t &lkey, uint32_t &rkey);
+  bool fetch_mem_block_remote(uint64_t &addr, uint32_t &rkey);
 
   void print_alloc_info();
 
