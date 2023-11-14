@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-12 22:24:28
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-14 16:14:40
+ * @LastEditTime: 2023-11-14 17:48:17
  * @FilePath: /rmalloc_newbase/source/client.cc
  * @Description: 
  * 
@@ -13,6 +13,7 @@
 #include <bits/types/FILE.h>
 #include <pthread.h>
 #include <atomic>
+#include <cassert>
 #include <cstdio>
 #include <fstream>
 #include <sstream>
@@ -21,7 +22,7 @@
 #include "memory_heap.h"
 #include <sys/time.h>
 
-const int thread_num = 36;
+const int thread_num = 2;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -39,17 +40,26 @@ void* fetch_mem(void* arg) {
     struct timeval start, end;
     mralloc::LocalHeap* heap = (mralloc::LocalHeap*)arg;
     int record[10] = {0};
-    uint64_t addr; uint32_t rkey;
+    uint64_t addr[16]; uint32_t rkey[16];
     
-    for(int j = 0; j < 20; j ++) {
+    for(int j = 0; j < 4; j ++) {
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
-        for(int i = 0; i < 1024; i ++){
-            // heap->fetch_mem_block_remote(addr, rkey);
-            heap->remote_fetch_block_one_sided(addr, rkey);
+        for(int i = 0; i < 16; i ++){
+            heap->remote_fetch_block_one_sided(addr[i], rkey[i]);
+            // heap->fetch_mem_one_sided(addr[i], rkey[i]);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
+        char buffer[2][16] = {"aaa", "bbb"};
+        char read_buffer[4];
+        for(int i = 0; i < 16; i ++){
+            // heap->fetch_mem_fast_remote(addr, rkey);
+            heap->get_conn()->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
+            heap->get_conn()->remote_read(read_buffer, 4, addr[i], rkey[i]);
+            // printf("%lx,  %u\n", addr[i], rkey[i]);
+            assert(read_buffer[0] == buffer[i%2][0]);
+        }        
         uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
         // uint64_t log10 = 0;
         // while(time/10 > 0){
@@ -60,7 +70,7 @@ void* fetch_mem(void* arg) {
         // std::stringstream buffer;
         // buffer << time << std::endl;
         if(time > max_time_) max_time_ = time;
-        time = time / 1024.0;
+        time = time / 16;
         avg_time_ = (avg_time_*count_ + time)/(count_ + 1);
         count_ += 1;
     }
