@@ -46,7 +46,7 @@ void* fetch_mem(void* arg) {
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < 16; i ++){
-            heap->remote_fetch_block_one_sided(addr[i], rkey[i]);
+            heap->fetch_mem_block_one_sided(addr[i], rkey[i]);
             // heap->fetch_mem_one_sided(addr[i], rkey[i]);
         }
         gettimeofday(&end, NULL);
@@ -92,7 +92,7 @@ int main(int argc, char* argv[]){
     std::string ip = argv[1];
     std::string port = argv[2];
 
-    mralloc::LocalHeap* heap = new mralloc::LocalHeap(true, true, true);
+    mralloc::LocalHeap* heap = new mralloc::LocalHeap(true, true, false);
     heap->start(ip, port);
 
     // << single thread, local test, fetch remote memory >>

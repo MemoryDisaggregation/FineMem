@@ -71,7 +71,7 @@ class ConnectionManager {
   uint32_t get_global_rkey() {return global_rkey_;};
   
   // << one side alloc API >>
-  bool remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey);
+  int remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey);
 
  private:
   

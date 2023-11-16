@@ -23,7 +23,7 @@
 
 const uint64_t cache_size = 1024*1024*2;
 
-const int thread_num = 2;
+const int thread_num = 8;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -59,6 +59,7 @@ void* fetch_mem(void* arg) {
                 }
             result = cpu_cache_.fetch_cache(cpu, addr[i], rkey[i]); 
             }while (result == false);
+            printf("%lx,  %u\n", addr[i], rkey[i]);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);

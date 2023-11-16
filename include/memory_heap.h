@@ -143,7 +143,7 @@ class LocalHeap: public MemHeap {
   // << one-sided block fetch >>
   // bool update_mem_metadata();
   // bool update_rkey_metadata();
-  bool remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey);
+  bool fetch_mem_block_one_sided(uint64_t &addr, uint32_t &rkey);
   // bool fetch_rkey_list_one_sided(uint64_t addr, uint32_t* rkey_list);
 
   // << RPC block fetch >>

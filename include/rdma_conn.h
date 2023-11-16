@@ -66,7 +66,7 @@ class RDMAConnection {
   ibv_context* get_ctx() {return m_cm_id_->verbs;};
 
   // << one-sided fetch API >>
-  bool remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey);
+  int remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey);
   bool malloc_hint(uint64_t start, uint64_t idx);
 
  private:

@@ -979,7 +979,7 @@ bool RDMAConnection::malloc_hint(uint64_t start, uint64_t idx) {
   return true;
 }
 
-bool RDMAConnection::remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey) {
+int RDMAConnection::remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey) {
   uint64_t large_block_num = m_one_side_info_.m_block_num;
   uint64_t block_size = m_one_side_info_.m_block_size;
   uint64_t base_size = m_one_side_info_.m_base_size;
@@ -1022,7 +1022,7 @@ bool RDMAConnection::remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey
           // rkey = rkey_list[index];
           rkey = get_global_rkey();
           // printf("addr:%lx, rkey:%u\n", addr, rkey);
-          return true;
+          return 0;
         // }
     }
     full_bitmap[block_.offset] = true;
@@ -1062,7 +1062,7 @@ bool RDMAConnection::remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey
   //     }
   //   }
   // }
-  return false;
+  return -1;
 }
 
 }  // namespace kv

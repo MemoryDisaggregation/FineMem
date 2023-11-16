@@ -77,10 +77,11 @@ public:
     bool fetch_cache(uint32_t nproc, uint64_t &addr, uint32_t &rkey){
         // just fetch one block in the current cpu_id --> ring buffer
         item fetch_one = content_[nproc * max_item + read_p_[nproc]];
-        if(fetch_one.addr != -1) {
+        if(fetch_one.addr != -1 && fetch_one.rkey != 0) {
             addr = fetch_one.addr;
             rkey = fetch_one.rkey;
             content_[nproc * max_item + read_p_[nproc]].addr = -1;
+            content_[nproc * max_item + read_p_[nproc]].addr = 0;
             read_p_[nproc] = (read_p_[nproc] + 1) % max_item;
             return true;
         }
@@ -93,7 +94,8 @@ public:
         // using by local side, use to back a block at read_pointer as a block return path
         uint32_t prev = (read_p_[nproc] - 1) % max_item;
         if(content_[nproc * max_item + prev].addr == -1){
-            content_[nproc * max_item + prev] = {addr, rkey};
+            content_[nproc * max_item + prev].rkey = rkey;
+            content_[nproc * max_item + prev].addr = addr;
             read_p_[nproc] = prev;
         }
     }
@@ -101,7 +103,8 @@ public:
     void add_cache(uint32_t nproc, uint64_t addr, uint32_t rkey){
         // host side fill cache, add write pointer
         if(content_[nproc * max_item + write_p_[nproc]].addr == -1){
-            content_[nproc * max_item + write_p_[nproc]] = {addr, rkey};
+            content_[nproc * max_item + write_p_[nproc]].rkey = rkey;
+            content_[nproc * max_item + write_p_[nproc]].addr = addr;
             write_p_[nproc] = (write_p_[nproc] + 1) % max_item;
         }
     }
