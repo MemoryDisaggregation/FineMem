@@ -46,7 +46,7 @@ void* fetch_mem(void* arg) {
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < 16; i ++){
-            heap->fetch_mem_block_one_sided(addr[i], rkey[i]);
+            heap->fetch_mem_block_remote(addr[i], rkey[i]);
             // heap->fetch_mem_one_sided(addr[i], rkey[i]);
         }
         gettimeofday(&end, NULL);

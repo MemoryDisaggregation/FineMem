@@ -130,10 +130,6 @@ void LocalHeap::cache_filler() {
     // printf("I'm running!\n");
   }
 }
-
-bool LocalHeap::fetch_mem_block_one_sided(uint64_t &addr, uint32_t &rkey) {
-  return m_rdma_conn_->remote_fetch_block_one_sided(addr, rkey);
-}
  
 // bool LocalHeap::update_rkey_metadata() {
 //   uint64_t rkey_size = m_one_side_info_.m_block_num * sizeof(uint32_t);
@@ -222,12 +218,10 @@ bool LocalHeap::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
  */  
 bool LocalHeap::fetch_mem_block_remote(uint64_t &addr, uint32_t &rkey) {
   // uint32_t rkey;
-  if(one_side_enabled_){
-    if (m_rdma_conn_->remote_fetch_block_one_sided(addr, rkey)) return false;
-  } else {
+
     if (m_rdma_conn_->remote_fetch_block(addr, rkey)) return false;
-  }
-  return true;
+
+    return true;
 }
  
 bool LocalHeap::mr_bind_remote(uint64_t size, uint64_t addr, uint32_t rkey, uint32_t &newkey) {
