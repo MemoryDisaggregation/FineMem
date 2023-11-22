@@ -1,0 +1,831 @@
+/*
+ * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @Date: 2023-07-24 10:13:27
+ * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-11-21 22:35:14
+ * @FilePath: /rmalloc_newbase/source/memory_node.cc
+ * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
+ * 
+ * Copyright (c) 2023 by wxy1999@mail.ustc.edu.cn, All Rights Reserved. 
+ */
+#include <cassert>
+#include <cstdio>
+#include <cstdlib>
+#include "free_block_manager.h"
+#include "memory_node.h"
+#include "msg.h"
+#include <bits/stdint-uintn.h>
+#include <infiniband/verbs.h>
+#include <netinet/in.h>
+#include <rdma/rdma_cma.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <linux/mman.h>
+#include <unistd.h>
+
+#define MEM_ALIGN_SIZE 4096
+
+// #define REMOTE_MEM_SIZE 134217728
+// #define REMOTE_MEM_SIZE 16777216
+// #define REMOTE_MEM_SIZE 67108864
+// #define REMOTE_MEM_SIZE 16384
+// #define REMOTE_MEM_SIZE 8192
+// #define REMOTE_MEM_SIZE 32768
+// #define REMOTE_MEM_SIZE 262144
+// #define REMOTE_MEM_SIZE 33554432
+// #define REMOTE_MEM_SIZE 2097152
+#define REMOTE_MEM_SIZE 4194304
+// #define REMOTE_MEM_SIZE 4096
+
+#define INIT_MEM_SIZE ((uint64_t)16*1024*1024*1024)
+
+// #define SERVER_BASE_ADDR (uint64_t)0xfe00000
+
+// #define SERVER_BASE_ADDR (uint64_t)0x1000000
+
+namespace mralloc {
+
+const uint64_t base_block_size = (uint64_t)1024*2*1024;
+
+const bool global_rkey = true;
+
+const uint64_t SERVER_BASE_ADDR = (uint64_t)0x10000000;
+// const uint64_t SERVER_BASE_ADDR = (uint64_t)0x10000000;
+
+void MemoryNode::print_alloc_info() {
+  server_block_manager_->print_state();
+}
+
+/**
+ * @description: start remote engine service
+ * @param {string} addr   empty string for MemoryNode as server
+ * @param {string} port   the port the server listened
+ * @return {bool} true for success
+ */
+bool MemoryNode::start(const std::string addr, const std::string port) {
+
+    m_stop_ = false;
+
+    m_worker_info_ = new WorkerInfo *[MAX_SERVER_WORKER*MAX_SERVER_CLIENT];
+    m_worker_threads_ = new std::thread *[MAX_SERVER_WORKER];
+    for (uint32_t i = 0; i < MAX_SERVER_WORKER; i++) {
+      m_worker_info_[i] = nullptr;
+      m_worker_threads_[i] = nullptr;
+    }
+    m_worker_num_ = 0;
+
+    // get rdma device, alloc protect domain and init memory heap
+
+    struct ibv_context **ibv_ctxs;
+    int nr_devices_;
+    ibv_ctxs = rdma_get_devices(&nr_devices_);
+    if (!ibv_ctxs) {
+      perror("get device list fail");
+      return false;
+    }
+
+    m_context_ = ibv_ctxs[1];
+    m_pd_ = ibv_alloc_pd(m_context_);
+    if (!m_pd_) {
+      perror("ibv_alloc_pd fail");
+      return false;
+    }
+
+    mw_queue_ = new MWPool(m_pd_);
+    if (!mw_queue_) {
+      perror("memeory window init fail");
+      return false;
+    }
+
+    // create connection manager and listen
+
+    m_cm_channel_ = rdma_create_event_channel();
+    if (!m_cm_channel_) {
+      perror("rdma_create_event_channel fail");
+      return false;
+    }
+
+    if (rdma_create_id(m_cm_channel_, &m_listen_id_, NULL, RDMA_PS_TCP)) {
+      perror("rdma_create_id fail");
+      return false;
+    }
+
+    struct sockaddr_in sin;
+    sin.sin_family = AF_INET;
+    sin.sin_port = htons(stoi(port));
+    sin.sin_addr.s_addr = INADDR_ANY;
+
+    if (rdma_bind_addr(m_listen_id_, (struct sockaddr *)&sin)) {
+      perror("rdma_bind_addr fail");
+      return false;
+    }
+
+    if (rdma_listen(m_listen_id_, 1024)) {
+      perror("rdma_listen fail");
+      return false;
+    }
+
+    if(!init_memory_heap(INIT_MEM_SIZE)) {
+      perror("init memory heap fail");
+      return false;
+    }
+
+    m_conn_handler_ = new std::thread(&MemoryNode::handle_connection, this);
+
+    // optional init 
+
+
+    // wait for all threads exit
+    // m_conn_handler_->join();
+    // for (uint32_t i = 0; i < MAX_SERVER_WORKER; i++) {
+    //   if (m_worker_threads_[i] != nullptr) {
+    //     m_worker_threads_[i]->join();
+    //   }
+    // }
+    // getchar();
+    return true;
+
+}
+
+bool MemoryNode::new_cache_section(uint32_t block_class){
+    alloc_advise advise = (block_class == 0?alloc_no_class:alloc_class);
+    if(!server_block_manager_->find_section(current_section_, current_section_index_, advise) ) {
+        printf("cannot find avaliable section\n");
+        return false;
+    }
+    return true;
+}
+
+bool MemoryNode::new_cache_region(uint32_t block_class) {
+    if(block_class == 0){
+        while(!server_block_manager_->fetch_region(current_section_, current_section_index_, block_class, true, current_region_) ) {
+            if(!new_cache_section(block_class))
+                return false;
+        }
+    } else {
+        while(!server_block_manager_->fetch_region(current_section_, current_section_index_, block_class, true, current_class_region_[block_class]) ) {
+            if(!new_cache_section(block_class))
+                return false;
+        }
+    }
+    return true;
+}
+
+bool MemoryNode::fill_cache_block(uint32_t block_class){
+    if(block_class == 0){
+        for(int i = 0; i<simple_cache_watermark; i++){
+            while(!server_block_manager_->fetch_region_block(current_region_, simple_cache_addr[i], simple_cache_rkey[i], false)) {
+                // fetch new region
+                new_cache_region(block_class);
+            }
+            printf("fill cache:%lx\n", simple_cache_addr[i]);
+            if(global_rkey) simple_cache_rkey[i] = get_global_rkey();
+        }
+    } else {
+        for(int i = 0; i<simple_class_cache_watermark[block_class]; i++){
+            while(!server_block_manager_->fetch_region_class_block(current_class_region_[block_class], block_class, simple_class_cache_addr[block_class][i], 
+                simple_class_cache_rkey[block_class][i], false)) {
+                // fetch new region
+                new_cache_region(block_class);
+            }
+            if(global_rkey) simple_class_cache_rkey[block_class][i] = get_global_rkey();
+        }
+    }
+    return true;
+}
+
+bool MemoryNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
+    for(int i = 0;i < simple_cache_watermark; i++) {
+        if(simple_cache_addr[i] != 0 && simple_cache_rkey[i] != 0){
+            addr = simple_cache_addr[i];
+            rkey = simple_cache_rkey[i];
+            simple_cache_addr[i] = 0;
+            simple_cache_rkey[i] = 0;
+            return true;
+        }
+    }
+    if(fill_cache_block(0)){
+        return fetch_mem_block(addr, rkey);
+    }
+    return false;
+}
+
+
+/**
+ * @description: init memory heap, malloc a huge memory region and register it, then init free queue manager
+ * @param {uint64_t} size: memory heap size
+ * @return {bool} true for success
+ */
+bool MemoryNode::init_memory_heap(uint64_t size) {
+    uint64_t init_addr_raw = server_base_addr;
+    uint64_t init_size_raw = size;
+    // Fusee need external memory, at a fixed start addr
+    if(fusee_enable){
+        uint64_t fusee_addr, fusee_size; uint32_t fusee_rkey;
+        fusee_size = round_up(META_AREA_LEN + HASH_AREA_LEN + GC_AREA_LEN, REMOTE_MEM_SIZE);
+        fusee_addr = (uint64_t)mmap((void*)server_base_addr, fusee_size, PROT_READ | PROT_WRITE, 
+            MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
+        ibv_mr* fusee_mr = rdma_register_memory((void*)fusee_addr, fusee_size);
+        rpc_fusee_ = new RPC_Fusee(fusee_addr, fusee_addr + META_AREA_LEN, fusee_mr->rkey);
+        init_addr_raw += fusee_size;
+    }
+    server_block_manager_ = new ServerBlockManager(REMOTE_MEM_SIZE);
+    uint64_t init_addr_, init_size_;
+    server_block_manager_->init_align_hint(init_addr_raw, init_size_raw, init_addr_, init_size_);
+    void* init_addr = mmap((void*)init_addr_ , init_size_, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
+    printf("init_addr: %p\n", init_addr);
+    if (init_addr == MAP_FAILED || (uint64_t)init_addr != init_addr_) {
+        perror("mmap fail");
+        return false;
+    }
+    // assert(size == init_size_ - SERVER_BASE_ADDR + init_addr_); 
+    heap_total_size_ = init_size_raw; heap_start_addr_ = init_addr_raw;
+    
+    global_mr_ = rdma_register_memory(init_addr, init_size_);
+
+    set_global_rkey(global_mr_->rkey);
+
+    m_mw_handler = (ibv_mw**)malloc(size / base_block_size * sizeof(ibv_mw*));
+
+    mw_binded = false;
+
+    if(!server_block_manager_->init((uint64_t)init_addr, init_addr_raw, init_size_raw, global_mr_->rkey)) {
+        perror("init free queue manager fail"); 
+        return false;
+    }
+
+    bool ret;
+
+    ret = new_cache_section(0);
+
+    ret &= new_cache_region(0);
+
+    simple_cache_watermark = 8;
+
+    ret &= fill_cache_block(0);
+
+    for(int i = 1; i < block_class_num; i++) {
+        ret &= new_cache_region(i);
+        ret &= simple_class_cache_watermark[i] = 1;
+        ret &= fill_cache_block(i);
+    }
+
+    if(!ret) {
+        printf("init cache failed\n");
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * @description: get engine alive state
+ * @return {bool}  true for alive
+ */
+bool MemoryNode::alive() {  // TODO
+    return true;
+}
+
+/**
+ * @description: stop local engine service
+ * @return {void}
+ */
+void MemoryNode::stop() {
+    m_stop_ = true;
+    if (m_conn_handler_ != nullptr) {
+        m_conn_handler_->join();
+        delete m_conn_handler_;
+        m_conn_handler_ = nullptr;
+    }
+    for (uint32_t i = 0; i < MAX_SERVER_WORKER; i++) {
+        if (m_worker_threads_[i] != nullptr) {
+        m_worker_threads_[i]->join();
+        delete m_worker_threads_[i];
+        m_worker_threads_[i] = nullptr;
+        }
+    }
+    // TODO: release resources
+    munmap((void*)SERVER_BASE_ADDR, INIT_MEM_SIZE);
+    delete server_block_manager_;
+}
+
+void MemoryNode::handle_connection() {
+    printf("start handle_connection\n");
+    struct rdma_cm_event *event;
+    while (true) {
+        if (m_stop_) break;
+        if (rdma_get_cm_event(m_cm_channel_, &event)) {
+            perror("rdma_get_cm_event fail");
+            return;
+        }
+        // printf("recieve create: %u\n", event->event);
+        
+        if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST) {
+            struct rdma_cm_id *cm_id = event->id;
+            uint8_t type = *(uint8_t*)event->param.conn.private_data;
+            rdma_ack_cm_event(event);
+            create_connection(cm_id, type);
+        } else if (event->event == RDMA_CM_EVENT_ESTABLISHED) {
+            rdma_ack_cm_event(event);
+        } else {
+            rdma_ack_cm_event(event);
+        }
+    }
+    printf("exit handle_connection\n");
+}
+
+int MemoryNode::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type) {
+
+    if (!m_pd_) {
+        perror("ibv_pibv_alloc_pdoll_cq fail");
+        return -1;
+    }
+
+    struct ibv_comp_channel *comp_chan = ibv_create_comp_channel(m_context_);
+    if (!comp_chan) {
+        perror("ibv_create_comp_channel fail");
+        return -1;
+    }
+
+    struct ibv_cq *cq = ibv_create_cq(m_context_, 1, NULL, comp_chan, 0);
+    if (!cq) {
+        perror("ibv_create_cq fail");
+        return -1;
+    }
+
+    if (ibv_req_notify_cq(cq, 0)) {
+        perror("ibv_req_notify_cq fail");
+        return -1;
+    }
+
+    struct ibv_qp_init_attr qp_attr = {};
+    qp_attr.cap.max_send_wr = 1;
+    qp_attr.cap.max_send_sge = 1;
+    qp_attr.cap.max_recv_wr = 1;
+    qp_attr.cap.max_recv_sge = 1;
+    qp_attr.cap.max_inline_data = 256;
+    qp_attr.sq_sig_all = 0;
+
+    qp_attr.send_cq = cq;
+    qp_attr.recv_cq = cq;
+    qp_attr.qp_type = IBV_QPT_RC;
+
+    if (rdma_create_qp(cm_id, m_pd_, &qp_attr)) {
+        perror("rdma_create_qp fail");
+        return -1;
+    }
+
+    struct PData rep_pdata;
+    CmdMsgBlock *cmd_msg = nullptr;
+    CmdMsgRespBlock *cmd_resp = nullptr;
+    struct ibv_mr *msg_mr = nullptr;
+    struct ibv_mr *resp_mr = nullptr;
+    cmd_msg = new CmdMsgBlock();
+    memset(cmd_msg, 0, sizeof(CmdMsgBlock));
+    msg_mr = rdma_register_memory((void *)cmd_msg, sizeof(CmdMsgBlock));
+    if (!msg_mr) {
+        perror("ibv_reg_mr cmd_msg fail");
+        return -1;
+    }
+
+    cmd_resp = new CmdMsgRespBlock();
+    memset(cmd_resp, 0, sizeof(CmdMsgRespBlock));
+    resp_mr = rdma_register_memory((void *)cmd_resp, sizeof(CmdMsgRespBlock));
+    if (!msg_mr) {
+        perror("ibv_reg_mr cmd_resp fail");
+        return -1;
+    }
+    rep_pdata.id = -1;
+    if(connect_type == CONN_RPC){
+        int num = m_worker_num_;
+        if (num < MAX_SERVER_WORKER) {
+        assert(m_worker_info_[num] == nullptr);
+        m_worker_info_[num] = new WorkerInfo();
+        m_worker_info_[num]->cmd_msg = cmd_msg;
+        m_worker_info_[num]->cmd_resp_msg = cmd_resp;
+        m_worker_info_[num]->msg_mr = msg_mr;
+        m_worker_info_[num]->resp_mr = resp_mr;
+        m_worker_info_[num]->cm_id = cm_id;
+        m_worker_info_[num]->cq = cq;
+
+        assert(m_worker_threads_[num] == nullptr);
+        m_worker_threads_[num] =
+            new std::thread(&MemoryNode::worker, this, m_worker_info_[num], num);
+        } else {
+            assert(m_worker_info_[num] == nullptr);
+            m_worker_info_[num] = new WorkerInfo();
+            // cmd_msg = m_worker_info_[num%MAX_SERVER_WORKER]->cmd_msg;
+            // cmd_resp = m_worker_info_[num%MAX_SERVER_WORKER]->cmd_resp_msg;
+            // msg_mr = m_worker_info_[num%MAX_SERVER_WORKER]->msg_mr;
+            // resp_mr = m_worker_info_[num%MAX_SERVER_WORKER]->resp_mr;
+            m_worker_info_[num]->cmd_msg = cmd_msg;
+            m_worker_info_[num]->cmd_resp_msg = cmd_resp;
+            m_worker_info_[num]->msg_mr = msg_mr;
+            m_worker_info_[num]->resp_mr = resp_mr;
+            m_worker_info_[num]->cm_id = cm_id;
+            m_worker_info_[num]->cq = cq;
+
+            // assert(m_worker_threads_[num] == nullptr);
+
+        } 
+        rep_pdata.id = num;
+        m_worker_num_ += 1;
+    }
+
+    rep_pdata.buf_addr = (uintptr_t)cmd_msg;
+    rep_pdata.buf_rkey = msg_mr->rkey;
+    rep_pdata.size = sizeof(CmdMsgRespBlock);
+
+    if(one_sided_enabled_) {
+        rep_pdata.header_addr = (uint64_t)server_block_manager_->get_metadata();
+        // rep_pdata.rkey_addr = (uint64_t)server_manager_handler->get_rkey_list_addr();
+        rep_pdata.rkey_addr = (uint64_t)0;
+        rep_pdata.large_block_num = (uint64_t)server_block_manager_->get_block_num();
+        rep_pdata.base_size = (uint64_t)0;
+        rep_pdata.block_size = (uint64_t)server_block_manager_->get_block_size();
+        rep_pdata.block_addr = (uint64_t)server_block_manager_->get_heap_start();
+    }
+
+    rep_pdata.global_rkey = get_global_rkey();
+
+    struct rdma_conn_param conn_param;
+    conn_param.responder_resources = 16;
+    conn_param.initiator_depth = 16;
+    conn_param.private_data = &rep_pdata;
+    conn_param.private_data_len = sizeof(rep_pdata);
+
+    if (rdma_accept(cm_id, &conn_param)) {
+        perror("rdma_accept fail");
+        return -1;
+    }
+    
+    if(!mw_binded) {
+        // init_mw(cm_id->qp, cq);
+        mw_binded = true;
+    }
+    return 0;
+}
+
+bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
+
+    ServerBlockManagerv2* queue_manager_ = (ServerBlockManagerv2*)server_block_manager_;
+
+    uint64_t block_num_ = queue_manager_->get_block_num() * large_block_items ;
+
+    block_mw = (ibv_mw**)malloc(block_num_ * sizeof(uint64_t));
+
+
+    for(int i = 0; i < block_num_; i++){
+        uint64_t block_addr_ = queue_manager_->get_block_addr(i);
+        block_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
+        // printf("start bind block mw: %lx ", block_addr_);
+        bind_mw(block_mw[i], block_addr_, REMOTE_MEM_SIZE, qp, cq);
+        // printf("first time: %u ", block_mw[i]->rkey);
+        // unbind_mw_type2(block_mw[i], block_addr_, REMOTE_MEM_SIZE, qp, cq);
+        bind_mw(block_mw[i], block_addr_, REMOTE_MEM_SIZE, qp, cq);
+        // printf("second time: %u\n", block_mw[i]->rkey);
+        queue_manager_->set_block_rkey(i, block_mw[i]->rkey);
+    }
+    // sleep(10);
+    printf("bind finished\n");
+
+    return true;
+}
+
+bool MemoryNode::bind_mw(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq* cq){
+    if(mw == NULL){
+        int index = (addr - heap_start_addr_)/base_block_size;
+        m_mw_handler[index] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
+        printf("addr:%lx rkey_old: %u",  addr, m_mw_handler[index]->rkey);
+        mw = m_mw_handler[index];
+    }
+    struct ibv_mw_bind_info bind_info_ = {.mr = global_mr_, 
+                                            .addr = addr, 
+                                            .length = size,
+                                            .mw_access_flags = IBV_ACCESS_REMOTE_READ | 
+                                                IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC} ;
+    struct ibv_mw_bind bind_ = {.wr_id = 0, .send_flags = IBV_SEND_SIGNALED, .bind_info = bind_info_};
+    if(ibv_bind_mw(qp, mw, &bind_)){
+        perror("ibv_post_send mw_bind fail");
+    } 
+    else {
+        while (true) {
+            ibv_wc wc;
+            int rc = ibv_poll_cq(cq, 1, &wc);
+            if (rc > 0) {
+                if (IBV_WC_SUCCESS == wc.status) {
+                    break;
+                } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
+                    perror("cmd_send IBV_WC_WR_FLUSH_ERR");
+                    break;
+                } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
+                    perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
+                    break;
+                } else {
+                    perror("cmd_send ibv_poll_cq status error");
+                    break;
+                }
+                } else if (0 == rc) {
+                continue;
+                } else {
+                perror("ibv_poll_cq fail");
+                break;
+                }
+            }
+        }
+    return true;
+}
+
+bool MemoryNode::bind_mw_type2(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq* cq){
+    if(mw == NULL){
+    // assert(size == base_block_size);
+        int index = (addr - heap_start_addr_)/base_block_size;
+        // if(m_mw_handler[index] == NULL) 
+        m_mw_handler[index] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_2);
+        printf("addr:%lx rkey_old: %u",  addr, m_mw_handler[index]->rkey);
+        // uint32_t newkey = ibv_inc_rkey(m_mw_handler[i]->rkey);
+        mw = m_mw_handler[index];
+    }
+
+    struct ibv_send_wr wr_ = {};
+    struct ibv_send_wr* bad_wr_;
+    wr_.wr_id = 0;
+    wr_.num_sge = 0;
+    wr_.next = NULL;
+    wr_.opcode = IBV_WR_BIND_MW;
+    wr_.sg_list = NULL;
+    wr_.send_flags = IBV_SEND_SIGNALED;
+    wr_.bind_mw.mw = mw;
+    wr_.bind_mw.rkey = mw->rkey;
+    wr_.bind_mw.bind_info.addr = addr;
+    wr_.bind_mw.bind_info.length = size;
+    wr_.bind_mw.bind_info.mr = global_mr_;
+    wr_.bind_mw.bind_info.mw_access_flags = IBV_ACCESS_REMOTE_READ | 
+                                IBV_ACCESS_REMOTE_WRITE;
+    // printf("try to bind with rkey: %d, old_rkey is %d, old mw is %d\n", mw->rkey, mw->rkey, mw->rkey);
+    if (ibv_post_send(qp, &wr_, &bad_wr_)) {
+        perror("ibv_post_send mw_bind fail");
+    } else {
+        while (true) {
+            ibv_wc wc;
+            int rc = ibv_poll_cq(cq, 1, &wc);
+            if (rc > 0) {
+            if (IBV_WC_SUCCESS == wc.status) {
+
+                // printf("bind success! rkey = %d, mw.rkey = %d \n", wr_.bind_mw.rkey, mw->rkey);
+                break;
+            } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
+                perror("cmd_send IBV_WC_WR_FLUSH_ERR");
+                break;
+            } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
+                perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
+                break;
+            } else {
+                perror("cmd_send ibv_poll_cq status error");
+                printf("%d\n", wc.status);
+                break;
+            }
+            } else if (0 == rc) {
+            continue;
+            } else {
+            perror("ibv_poll_cq fail");
+            break;
+            }
+        }
+    }
+    return true;
+}
+
+bool MemoryNode::unbind_mw_type2(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq* cq){
+
+    struct ibv_send_wr wr_ = {};
+    struct ibv_send_wr* bad_wr_;
+    wr_.wr_id = 0;
+    wr_.num_sge = 0;
+    wr_.next = NULL;
+    wr_.opcode = IBV_WR_LOCAL_INV;
+    wr_.sg_list = NULL;
+    wr_.send_flags = IBV_SEND_SIGNALED;
+    wr_.invalidate_rkey = mw->rkey;
+    // printf("try to bind with rkey: %d, old_rkey is %d, old mw is %d\n", mw->rkey, mw->rkey, mw->rkey);
+    if (ibv_post_send(qp, &wr_, &bad_wr_)) {
+        perror("ibv_post_send mw_bind fail");
+    } else {
+        while (true) {
+            ibv_wc wc;
+            int rc = ibv_poll_cq(cq, 1, &wc);
+            if (rc > 0) {
+            if (IBV_WC_SUCCESS == wc.status) {
+
+                // printf("bind success! rkey = %d, mw.rkey = %d \n", wr_.bind_mw.rkey, mw->rkey);
+                break;
+            } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
+                perror("cmd_send IBV_WC_WR_FLUSH_ERR");
+                break;
+            } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
+                perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
+                break;
+            } else {
+                perror("cmd_send ibv_poll_cq status error");
+                printf("%d\n", wc.status);
+                break;
+            }
+            } else if (0 == rc) {
+            continue;
+            } else {
+            perror("ibv_poll_cq fail");
+            break;
+            }
+        }
+    }
+    return true;
+}
+
+struct ibv_mr *MemoryNode::rdma_register_memory(void *ptr, uint64_t size) {
+    struct ibv_mr *mr =
+        ibv_reg_mr(m_pd_, ptr, size,
+                    IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
+                        IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND );
+    if (!mr) {
+        perror("ibv_reg_mr fail");
+        return nullptr;
+    }
+    return mr;
+}
+
+int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
+                                               uint64_t size) {
+    /* align mem */
+    uint64_t total_size = size + MEM_ALIGN_SIZE;
+    uint64_t mem = (uint64_t)malloc(total_size);
+    addr = mem;
+    if (addr % MEM_ALIGN_SIZE != 0)
+        addr = addr + (MEM_ALIGN_SIZE - addr % MEM_ALIGN_SIZE);
+    struct ibv_mr *mr = rdma_register_memory((void *)addr, size);
+    if (!mr) {
+        perror("ibv_reg_mr fail");
+        return -1;
+    }
+    rkey = mr->rkey;
+    // printf("allocate and register memory %ld %d\n", addr, rkey);
+    // TODO: save this memory info for later delete
+    return 0;
+}
+
+int MemoryNode::remote_write(WorkerInfo *work_info, uint64_t local_addr,
+                               uint32_t lkey, uint32_t length,
+                               uint64_t remote_addr, uint32_t rkey) {
+    struct ibv_sge sge;
+    sge.addr = (uintptr_t)local_addr;
+    sge.length = length;
+    sge.lkey = lkey;
+
+    struct ibv_send_wr send_wr = {};
+    struct ibv_send_wr *bad_send_wr;
+    send_wr.wr_id = 0;
+    send_wr.num_sge = 1;
+    send_wr.next = NULL;
+    send_wr.opcode = IBV_WR_RDMA_WRITE;
+    send_wr.sg_list = &sge;
+    send_wr.send_flags = IBV_SEND_SIGNALED;
+    send_wr.wr.rdma.remote_addr = remote_addr;
+    send_wr.wr.rdma.rkey = rkey;
+    if (ibv_post_send(work_info->cm_id->qp, &send_wr, &bad_send_wr)) {
+        perror("ibv_post_send fail");
+        return -1;
+    }
+
+    // printf("remote write %ld %d\n", remote_addr, rkey);
+
+    auto start = TIME_NOW;
+    struct ibv_wc wc;
+    int ret = -1;
+    while (true) {
+        if (TIME_DURATION_US(start, TIME_NOW) > RDMA_TIMEOUT_US) {
+        perror("remote write timeout");
+        return -1;
+        }
+        int rc = ibv_poll_cq(work_info->cq, 1, &wc);
+        if (rc > 0) {
+        if (IBV_WC_SUCCESS == wc.status) {
+            ret = 0;
+            break;
+        } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
+            perror("cmd_send IBV_WC_WR_FLUSH_ERR");
+            break;
+        } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
+            perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
+            break;
+        } else {
+            perror("cmd_send ibv_poll_cq status error");
+            printf("%d\n", wc.status);
+            break;
+        }
+        } else if (0 == rc) {
+        continue;
+        } else {
+        perror("ibv_poll_cq fail");
+        break;
+        }
+    }
+    return ret;
+}
+
+// RPC worker
+
+void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
+    printf("start worker %d\n", num);
+    CmdMsgBlock *cmd_msg = work_info->cmd_msg;
+    CmdMsgRespBlock *cmd_resp = work_info->cmd_resp_msg;
+    struct ibv_mr *resp_mr = work_info->resp_mr;
+    cmd_resp->notify = NOTIFY_WORK;
+    RequestsMsg request;
+    int active_id = -1;
+    while (true) {
+        if (m_stop_) break;
+        for (int i = num; i < m_worker_num_; i+=MAX_SERVER_WORKER) {
+        if (m_worker_info_[i]->cmd_msg->notify != NOTIFY_IDLE){
+            active_id = i;
+            cmd_msg = m_worker_info_[i]->cmd_msg;
+        }
+        }
+        if (active_id == -1) continue;
+        cmd_msg->notify = NOTIFY_IDLE;
+        RequestsMsg *request = (RequestsMsg *)cmd_msg;
+        assert(active_id == request->id);
+        // printf("receive from id:%d\n", request->id);
+        work_info = m_worker_info_[request->id];
+        cmd_resp = work_info->cmd_resp_msg;
+        resp_mr = work_info->resp_mr;
+        cmd_resp->notify = NOTIFY_WORK;
+        active_id = -1;
+        if (request->type == MSG_REGISTER) {
+        /* handle memory register requests */
+        RegisterRequest *reg_req = (RegisterRequest *)request;
+        // printf("receive a memory register message, size: %ld\n",
+        // reg_req->size);
+        RegisterResponse *resp_msg = (RegisterResponse *)cmd_resp;
+        if (allocate_and_register_memory(resp_msg->addr, resp_msg->rkey,
+                                        reg_req->size)) {
+            resp_msg->status = RES_FAIL;
+        } else {
+            resp_msg->status = RES_OK;
+        }
+        /* write response */
+        remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                    sizeof(CmdMsgRespBlock), reg_req->resp_addr,
+                    reg_req->resp_rkey);
+        } else if (request->type == MSG_FETCH_FAST) {
+        /* handle memory fetch requests */
+        // printf("receive a memory fetch message\n");
+        FetchBlockResponse *resp_msg = (FetchBlockResponse *)cmd_resp;
+        uint64_t addr;
+        uint32_t rkey;
+        while(!mw_binded) ;
+        if (fetch_mem_block(addr, rkey)) {
+            resp_msg->status = RES_OK;
+            resp_msg->addr = addr;
+            resp_msg->rkey = rkey;
+            resp_msg->size = server_block_manager_->get_block_size();
+        } else {
+            resp_msg->status = RES_FAIL;
+        }
+        printf("fetch memory, addr: %lx, rkey: %d, start addr: %lx, global rkey: %u\n", resp_msg->addr,
+                 resp_msg->rkey, heap_start_addr_, global_mr_->rkey);
+        /* write response */
+        remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                    sizeof(CmdMsgRespBlock), request->resp_addr,
+                    request->resp_rkey);
+        } else if (request->type == MSG_MW_BIND) {
+        // Attension: no actual used at the critical path
+        // TODO: bind memory window, generate new rkey
+        // TODO: bath to rebind
+        } else if (request->type == RPC_FUSEE_SUBTABLE){
+        uint64_t addr = rpc_fusee_->mm_alloc_subtable();
+        // uint32_t rkey = rpc_fusee_->get_rkey();
+        uint32_t rkey = get_global_rkey();
+        FuseeSubtableResponse* resp_msg = (FuseeSubtableResponse*)cmd_resp;
+        if(addr != 0){
+            resp_msg->addr = addr;
+            resp_msg->rkey = rkey;
+            resp_msg->status = RES_OK;
+        } else {
+            resp_msg->status = RES_FAIL;
+        }
+        remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+            sizeof(CmdMsgRespBlock), request->resp_addr,
+            request->resp_rkey);
+        }
+        else if (request->type == MSG_UNREGISTER) {
+        /* handle memory unregister requests */
+        UnregisterRequest *unreg_req = (UnregisterRequest *)request;
+        printf("receive a memory unregister message, addr: %ld\n",
+                unreg_req->addr);
+        // TODO: implemente memory unregister
+        } else {
+        printf("wrong request type\n");
+        }
+    }
+}
+
+}  // namespace kv

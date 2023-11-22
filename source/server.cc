@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-14 09:21:21
- * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-14 15:12:11
+ * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-11-21 20:11:10
  * @FilePath: /rmalloc_newbase/source/server.cc
  * @Description: 
  * 
@@ -12,7 +12,8 @@
 #include <cstdio>
 #include <string>
 #include <iostream>
-#include "memory_heap.h"
+// #include "memory_heap.h"
+#include "memory_node.h"
 #include <gperftools/profiler.h>
 
 int main(int argc, char *argv[]) {
@@ -24,7 +25,7 @@ int main(int argc, char *argv[]) {
   std::string ip = argv[1];
   std::string port = argv[2];
   ProfilerStart("rmalloc.prof");
-  mralloc::RemoteHeap *heap = new mralloc::RemoteHeap(true);
+  mralloc::MemoryNode *heap = new mralloc::MemoryNode(true);
   heap->start(ip, port);
 
   // fetch local memory
