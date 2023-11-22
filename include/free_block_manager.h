@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-11 16:42:26
- * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-21 22:54:13
+ * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-11-22 15:03:43
  * @FilePath: /rmalloc_newbase/include/free_block_manager.h
  * @Description: Buddy tree for memory management 
  * 
@@ -94,27 +94,27 @@ struct large_block_lockless {
 };
 
 inline int find_free_index_from_bitmap64_tail(uint64_t bitmap) {
-    if(bitmap == 0) return 0;
+    if(~bitmap == 0) return -1;
     return __builtin_ctzl(~bitmap);
 }
 
 inline int find_free_index_from_bitmap32_tail(uint32_t bitmap) {
-    if(bitmap == 0) return 0;
+    if(~bitmap == 0) return -1;
     return __builtin_ctz(~bitmap);
 }
 
 inline int find_free_index_from_bitmap16_tail(uint16_t bitmap) {
-    if(bitmap == 0) return 0;
+    if(~bitmap == 0) return -1;
     return __builtin_ctz(~bitmap);
 }
 
 inline int find_free_index_from_bitmap64_lead(uint64_t bitmap) {
-    if(bitmap == 0) return 63;
+    if(~bitmap == 0) return -1;
     return 63-__builtin_clzl(~bitmap);
 }
 
 inline int find_free_index_from_bitmap32_lead(uint32_t bitmap) {
-    if(bitmap == 0) return 31;
+    if(~bitmap == 0) return -1;
     return 31-__builtin_clz(~bitmap);
 }
 

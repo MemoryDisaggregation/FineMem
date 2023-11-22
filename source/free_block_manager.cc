@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-14 09:42:48
- * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-21 22:47:09
+ * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-11-22 15:04:02
  * @FilePath: /rmalloc_newbase/source/free_block_manager.cc
  * @Description: 
  * 
@@ -170,7 +170,7 @@ namespace mralloc {
                 new_section.alloc_map_ |= (1<<index);
             }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
             alloc_section = new_section;
-            alloc_region = region_header_[index].load();
+            alloc_region = region_header_[section_offset*region_per_section+index].load();
             return true;
         }
         else if(block_class == 0 && shared == false) {
@@ -189,7 +189,7 @@ namespace mralloc {
                 new_section.class_map_ |= (1<<index);
             }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
             alloc_section = new_section;
-            region_e region_old= region_header_[index].load();
+            region_e region_old= region_header_[section_offset*region_per_section+index].load();
             region_e region_new;
             do {
                 region_new = region_old;
@@ -230,7 +230,7 @@ namespace mralloc {
             do {
                 free_map = alloc_section.class_map_;
                 // search class block, from the tail
-                if( (index = find_free_index_from_bitmap32_tail(free_map)) == 32 ){
+                if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
                     printf("section has no free space!\n");
                     return false;
                 }
@@ -239,7 +239,7 @@ namespace mralloc {
                 new_section.alloc_map_ |= (0<<index);
             }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
             alloc_section = new_section;
-            region_old= region_header_[index].load();
+            region_old= region_header_[section_offset*region_per_section+index].load();
             // do {
             //     region_new = region_old;
             //     if(region_new.exclusive_ == 1) {
@@ -265,7 +265,7 @@ namespace mralloc {
             do {
                 free_map = alloc_section.class_map_;
                 // search class block, from the tail
-                if( (index = find_free_index_from_bitmap32_tail(free_map)) == 32 ){
+                if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
                     printf("section has no free space!\n");
                     return false;
                 }
@@ -274,7 +274,7 @@ namespace mralloc {
                 new_section.alloc_map_ |= (1<<index);
             }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
             alloc_section = new_section;
-            region_old= region_header_[index].load();
+            region_old= region_header_[section_offset*region_per_section+index].load();
             // do {
             //     region_new = region_old;
             //     if(region_new.exclusive_ == 1) {
@@ -420,8 +420,10 @@ namespace mralloc {
             } 
             new_region = alloc_region;
             if((index = find_free_index_from_bitmap32_lead(alloc_region.base_map_)) == -1) {
+                printf("full, change region\n");
                 return false;
             }
+            printf("alloc test %u\n",index);
             new_region.base_map_ |= 1<<index;
         } while (!region_header_[new_region.offset_].compare_exchange_strong(alloc_region, new_region));
         alloc_region = new_region;
@@ -441,7 +443,7 @@ namespace mralloc {
                 return false;
             } 
             new_region = alloc_region;
-            if((index = find_free_index_from_bitmap16_tail(alloc_region.class_map_)) == 16) {
+            if((index = find_free_index_from_bitmap16_tail(alloc_region.class_map_)) == -1) {
                 return false;
             }
             uint16_t mask = 0;
