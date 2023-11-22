@@ -76,12 +76,13 @@ public:
 
     bool fetch_cache(uint32_t nproc, uint64_t &addr, uint32_t &rkey){
         // just fetch one block in the current cpu_id --> ring buffer
+        while(read_p_[nproc] == write_p_[nproc]) ;
         item fetch_one = content_[nproc * max_item + read_p_[nproc]];
         if(fetch_one.addr != -1 && fetch_one.rkey != 0) {
             addr = fetch_one.addr;
             rkey = fetch_one.rkey;
             content_[nproc * max_item + read_p_[nproc]].addr = -1;
-            content_[nproc * max_item + read_p_[nproc]].addr = 0;
+            content_[nproc * max_item + read_p_[nproc]].rkey = 0;
             read_p_[nproc] = (read_p_[nproc] + 1) % max_item;
             return true;
         }

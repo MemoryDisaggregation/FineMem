@@ -10,6 +10,7 @@
  */
 
 #include <bits/floatn.h>
+#include <bits/stdint-uintn.h>
 #include <bits/types/FILE.h>
 #include <pthread.h>
 #include <atomic>
@@ -21,9 +22,13 @@
 #include "memory_heap.h"
 #include <sys/time.h>
 
-const uint64_t cache_size = 1024*1024*2;
+const uint64_t cache_size = 1024*32*1024;
 
-const int thread_num = 8;
+const uint64_t iter_num = 512;
+
+const uint64_t epoch_num = 8;
+
+const int thread_num = 38;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -32,10 +37,26 @@ pthread_mutex_t file_lock;
 
 std::atomic<int> record_global[10];
 std::atomic<uint64_t> avg;
+std::atomic<uint64_t> core_id;
 
 mralloc::ConnectionManager* m_rdma_conn_;
 
 void* fetch_mem(void* arg) {
+
+    // cpu_set_t cpuset;
+    // CPU_ZERO(&cpuset);
+    // int id = core_id.fetch_add(1);
+    // CPU_SET(id, &cpuset);
+    // pthread_t this_tid = pthread_self();
+    // uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    // // assert(ret == 0);
+    // ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    // for (int i = 0; i < sysconf(_SC_NPROCESSORS_CONF); i ++) {
+    //     if (CPU_ISSET(i, &cpuset)) {
+    //         printf("client %d main process running on core: %d\n",id , i);
+    //     }
+    // }
+
     uint64_t avg_time_ = 0;
     uint64_t count_ = 0;
     uint64_t cdf_counter[10];
@@ -43,23 +64,24 @@ void* fetch_mem(void* arg) {
     struct timeval start, end;
     mralloc::cpu_cache cpu_cache_ = mralloc::cpu_cache(cache_size);
     int record[10] = {0};
-    uint64_t addr[16]; uint32_t rkey[16];
+    uint64_t addr[iter_num]; uint32_t rkey[iter_num];
     
-    for(int j = 0; j < 4; j ++) {
+    for(int j = 0; j < epoch_num; j ++) {
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
-        for(int i = 0; i < 16; i ++){
+        for(int i = 0; i < iter_num; i ++){
             bool result;
-            do {
-                unsigned cpu;
-                unsigned node;
-                if(getcpu(&cpu,&node)==-1){
-                    printf("getcpu bad \n");
-                    return NULL;
-                }
+            unsigned cpu;
+            unsigned node;
+            if(getcpu(&cpu,&node)==-1){
+                printf("getcpu bad \n");
+                return NULL;
+            }
             result = cpu_cache_.fetch_cache(cpu, addr[i], rkey[i]); 
-            }while (result == false);
-            printf("%lx,  %u\n", addr[i], rkey[i]);
+            if (result == false) {
+                printf("impossible!\n");
+            }
+            // printf("%lx,  %u\n", addr[i], rkey[i]);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
@@ -82,7 +104,7 @@ void* fetch_mem(void* arg) {
         // std::stringstream buffer;
         // buffer << time << std::endl;
         if(time > max_time_) max_time_ = time;
-        time = time / 16;
+        time = time / iter_num;
         avg_time_ = (avg_time_*count_ + time)/(count_ + 1);
         count_ += 1;
     }
@@ -107,6 +129,7 @@ int main(int argc, char** argv){
     for(int i=0;i<10;i++)
         record_global[i].store(0);
     avg.store(0);
+    core_id.store(0);
     pthread_mutex_init(&file_lock, NULL);
     pthread_barrier_init(&start_barrier, NULL, thread_num);
     pthread_barrier_init(&end_barrier, NULL, thread_num);

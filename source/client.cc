@@ -92,27 +92,27 @@ int main(int argc, char* argv[]){
     std::string ip = argv[1];
     std::string port = argv[2];
 
-    mralloc::LocalHeap* heap = new mralloc::LocalHeap(true, true, false);
+    mralloc::LocalHeap* heap = new mralloc::LocalHeap(false, false, false);
     heap->start(ip, port);
 
     // << single thread, local test, fetch remote memory >>
-    // int iter = 10;
-    // uint64_t addr;
-    // uint32_t rkey=0;
-    // char buffer[2][64*1024] = {"aaa", "bbb"};
-    // char read_buffer[4];
-    // while(iter--){
-    //     heap->remote_fetch_block_one_sided(addr, rkey);
-    //     std::cout << "write addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
-    //     for(int i = 0; i < 2; i++)
-    //         heap->get_conn()->remote_write(buffer[iter%2], 64, addr+i*64, rkey);
-    //     std::cout << "read addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
-    //     for(int i = 0; i < 2; i++)
-    //         heap->get_conn()->remote_read(read_buffer, 4, addr, rkey);
-    //     printf("alloc: %lx : %u, content: %s\n", addr, rkey, read_buffer);
-    //   // heap->mr_bind_remote(2*1024*1024, addr, rkey, 114514);
-    //   // std::cout << "addr mw bind success " << std::endl;
-    // }
+    int iter = 10;
+    uint64_t addr;
+    uint32_t rkey=0;
+    char buffer[2][64*1024] = {"aaa", "bbb"};
+    char read_buffer[4];
+    while(iter--){
+        heap->fetch_mem_block_remote(addr, rkey);
+        std::cout << "write addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
+        for(int i = 0; i < 2; i++)
+            heap->get_conn()->remote_write(buffer[iter%2], 64, addr+i*64, rkey);
+        std::cout << "read addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
+        for(int i = 0; i < 2; i++)
+            heap->get_conn()->remote_read(read_buffer, 4, addr, rkey);
+        printf("alloc: %lx : %u, content: %s\n", addr, rkey, read_buffer);
+      // heap->mr_bind_remote(2*1024*1024, addr, rkey, 114514);
+      // std::cout << "addr mw bind success " << std::endl;
+    }
 
     // << multiple thread, local test, fetch remote memory >>
     // result.open("result.csv");

@@ -23,9 +23,9 @@
 
 namespace mralloc {
 
-const uint64_t BLOCK_SIZE = 1024*1024*32;
-const uint64_t INIT_WATERMARK = 80;
-const uint64_t RUNTIME_WATERMARK = 20;
+const uint64_t BLOCK_SIZE = 1024*1024*4;
+const uint64_t INIT_WATERMARK = 256;
+const uint64_t RUNTIME_WATERMARK = 80;
 
 void * run_cache_filler(void* arg) {
   LocalHeap *heap = (LocalHeap*)arg;
@@ -72,10 +72,12 @@ bool LocalHeap::start(const std::string addr, const std::string port){
       for(int i = 0; i < nprocs; i++){
         // if(cpu_cache_->is_empty(i)){
           // TODO: here we just fill 10 blocks, an automated or valified number should be tested
-          fetch_mem_block(remote_addr, remote_rkey);
-          assert(remote_addr!=0);
-          cpu_cache_->add_cache(i, remote_addr, remote_rkey);
-          printf("init @%d, addr:%lx rkey:%u\n", i, remote_addr, remote_rkey);
+          for(int j = 0; j<1; j++) {
+            fetch_mem_block(remote_addr, remote_rkey);
+            assert(remote_addr!=0);
+            cpu_cache_->add_cache(i, remote_addr, remote_rkey);
+            printf("init @%d of %d, addr:%lx rkey:%u\n", i, j, remote_addr, remote_rkey);
+          }
         // }
       }
       running = 1;
@@ -91,9 +93,9 @@ bool LocalHeap::start(const std::string addr, const std::string port){
 // who will call run()? the host may run with a readline to exit, and create a new thread to run.
 void LocalHeap::cache_filler() {
   // scan the cpu cache and refill them
-  uint64_t cpu_cache_history[nprocs];
+  uint64_t cpu_cache_watermark[nprocs];
   for(int i=0; i<nprocs; i++) {
-    cpu_cache_history[i] = 1;
+    cpu_cache_watermark[i] = 1;
   }
   uint64_t init_addr_ = 0; uint32_t init_rkey_;
   uint8_t id = heap_worker_id_++;
@@ -103,15 +105,26 @@ void LocalHeap::cache_filler() {
       // TODO: a automated filler, will choose how much blocks to fill
       int free_ = cpu_cache_->get_length(i);
       // if(cpu_cache_->is_empty(i)){
-      if(free_ != cpu_cache_history[i] && free_ < 1){
+      // if(free_ != cpu_cache_history[i] && free_ < 1){
+      if(free_ == 0){
         // TODO: an iteration to call times of fetch blocks is somehow too ugly
         // int free_ = cpu_cache_->get_length(i);
-        cpu_cache_history[i] = 1;
-        for( int j = 0; j < 1; j++){
+        // cpu_cache_history[i] = 20;
+        cpu_cache_watermark[i] += 1;
+        // for( int j = 0; j < 8; j++){
+        for( int j = 0; j < cpu_cache_watermark[i]; j++){
           fetch_mem_block(init_addr_, init_rkey_);
           cpu_cache_->add_cache(i, init_addr_, init_rkey_);
         }
-        printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
+        // printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
+      }
+      else if(free_ < cpu_cache_watermark[i] - 1) {
+        for( int j = 0; j < cpu_cache_watermark[i] - free_; j++){
+          fetch_mem_block(init_addr_, init_rkey_);
+          cpu_cache_->add_cache(i, init_addr_, init_rkey_);
+        }
+      } else if (free_ == cpu_cache_watermark[i] - 1) {
+        cpu_cache_watermark[i] -= 1;
       }
     }
     // printf("I'm running!\n");
