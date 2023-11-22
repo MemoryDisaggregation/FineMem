@@ -754,9 +754,9 @@ bool RDMAConnection::remote_CAS(uint64_t swap, uint64_t *compare, uint64_t remot
     }
     if(*compare != *((uint64_t*)m_reg_buf_)){
         *compare = *((uint64_t*)m_reg_buf_);
-        return true;
+        return false;
     }
-    return false;
+    return true;
 }
 
 int RDMAConnection::register_remote_memory(uint64_t &addr, uint32_t &rkey,
@@ -1125,7 +1125,7 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         do {
             free_map = alloc_section.class_map_;
             // search class block, from the tail
-            if( (index = find_free_index_from_bitmap32_tail(free_map)) == 32 ){
+            if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
                 printf("section has no free space!\n");
                 return false;
             }
@@ -1160,7 +1160,7 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         do {
             free_map = alloc_section.class_map_;
             // search class block, from the tail
-            if( (index = find_free_index_from_bitmap32_tail(free_map)) == 32 ){
+            if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
                 printf("section has no free space!\n");
                 return false;
             }
@@ -1324,6 +1324,9 @@ bool RDMAConnection::fetch_region_block(region_e &alloc_region, uint64_t &addr, 
     alloc_region = new_region;
     addr = get_region_block_addr(alloc_region, index);
     rkey = get_region_block_rkey(alloc_region, index); 
+    if(alloc_region.base_map_ == bitmap32_filled) {
+        update_section(alloc_region, alloc_exclusive);
+    }
     return true;
 }
 
@@ -1335,7 +1338,7 @@ bool RDMAConnection::fetch_region_class_block(region_e &alloc_region, uint32_t b
             return false;
         } 
         new_region = alloc_region;
-        if((index = find_free_index_from_bitmap16_tail(alloc_region.class_map_)) == 16) {
+        if((index = find_free_index_from_bitmap16_tail(alloc_region.class_map_)) == -1) {
             return false;
         }
         uint16_t mask = 0;

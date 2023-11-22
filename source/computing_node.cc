@@ -25,8 +25,6 @@
 namespace mralloc {
 
 const uint64_t BLOCK_SIZE = 1024*1024*4;
-const uint64_t INIT_WATERMARK = 256;
-const uint64_t RUNTIME_WATERMARK = 80;
 
 void * run_cache_filler(void* arg) {
   ComputingNode *heap = (ComputingNode*)arg;
@@ -50,7 +48,7 @@ bool ComputingNode::start(const std::string addr, const std::string port){
     use_global_rkey_ = true;
     m_rdma_conn_ = new ConnectionManager();
     if (m_rdma_conn_ == nullptr) return -1;
-    if (m_rdma_conn_->init(addr, port, 40, 40)) return false;
+    if (m_rdma_conn_->init(addr, port, 1, 1)) return false;
     // init free queue manager, using REMOTE_BLOCKSIZE as init size
     set_global_rkey(m_rdma_conn_->get_global_rkey());
     // if(one_side_enabled_) {
@@ -60,22 +58,31 @@ bool ComputingNode::start(const std::string addr, const std::string port){
     //   update_mem_metadata();
     //   update_rkey_metadata();
     // }
-    if(one_side_enabled_) {
-
-    }
     running = 1;
-    if(heap_enabled_) {
-      uint64_t remote_addr; uint32_t remote_rkey;
-      free_queue_manager = new FreeQueueManager(BLOCK_SIZE);
-      free_queue_manager->init(0, 0, 0);
-      for(int i = 0;i<INIT_WATERMARK; i++) {
-        if(!fetch_mem_block_remote(remote_addr, remote_rkey)){
-          printf("init fetch failed!\n");
+    if(heap_enabled_ && one_side_enabled_) {
+        bool ret;
+        ret = new_cache_section(0);
+        ret &= new_cache_region(0);
+        cache_watermark_high = 0.9;
+        cache_watermark_low = 0.1;
+        cache_upper_bound = 32;
+        reader = 0;
+        writer = 0;
+        ret &= fill_cache_block(0);
+        for(int i = 1; i < block_class_num; i++) {
+            class_reader[i] = 0;
+            class_writer[i] = 0;
+            ret &= new_cache_region(i);
+            class_cache_upper_bound[i] = 1;
+            ret &= fill_cache_block(i);
         }
-        free_queue_manager->fill_block(remote_addr, BLOCK_SIZE, remote_rkey);
-      }
-      pthread_create(&pre_fetch_thread_, NULL, run_pre_fetcher, this);
-      // set_global_rkey(init_rkey_);      
+        if(!ret) {
+            printf("init cache failed\n");
+            return false;
+        }
+        pthread_create(&pre_fetch_thread_, NULL, run_pre_fetcher, this);   
+    } else if(heap_enabled_) {
+        printf("RPC not implemented now\n");
     }
     // init cpu cache, insert a block for each cpu cache ring buffer
     if(cpu_cache_enabled_) {
@@ -108,6 +115,20 @@ void ComputingNode::pre_fetcher() {
         if(update_time != time_stamp_) {
             update_time = time_stamp_;
             printf("I'll do update\n");
+            // if(reader == writer && ring_cache[reader].addr == 0) {
+            //     cache_upper_bound += 1;
+            //     fill_cache_block(0);
+            // } else {
+            //     uint32_t length = reader > writer ? ring_buffer_size - reader + writer: writer - reader;
+            //     if(length < cache_upper_bound && length > cache_upper_bound * cache_watermark_high) {
+            //         cache_upper_bound -= 1;
+            //     } else if(length < cache_upper_bound * cache_watermark_low) {
+            //         cache_upper_bound += 1;
+            //         fill_cache_block(0);
+            //     } else {
+            //         fill_cache_block(0);
+            //     }
+            // }
         }
     }
 }
@@ -115,85 +136,78 @@ void ComputingNode::pre_fetcher() {
 // a infinite loop worker
 void ComputingNode::cache_filler() {
   // scan the cpu cache and refill them
-  time_stamp_ = 0; bool update = false;
-  uint64_t cpu_cache_watermark[nprocs];
-  for(int i=0; i<nprocs; i++) {
-    cpu_cache_watermark[i] = 1;
-  }
-  uint64_t init_addr_ = 0; uint32_t init_rkey_;
-  uint8_t id = heap_worker_id_++;
-  while(running) {
-    update = false;
-    for(int i = id; i < nprocs; i+=heap_worker_num_){
-      // if empty, fill it with 10 blocks
-      // TODO: a automated filler, will choose how much blocks to fill
-      int free_ = cpu_cache_->get_length(i);
-      if(free_ == 0){
-        // TODO: an iteration to call times of fetch blocks is somehow too ugly
-        cpu_cache_watermark[i] += 1;
-        for( int j = 0; j < cpu_cache_watermark[i]; j++){
-          fetch_mem_block(init_addr_, init_rkey_);
-          cpu_cache_->add_cache(i, init_addr_, init_rkey_);
-        }
-        update = true;
-        // printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
-      }
-      else if(free_ < cpu_cache_watermark[i] - 1) {
-        for( int j = 0; j < cpu_cache_watermark[i] - free_; j++){
-          fetch_mem_block(init_addr_, init_rkey_);
-          cpu_cache_->add_cache(i, init_addr_, init_rkey_);
-        }
-        update = true;
-      } else if (free_ == cpu_cache_watermark[i] - 1) {
-        cpu_cache_watermark[i] -= 1;
-      }
+    time_stamp_ = 0; bool update = false;
+    uint64_t cpu_cache_watermark[nprocs];
+    for(int i=0; i<nprocs; i++) {
+        cpu_cache_watermark[i] = 1;
     }
-    if(update) {
-        time_stamp_ += 1;
+    uint64_t init_addr_ = 0; uint32_t init_rkey_;
+    uint8_t id = heap_worker_id_++;
+    while(running) {
+        update = false;
+        for(int i = id; i < nprocs; i+=heap_worker_num_){
+        // if empty, fill it with 10 blocks
+        // TODO: a automated filler, will choose how much blocks to fill
+        int free_ = cpu_cache_->get_length(i);
+        if(free_ == 0){
+            // TODO: an iteration to call times of fetch blocks is somehow too ugly
+            cpu_cache_watermark[i] += 1;
+            for( int j = 0; j < cpu_cache_watermark[i]; j++){
+            fetch_mem_block(init_addr_, init_rkey_);
+            cpu_cache_->add_cache(i, init_addr_, init_rkey_);
+            }
+            update = true;
+            // printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
+        }
+        else if(free_ < cpu_cache_watermark[i] - 1) {
+            for( int j = 0; j < cpu_cache_watermark[i] - free_; j++){
+            fetch_mem_block(init_addr_, init_rkey_);
+            cpu_cache_->add_cache(i, init_addr_, init_rkey_);
+            }
+            update = true;
+        } else if (free_ == cpu_cache_watermark[i] - 1) {
+            cpu_cache_watermark[i] -= 1;
+        }
+        }
+        if(update) {
+            time_stamp_ += 1;
+        }
+        // printf("I'm running!\n");
     }
-    // printf("I'm running!\n");
-  }
 }
 
 bool ComputingNode::new_cache_section(uint32_t block_class){
     alloc_advise advise = (block_class == 0?alloc_no_class:alloc_class);
-    RDMAConnection* connector = m_rdma_conn_->fetch_connector();
-    if(!connector->find_section(current_section_, current_section_index_, advise) ) {
+    if(!m_rdma_conn_->find_section(current_section_, current_section_index_, advise) ) {
         printf("cannot find avaliable section\n");
-        m_rdma_conn_->return_connector(connector);
         return false;
     }
-    m_rdma_conn_->return_connector(connector);
     return true;
 }
 
 bool ComputingNode::new_cache_region(uint32_t block_class) {
-    RDMAConnection* connector = m_rdma_conn_->fetch_connector();
     if(block_class == 0){
-        while(!connector->fetch_region(current_section_, current_section_index_, block_class, true, current_region_) ) {
+        while(!m_rdma_conn_->fetch_region(current_section_, current_section_index_, block_class, true, current_region_) ) {
             if(!new_cache_section(block_class)){
-                m_rdma_conn_->return_connector(connector);
                 return false;
             }
         }
     } else {
-        while(!connector->fetch_region(current_section_, current_section_index_, block_class, true, current_class_region_[block_class]) ) {
+        while(!m_rdma_conn_->fetch_region(current_section_, current_section_index_, block_class, true, current_class_region_[block_class]) ) {
             if(!new_cache_section(block_class)) {
-                m_rdma_conn_->return_connector(connector);
                 return false;
             }
         }
     }
-    m_rdma_conn_->return_connector(connector);
     return true;
 }
 
 bool ComputingNode::fill_cache_block(uint32_t block_class){
-    RDMAConnection* connector = m_rdma_conn_->fetch_connector();
     if(block_class == 0){
         for(int i = 0; i<cache_upper_bound; i++){
-            while(!connector->fetch_region_block(current_region_, ring_cache[writer].addr, ring_cache[writer].rkey, false)) {
+            while(!m_rdma_conn_->fetch_region_block(current_region_, ring_cache[writer].addr, ring_cache[writer].rkey, false)) {
                 // fetch new region
+                printf("fetch new region\n");
                 new_cache_region(block_class);
             }
             printf("fill cache:%lx\n", ring_cache[writer].addr);
@@ -202,7 +216,7 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
         }
     } else {
         for(int i = 0; i<class_cache_upper_bound[block_class]; i++){
-            while(!connector->fetch_region_class_block(current_class_region_[block_class], block_class, ring_class_cache[block_class][class_writer[block_class]].addr, 
+            while(!m_rdma_conn_->fetch_region_class_block(current_class_region_[block_class], block_class, ring_class_cache[block_class][class_writer[block_class]].addr, 
                 ring_class_cache[block_class][class_writer[block_class]].rkey, false)) {
                 // fetch new region
                 new_cache_region(block_class);
@@ -211,7 +225,6 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
             class_writer[block_class] = (class_writer[block_class] + 1) % class_ring_buffer_size;
         }
     }
-    m_rdma_conn_->return_connector(connector);
     return true;
 }
 
@@ -223,10 +236,10 @@ bool ComputingNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
             ring_cache[reader].addr = 0;
             ring_cache[reader].rkey = 0;
             reader = (reader + 1) % ring_buffer_size;
-            if(reader == writer)
-                break;
             return true;
         }
+        if(reader == writer)
+            break;
     }
     if(fill_cache_block(0)){
         return fetch_mem_block(addr, rkey);
@@ -288,8 +301,8 @@ void ComputingNode::fetch_cache(uint8_t nproc, uint64_t &addr, uint32_t &rkey) {
   */
 void ComputingNode::stop(){
   running = 0;
-  cpu_cache_->free_cache();
-  free_queue_manager->print_state();
+  if(cpu_cache_enabled_) cpu_cache_->free_cache();
+//   free_queue_manager->print_state();
     // TODO
 };
 

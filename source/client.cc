@@ -22,7 +22,7 @@
 #include "computing_node.h"
 #include <sys/time.h>
 
-const int thread_num = 2;
+const int thread_num = 8;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -46,7 +46,7 @@ void* fetch_mem(void* arg) {
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < 16; i ++){
-            heap->fetch_mem_block_remote(addr[i], rkey[i]);
+            heap->fetch_mem_block(addr[i], rkey[i]);
             // heap->fetch_mem_one_sided(addr[i], rkey[i]);
         }
         gettimeofday(&end, NULL);
@@ -92,50 +92,58 @@ int main(int argc, char* argv[]){
     std::string ip = argv[1];
     std::string port = argv[2];
 
-    mralloc::ComputingNode* heap = new mralloc::ComputingNode(true, true, false);
-    heap->start(ip, port);
+    // mralloc::ComputingNode* heap = new mralloc::ComputingNode(true, false, true);
+    mralloc::ComputingNode* client[thread_num];
+    // heap->start(ip, port);
 
     // << single thread, local test, fetch remote memory >>
-    int iter = 10;
-    uint64_t addr;
-    uint32_t rkey=0;
-    char buffer[2][64*1024] = {"aaa", "bbb"};
-    char read_buffer[4];
-    while(iter--){
-        heap->fetch_mem_block_remote(addr, rkey);
-        std::cout << "write addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
-        for(int i = 0; i < 2; i++)
-            heap->get_conn()->remote_write(buffer[iter%2], 64, addr+i*64, rkey);
-        std::cout << "read addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
-        for(int i = 0; i < 2; i++)
-            heap->get_conn()->remote_read(read_buffer, 4, addr, rkey);
-        printf("alloc: %lx : %u, content: %s\n", addr, rkey, read_buffer);
-      // heap->mr_bind_remote(2*1024*1024, addr, rkey, 114514);
-      // std::cout << "addr mw bind success " << std::endl;
-    }
+    // int iter = 10;
+    // uint64_t addr;
+    // uint32_t rkey=0;
+    // char buffer[2][64*1024] = {"aaa", "bbb"};
+    // char read_buffer[4];
+    // while(iter--){
+    //     heap->fetch_mem_block(addr, rkey);
+    //     std::cout << "write addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
+    //     for(int i = 0; i < 2; i++)
+    //         heap->get_conn()->remote_write(buffer[iter%2], 64, addr+i*64, rkey);
+    //     std::cout << "read addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
+    //     for(int i = 0; i < 2; i++)
+    //         heap->get_conn()->remote_read(read_buffer, 4, addr, rkey);
+    //     printf("alloc: %lx : %u, content: %s\n", addr, rkey, read_buffer);
+    //   // heap->mr_bind_remote(2*1024*1024, addr, rkey, 114514);
+    //   // std::cout << "addr mw bind success " << std::endl;
+    // }
 
     // << multiple thread, local test, fetch remote memory >>
-    // result.open("result.csv");
-    // for(int i=0;i<10;i++)
-    //     record_global[i].store(0);
-    // avg.store(0);
-    // pthread_mutex_init(&file_lock, NULL);
-    // pthread_barrier_init(&start_barrier, NULL, thread_num);
-    // pthread_barrier_init(&end_barrier, NULL, thread_num);
-    // pthread_t running_thread[thread_num];
-    // for(int i = 0; i < thread_num; i++) {
-    //     pthread_create(&running_thread[i], NULL, fetch_mem, heap);
-    // }
-    // for(int i = 0; i < thread_num; i++) {
-    //     pthread_join(running_thread[i], NULL);
-    // }
-    // for(int i=0;i<10;i++)
-    //     result << record_global[i].load() << std::endl;
-    // result.close();
-    // printf("total avg: %luus\n", avg.load()/thread_num);
+    result.open("result.csv");
+    for(int i=0;i<10;i++) {
+        record_global[i].store(0);
+    }
+    avg.store(0);
+    pthread_mutex_init(&file_lock, NULL);
+    pthread_barrier_init(&start_barrier, NULL, thread_num);
+    pthread_barrier_init(&end_barrier, NULL, thread_num);
+    pthread_t running_thread[thread_num];
+    for(int i = 0; i < thread_num; i++) {
+        client[i] = new mralloc::ComputingNode(true, false, true);
+        client[i]->start(ip, port);
+        printf("thread %d\n init success\n", i);
+        pthread_create(&running_thread[i], NULL, fetch_mem, client[i]);
+    }
+    for(int i = 0; i < thread_num; i++) {
+        pthread_join(running_thread[i], NULL);
+    }
+    for(int i = 0; i < thread_num; i++) {
+        client[i]->stop();
+    }
+    for(int i=0;i<10;i++)
+        result << record_global[i].load() << std::endl;
+    result.close();
+    printf("total avg: %luus\n", avg.load()/thread_num);
     getchar();
-    heap->stop();
-    delete heap;
+    // heap->stop();
+    // delete heap;
     return 0;
 
 }

@@ -76,6 +76,20 @@ class ConnectionManager {
     void return_connector(RDMAConnection* connector) {
         m_rpc_conn_queue_->enqueue(connector);
     };
+
+    bool update_section(region_e region, alloc_advise advise);
+    bool find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
+
+    bool fetch_large_region(section_e &alloc_section, uint32_t section_offset, uint64_t region_num, uint64_t &addr) ;
+    bool fetch_region(section_e &alloc_section, uint32_t section_offset, uint32_t block_class, bool shared, region_e &alloc_region) ;
+    bool try_add_fast_region(uint32_t section_offset, uint32_t block_class, region_e &alloc_region);
+    bool set_region_exclusive(region_e &alloc_region);
+    bool set_region_empty(region_e &alloc_region);
+
+    bool init_region_class(region_e &alloc_region, uint32_t block_class, bool is_exclusive);
+    bool fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive) ;
+    bool fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive) ;
+
   // << one side alloc API >>
 //   int remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey);
 

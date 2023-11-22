@@ -118,8 +118,8 @@ private:
     // << reserved block cache>>
     rdma_mem_t ring_cache[ring_buffer_size];
     uint32_t reader, writer;
-    float cache_watermark_down;
-    float cache_watermark_up;
+    float cache_watermark_low;
+    float cache_watermark_high;
     uint64_t cache_upper_bound;
     rdma_mem_t ring_class_cache[16][class_ring_buffer_size];
     uint64_t class_cache_upper_bound[16];
