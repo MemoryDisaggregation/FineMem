@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-14 15:13:36
+ * @LastEditTime: 2023-11-21 10:31:26
  * @FilePath: /rmalloc_newbase/source/remote_heap.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -36,7 +36,7 @@
 // #define REMOTE_MEM_SIZE 2097152
 // #define REMOTE_MEM_SIZE 4096
 
-#define INIT_MEM_SIZE ((uint64_t)24*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)16*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 
@@ -509,12 +509,12 @@ bool RemoteHeap::init_mw(ibv_qp *qp, ibv_cq *cq) {
   for(int i = 0; i < block_num_; i++){
     uint64_t block_addr_ = queue_manager_->get_block_addr(i);
     block_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
-    printf("start bind block mw: %lx ", block_addr_);
+    // printf("start bind block mw: %lx ", block_addr_);
     bind_mw(block_mw[i], block_addr_, REMOTE_MEM_SIZE, qp, cq);
-    printf("first time: %u ", block_mw[i]->rkey);
+    // printf("first time: %u ", block_mw[i]->rkey);
     // unbind_mw_type2(block_mw[i], block_addr_, REMOTE_MEM_SIZE, qp, cq);
     bind_mw(block_mw[i], block_addr_, REMOTE_MEM_SIZE, qp, cq);
-    printf("second time: %u\n", block_mw[i]->rkey);
+    // printf("second time: %u\n", block_mw[i]->rkey);
     queue_manager_->set_block_rkey(i, block_mw[i]->rkey);
     // for (int j = 0; j < base_num; j ++){
     //   uint64_t index = i * base_num + j;
