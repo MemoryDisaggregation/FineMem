@@ -21,6 +21,13 @@ public:
         uint64_t addr;
         uint32_t rkey;
     };
+
+    struct cpu_cache_storage {
+        item items_[nprocs][max_item];
+        uint32_t reader[nprocs];
+        uint32_t writer[nprocs];
+    };
+
     cpu_cache(uint64_t cache_size) : cache_size_(cache_size) {
         // init cache at host/local side
         // try to open the cpu cache shared memory
@@ -125,7 +132,7 @@ public:
             return (max_item - read_p_[nproc] + write_p_[nproc]);
         }
     }
-
+    
 private:
     // uint64_t *base_addr_;
     uint64_t *shared_cpu_cache_;

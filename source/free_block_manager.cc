@@ -427,6 +427,9 @@ namespace mralloc {
         alloc_region = new_region;
         addr = get_region_block_addr(alloc_region, index);
         rkey = get_region_block_rkey(alloc_region, index);
+        if(alloc_region.base_map_ == bitmap32_filled) {
+            update_section(alloc_region, alloc_exclusive);
+        }
         return true;
     }
 

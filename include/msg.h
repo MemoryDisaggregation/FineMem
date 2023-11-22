@@ -38,107 +38,105 @@ enum ResStatus { RES_OK, RES_FAIL };
 enum ConnMethod {CONN_RPC, CONN_ONESIDE, CONN_FUSEE};
 
 #define CHECK_RDMA_MSG_SIZE(T) \
-  static_assert(sizeof(T) < MAX_MSG_SIZE, #T " msg size is too big!")
+    static_assert(sizeof(T) < MAX_MSG_SIZE, #T " msg size is too big!")
 
 struct PData {
-  uint64_t buf_addr;
-  uint32_t buf_rkey;
-  uint32_t size;
-  uint8_t id;
-  uint64_t header_addr;
-  uint64_t rkey_addr;
-  uint64_t block_addr;
-  uint64_t large_block_num;
-  uint64_t base_size;
-  uint64_t block_size;
-  uint32_t global_rkey;
+    uint64_t buf_addr;
+    uint32_t buf_rkey;
+    uint32_t size;
+    uint8_t id;
+    uint64_t block_size_;
+    uint64_t block_num_;
+    uint32_t global_rkey_;
+    uint64_t section_header_;
+    uint64_t heap_start_;
 };
 
 struct CmdMsgBlock {
-  uint8_t rsvd1[MAX_MSG_SIZE - 1];
-  volatile uint8_t notify;
+    uint8_t rsvd1[MAX_MSG_SIZE - 1];
+    volatile uint8_t notify;
 };
 
 struct CmdMsgRespBlock {
-  uint8_t rsvd1[MAX_MSG_SIZE - 1];
-  volatile uint8_t notify;
+    uint8_t rsvd1[MAX_MSG_SIZE - 1];
+    volatile uint8_t notify;
 };
 
 class RequestsMsg {
- public:
-  uint64_t resp_addr;
-  uint32_t resp_rkey;
-  uint8_t id;
-  uint8_t type;
+public:
+    uint64_t resp_addr;
+    uint32_t resp_rkey;
+    uint8_t id;
+    uint8_t type;
 };
 CHECK_RDMA_MSG_SIZE(RequestsMsg);
 
 class ResponseMsg {
- public:
-  uint8_t status;
+public:
+    uint8_t status;
 };
 CHECK_RDMA_MSG_SIZE(ResponseMsg);
 
 class FetchBlockResponse : public ResponseMsg {
- public:
-  uint64_t addr;
-  uint32_t rkey;
-  uint32_t size;
+public:
+    uint64_t addr;
+    uint32_t rkey;
+    uint32_t size;
 };
 
 class RegisterRequest : public RequestsMsg {
- public:
-  uint64_t size;
+public:
+    uint64_t size;
 };
 CHECK_RDMA_MSG_SIZE(RegisterRequest);
 
 class RegisterResponse : public ResponseMsg {
- public:
-  uint64_t addr;
-  uint32_t rkey;
+public:
+    uint64_t addr;
+    uint32_t rkey;
 };
 CHECK_RDMA_MSG_SIZE(RegisterResponse);
 
 class MWbindRequest : public RequestsMsg {
- public:
-  uint64_t newkey;
-  uint64_t addr;
-  uint32_t rkey;
-  uint32_t size;
+public:
+    uint64_t newkey;
+    uint64_t addr;
+    uint32_t rkey;
+    uint32_t size;
 };
 CHECK_RDMA_MSG_SIZE(MWbindRequest);
 
 class MWbindResponse : public ResponseMsg {
- public:
-  uint64_t addr;
-  uint32_t rkey;
-  uint64_t size;
+public:
+    uint64_t addr;
+    uint32_t rkey;
+    uint64_t size;
 };
 CHECK_RDMA_MSG_SIZE(MWbindRequest);
 
 class FetchRequest : public RequestsMsg {
- public:
-  uint32_t size;
+public:
+    uint32_t size;
 };
 CHECK_RDMA_MSG_SIZE(MWbindRequest);
 
 class FetchResponse : public ResponseMsg {
- public:
-  uint64_t addr;
-  uint32_t rkey;
-  uint64_t size;
+public:
+    uint64_t addr;
+    uint32_t rkey;
+    uint64_t size;
 };
 CHECK_RDMA_MSG_SIZE(MWbindRequest);
 
 class FuseeSubtableResponse : public ResponseMsg {
- public:
-  uint64_t addr;
-  uint32_t rkey;
+public:
+    uint64_t addr;
+    uint32_t rkey;
 };
 
 struct UnregisterRequest : public RequestsMsg {
- public:
-  uint64_t addr;
+public:
+    uint64_t addr;
 };
 CHECK_RDMA_MSG_SIZE(UnregisterRequest);
 

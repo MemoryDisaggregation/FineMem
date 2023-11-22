@@ -44,7 +44,7 @@ int ConnectionManager::init(const std::string ip, const std::string port,
       // TODO: release resources
       return -1;
     }
-    conn->malloc_hint((uint64_t)0x28000000, i);
+    // conn->malloc_hint((uint64_t)0x28000000, i);
     m_one_sided_conn_queue_->enqueue(conn);
   }
   return 0;
@@ -77,10 +77,10 @@ int ConnectionManager::remote_write(void *ptr, uint32_t size,
   return ret;
 }
 
-uint64_t ConnectionManager::remote_CAS(uint64_t swap, uint64_t compare, uint64_t remote_addr, uint32_t rkey) {
+bool ConnectionManager::remote_CAS(uint64_t swap, uint64_t* compare, uint64_t remote_addr, uint32_t rkey) {
   RDMAConnection *conn = m_one_sided_conn_queue_->dequeue();
   assert(conn != nullptr);
-  uint64_t ret = conn->remote_CAS(swap, compare, remote_addr, rkey);
+  bool ret = conn->remote_CAS(swap, compare, remote_addr, rkey);
   m_one_sided_conn_queue_->enqueue(conn);
   return ret;
 }
@@ -110,12 +110,13 @@ int ConnectionManager::remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, ui
   return ret;
 }
 
-int ConnectionManager::remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey) {
-  RDMAConnection *conn = m_one_sided_conn_queue_->dequeue();
-  assert(conn != nullptr);
-  int ret = conn->remote_fetch_block_one_sided(addr, rkey);
-  m_one_sided_conn_queue_->enqueue(conn);
-  return ret;
-} 
+// int ConnectionManager::remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey) {
+//   RDMAConnection *conn = m_one_sided_conn_queue_->dequeue();
+//   assert(conn != nullptr);
+// //   int ret = conn->remote_fetch_block_one_sided(addr, rkey);
+//   int ret = conn->remote_fetch_block_one_sided(addr, rkey);
+//   m_one_sided_conn_queue_->enqueue(conn);
+//   return ret;
+// } 
 
 }  // namespace kv

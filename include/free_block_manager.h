@@ -205,7 +205,7 @@ public:
 
     // inline block_header get_block_header(uint64_t index) {return header_list[index];};
 
-    inline region* get_metadata() {return region_header_;};
+    inline uint64_t get_metadata() {return (uint64_t)section_header_;};
 
     inline uint32_t get_block_rkey(uint64_t index) {return block_rkey_[index];};
 

@@ -80,7 +80,7 @@ bool RemoteHeap::start(const std::string addr, const std::string port) {
     perror("get device list fail");
     return false;
   }
-
+ 
   m_context_ = ibv_ctxs[1];
   m_pd_ = ibv_alloc_pd(m_context_);
   if (!m_pd_) {

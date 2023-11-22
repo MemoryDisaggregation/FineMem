@@ -19,7 +19,7 @@
 #include <sstream>
 #include <string>
 #include <iostream>
-#include "memory_heap.h"
+#include "computing_node.h"
 #include <sys/time.h>
 
 const int thread_num = 2;
@@ -38,7 +38,7 @@ void* fetch_mem(void* arg) {
     uint64_t cdf_counter[10];
     uint64_t max_time_ = 0;
     struct timeval start, end;
-    mralloc::LocalHeap* heap = (mralloc::LocalHeap*)arg;
+    mralloc::ComputingNode* heap = (mralloc::ComputingNode*)arg;
     int record[10] = {0};
     uint64_t addr[16]; uint32_t rkey[16];
     
@@ -92,7 +92,7 @@ int main(int argc, char* argv[]){
     std::string ip = argv[1];
     std::string port = argv[2];
 
-    mralloc::LocalHeap* heap = new mralloc::LocalHeap(false, false, false);
+    mralloc::ComputingNode* heap = new mralloc::ComputingNode(true, true, false);
     heap->start(ip, port);
 
     // << single thread, local test, fetch remote memory >>

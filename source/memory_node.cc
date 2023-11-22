@@ -437,16 +437,13 @@ int MemoryNode::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
     rep_pdata.size = sizeof(CmdMsgRespBlock);
 
     if(one_sided_enabled_) {
-        rep_pdata.header_addr = (uint64_t)server_block_manager_->get_metadata();
-        // rep_pdata.rkey_addr = (uint64_t)server_manager_handler->get_rkey_list_addr();
-        rep_pdata.rkey_addr = (uint64_t)0;
-        rep_pdata.large_block_num = (uint64_t)server_block_manager_->get_block_num();
-        rep_pdata.base_size = (uint64_t)0;
-        rep_pdata.block_size = (uint64_t)server_block_manager_->get_block_size();
-        rep_pdata.block_addr = (uint64_t)server_block_manager_->get_heap_start();
+        rep_pdata.block_num_ = (uint64_t)server_block_manager_->get_block_num();
+        rep_pdata.block_size_ = (uint64_t)server_block_manager_->get_block_size();
+        rep_pdata.section_header_ = (uint64_t)server_block_manager_->get_metadata();
+        rep_pdata.heap_start_ = (uint64_t)server_block_manager_->get_heap_start();
     }
 
-    rep_pdata.global_rkey = get_global_rkey();
+    rep_pdata.global_rkey_ = get_global_rkey();
 
     struct rdma_conn_param conn_param;
     conn_param.responder_resources = 16;

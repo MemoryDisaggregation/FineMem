@@ -31,91 +31,135 @@ namespace mralloc {
 #define RESOLVE_TIMEOUT_MS 5000
 
 struct one_side_info {
-  uint64_t m_header_addr_;
-  uint64_t m_rkey_addr_;
-  uint64_t m_block_addr_;
-  uint64_t m_block_num;
-  uint64_t m_base_size;
-  uint64_t m_block_size;
+    uint64_t block_size_;
+    uint64_t block_num_;
+    uint32_t global_rkey_;
+    uint64_t section_header_;
+    uint64_t heap_start_;
 };
 
 /* RDMA connection */
 class RDMAConnection {
- public:
-  int init_async();
-  int connect_async(const std::string ip, const std::string port, uint8_t access_type);
-  int init(const std::string ip, const std::string port, uint8_t access_type);
-  int init(const std::string ip, const std::string port, ibv_context* ctx, ibv_pd* pd, ibv_cq* cq, uint8_t access_type);
-  one_side_info get_one_side_info() {return m_one_side_info_;};
-  int register_remote_memory(uint64_t &addr, uint32_t &rkey, uint64_t size);
-  int remote_read(void *ptr, uint64_t size, uint64_t remote_addr,
-                  uint32_t rkey);
-  int remote_write(void *ptr, uint64_t size, uint64_t remote_addr,
-                   uint32_t rkey);
-  uint64_t remote_CAS(uint64_t swap, uint64_t compare, uint64_t remote_addr, 
+public:
+    int init_async();
+    int connect_async(const std::string ip, const std::string port, uint8_t access_type);
+    int init(const std::string ip, const std::string port, uint8_t access_type);
+    int init(const std::string ip, const std::string port, ibv_context* ctx, ibv_pd* pd, ibv_cq* cq, uint8_t access_type);
+    one_side_info get_one_side_info() {return m_one_side_info_;};
+    int register_remote_memory(uint64_t &addr, uint32_t &rkey, uint64_t size);
+    int remote_read(void *ptr, uint64_t size, uint64_t remote_addr,
                     uint32_t rkey);
-  int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size);
-  int remote_fetch_block(uint64_t &addr, uint32_t &rkey);
-  int remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t &newkey);
-  int remote_fusee_alloc(uint64_t &addr, uint32_t &rkey);
-  uint32_t get_rkey() {return m_fusee_rkey;};
-  uint32_t get_global_rkey() {return global_rkey_;};
-  ibv_qp* get_qp() {return m_cm_id_->qp;};
-  ibv_cq* get_cq() {return m_cq_;};
-  ibv_pd* get_pd() {return m_pd_;};
-  ibv_context* get_ctx() {return m_cm_id_->verbs;};
+    int remote_write(void *ptr, uint64_t size, uint64_t remote_addr,
+                    uint32_t rkey);
+    bool remote_CAS(uint64_t swap, uint64_t* compare, uint64_t remote_addr, 
+                        uint32_t rkey);
+    int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size);
+    int remote_fetch_block(uint64_t &addr, uint32_t &rkey);
+    int remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t &newkey);
+    int remote_fusee_alloc(uint64_t &addr, uint32_t &rkey);
+    uint32_t get_rkey() {return m_fusee_rkey;};
+    uint32_t get_global_rkey() {return global_rkey_;};
+    ibv_qp* get_qp() {return m_cm_id_->qp;};
+    ibv_cq* get_cq() {return m_cq_;};
+    ibv_pd* get_pd() {return m_pd_;};
+    ibv_context* get_ctx() {return m_cm_id_->verbs;};
 
-  // << one-sided fetch API >>
-  int remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey);
-  bool malloc_hint(uint64_t start, uint64_t idx);
+    // << one-sided fetch API >>
 
- private:
-  inline uint64_t find_free_index_from_bitmap(uint64_t bitmap) {
-    return __builtin_ctzll(~bitmap);
-  }
-  struct ibv_mr *rdma_register_memory(void *ptr, uint64_t size);
+    inline uint64_t section_offset_addr(uint64_t section_offset) {return (uint64_t)((section_e*)section_header_ + section_offset);};
+    inline uint64_t fast_region_offset_addr(uint64_t fast_region_offset) {return (uint64_t)((fast_class_e*)fast_region_ + fast_region_offset);};
+    inline uint64_t region_offset_addr(uint64_t region_offset) {return (uint64_t)((region_e*)section_header_ + region_offset);};
 
-  // << one-sided support functions >>
-  bool update_mem_metadata(uint64_t index);
-  bool update_mem_bitmap(uint64_t index);
-  bool update_rkey_metadata();
-  bool fetch_rkey_list_one_sided(uint64_t addr, uint32_t* rkey_list);
+    uint64_t get_heap_start() {return heap_start_;};
+    bool update_section(region_e region, alloc_advise advise);
+    bool find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
 
-  // << one-sided read/write >>
-  int rdma_remote_read(uint64_t local_addr, uint32_t lkey, uint64_t length,
-                       uint64_t remote_addr, uint32_t rkey);
+    bool fetch_large_region(section_e &alloc_section, uint32_t section_offset, uint64_t region_num, uint64_t &addr) ;
+    bool fetch_region(section_e &alloc_section, uint32_t section_offset, uint32_t block_class, bool shared, region_e &alloc_region) ;
+    bool try_add_fast_region(uint32_t section_offset, uint32_t block_class, region_e &alloc_region);
+    bool set_region_exclusive(region_e &alloc_region);
+    bool set_region_empty(region_e &alloc_region);
+    
+    inline uint32_t get_fast_region_index(uint32_t section_offset, uint32_t block_class) {return section_offset/4*block_class_num + block_class;};
+    inline uint64_t get_section_region_addr(uint32_t section_offset, uint32_t region_offset) {return heap_start_ + section_offset*section_size_ + region_offset * region_size_ ;};
+    inline uint64_t get_region_addr(region_e region) {return heap_start_ + region.offset_ * region_size_;};
+    inline uint64_t get_region_block_addr(region_e region, uint32_t block_offset) {return heap_start_ + region.offset_ * region_size_ + block_offset * block_size_;} ;
+    inline uint32_t get_region_block_rkey(region_e region, uint32_t block_offset) {
+        uint32_t rkey;
+        remote_read(&rkey, sizeof(rkey), block_rkey_ + (region.offset_*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
+        return rkey;
+    };
+    inline uint32_t get_region_class_block_rkey(region_e region, uint32_t block_offset) {
+        uint32_t rkey;
+        remote_read(&rkey, sizeof(rkey), class_block_rkey_ + (region.offset_*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
+        return rkey;
+    };
+    
+    bool init_region_class(region_e &alloc_region, uint32_t block_class, bool is_exclusive);
+    bool fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive) ;
+    bool fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive) ;
 
-  int rdma_remote_write(uint64_t local_addr, uint32_t lkey, uint64_t length,
+    private:
+
+    struct ibv_mr *rdma_register_memory(void *ptr, uint64_t size);
+
+    // << one-sided support functions >>
+    // bool update_mem_metadata(uint64_t index);
+    // bool update_mem_bitmap(uint64_t index);
+    // bool update_rkey_metadata();
+    // bool fetch_rkey_list_one_sided(uint64_t addr, uint32_t* rkey_list);
+
+    // << one-sided read/write >>
+    int rdma_remote_read(uint64_t local_addr, uint32_t lkey, uint64_t length,
                         uint64_t remote_addr, uint32_t rkey);
 
-  struct rdma_event_channel *m_cm_channel_;
-  struct ibv_pd *m_pd_;
-  struct ibv_cq *m_cq_;
-  struct rdma_cm_id *m_cm_id_;
-  uint64_t m_server_cmd_msg_;
-  uint32_t m_server_cmd_rkey_;
-  uint32_t m_fusee_rkey;
-  uint32_t m_remote_size_;
-  struct CmdMsgBlock *m_cmd_msg_;
-  struct CmdMsgRespBlock *m_cmd_resp_;
-  struct ibv_mr *m_msg_mr_;
-  struct ibv_mr *m_resp_mr_;
-  char *m_reg_buf_;
-  struct ibv_mr *m_reg_buf_mr_;
-  uint8_t conn_id_;
+    int rdma_remote_write(uint64_t local_addr, uint32_t lkey, uint64_t length,
+                            uint64_t remote_addr, uint32_t rkey);
 
-  // << one-sided support >>
-  one_side_info m_one_side_info_;
-  uint32_t global_rkey_;
-  large_block_lockless block_;
-  uint32_t* rkey_list;
-  uint64_t last_alloc_;
-  uint64_t user_start_;
-  int total_old_= 0;
+    struct rdma_event_channel *m_cm_channel_;
+    struct ibv_pd *m_pd_;
+    struct ibv_cq *m_cq_;
+    struct rdma_cm_id *m_cm_id_;
+    uint64_t m_server_cmd_msg_;
+    uint32_t m_server_cmd_rkey_;
+    uint32_t m_fusee_rkey;
+    uint32_t m_remote_size_;
+    struct CmdMsgBlock *m_cmd_msg_;
+    struct CmdMsgRespBlock *m_cmd_resp_;
+    struct ibv_mr *m_msg_mr_;
+    struct ibv_mr *m_resp_mr_;
+    char *m_reg_buf_;
+    struct ibv_mr *m_reg_buf_mr_;
+    uint8_t conn_id_;
+
+    // << one-sided support >>
+    one_side_info m_one_side_info_;
+    uint32_t global_rkey_;
+
+      // basic info
+    uint64_t block_size_;
+    uint64_t block_num_;
+    uint64_t region_size_;
+    uint64_t region_num_;
+    uint64_t section_size_;
+    uint64_t section_num_;
+
+    // info before heap segment
+    uint64_t section_header_;
+    uint64_t fast_region_;
+    uint64_t region_header_;
+    uint64_t block_rkey_;
+    uint64_t class_block_rkey_;
+    uint64_t heap_start_;
+    // large_block_lockless block_;
+    // uint32_t* rkey_list;
+    // uint64_t last_alloc_;
+    // uint64_t user_start_;
+    // int total_old_= 0;
 
 };
 
-static bool* full_bitmap;
+// static bool* full_bitmap;
 
 
 }  // namespace kv
