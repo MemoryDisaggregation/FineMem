@@ -24,11 +24,11 @@
 
 const uint64_t cache_size = 1024*32*1024;
 
-const uint64_t iter_num = 512;
+const uint64_t iter_num = 128;
 
-const uint64_t epoch_num = 8;
+const uint64_t epoch_num = 4;
 
-const int thread_num = 38;
+const int thread_num = 1;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;

@@ -37,6 +37,10 @@
 
 namespace mralloc {
 
+const uint32_t ring_buffer_size = 1024;
+const uint32_t class_ring_buffer_size = 128;
+
+
 class ComputingNode {
 public:
     typedef struct {
@@ -61,6 +65,12 @@ public:
     void pre_fetcher() ;
     void cache_filler() ;
 
+    bool new_cache_section(uint32_t block_class);
+    bool new_cache_region(uint32_t block_class);
+    bool fill_cache_block(uint32_t block_class);
+
+    bool fetch_mem_block(uint64_t &addr, uint32_t &rkey);
+    bool fetch_mem_class_block(uint64_t &addr, uint32_t &rkey);
 
     // << one-sided block fetch >>
     // bool update_mem_metadata();
@@ -73,7 +83,6 @@ public:
 
     // << local heap/cache fetch >>
     void fetch_cache(uint8_t nproc, uint64_t &addr, uint32_t &rkey);
-    bool fetch_mem_block(uint64_t &addr, uint32_t &rkey);
     bool fetch_mem_block_local(uint64_t &addr, uint32_t &rkey);
 
     // UNUSED
@@ -94,6 +103,7 @@ private:
 
     FreeBlockManager *free_queue_manager;
     uint8_t running;
+    bool use_global_rkey_;
     uint32_t global_rkey_;
 
     pthread_t pre_fetch_thread_;
@@ -106,12 +116,14 @@ private:
     region_e current_class_region_[16];
 
     // << reserved block cache>>
-    rdma_mem_t ring_cache[32];
+    rdma_mem_t ring_cache[ring_buffer_size];
+    uint32_t reader, writer;
     float cache_watermark_down;
     float cache_watermark_up;
     uint64_t cache_upper_bound;
-    rdma_mem_t ring_class_cache[16][4];
+    rdma_mem_t ring_class_cache[16][class_ring_buffer_size];
     uint64_t class_cache_upper_bound[16];
+    uint32_t class_reader[16], class_writer[16];
 
     // << function enabled >>
     bool heap_enabled_;
@@ -122,7 +134,6 @@ private:
     cpu_cache* cpu_cache_;
     std::atomic<uint8_t> heap_worker_id_;
     uint8_t heap_worker_num_;
-    uint64_t time_stamp_;
 
     // << one-side metadata >>
     one_side_info m_one_side_info_;
@@ -134,7 +145,7 @@ private:
     std::vector<rdma_mem_t> m_used_mem_; /* the used mem */
     std::mutex m_mutex_;                 /* used for concurrent mem allocation */
 
-
+    uint64_t time_stamp_;
 };
 
 }

@@ -47,6 +47,7 @@ void * run_pre_fetcher(void* arg) {
   * @return {bool} true for success
   */
 bool ComputingNode::start(const std::string addr, const std::string port){
+    use_global_rkey_ = true;
     m_rdma_conn_ = new ConnectionManager();
     if (m_rdma_conn_ == nullptr) return -1;
     if (m_rdma_conn_->init(addr, port, 40, 40)) return false;
@@ -59,6 +60,10 @@ bool ComputingNode::start(const std::string addr, const std::string port){
     //   update_mem_metadata();
     //   update_rkey_metadata();
     // }
+    if(one_side_enabled_) {
+
+    }
+    running = 1;
     if(heap_enabled_) {
       uint64_t remote_addr; uint32_t remote_rkey;
       free_queue_manager = new FreeQueueManager(BLOCK_SIZE);
@@ -87,7 +92,6 @@ bool ComputingNode::start(const std::string addr, const std::string port){
           }
         // }
       }
-      running = 1;
       pthread_t running_thread;
       heap_worker_id_ = 0;
       heap_worker_num_ = 1;
@@ -102,7 +106,8 @@ void ComputingNode::pre_fetcher() {
     uint64_t update_time = time_stamp_;
     while(running) {
         if(update_time != time_stamp_) {
-            printf("I'll update\n");
+            update_time = time_stamp_;
+            printf("I'll do update\n");
         }
     }
 }
@@ -143,9 +148,90 @@ void ComputingNode::cache_filler() {
         cpu_cache_watermark[i] -= 1;
       }
     }
-    if(update) time_stamp_ += 1;
+    if(update) {
+        time_stamp_ += 1;
+    }
     // printf("I'm running!\n");
   }
+}
+
+bool ComputingNode::new_cache_section(uint32_t block_class){
+    alloc_advise advise = (block_class == 0?alloc_no_class:alloc_class);
+    RDMAConnection* connector = m_rdma_conn_->fetch_connector();
+    if(!connector->find_section(current_section_, current_section_index_, advise) ) {
+        printf("cannot find avaliable section\n");
+        m_rdma_conn_->return_connector(connector);
+        return false;
+    }
+    m_rdma_conn_->return_connector(connector);
+    return true;
+}
+
+bool ComputingNode::new_cache_region(uint32_t block_class) {
+    RDMAConnection* connector = m_rdma_conn_->fetch_connector();
+    if(block_class == 0){
+        while(!connector->fetch_region(current_section_, current_section_index_, block_class, true, current_region_) ) {
+            if(!new_cache_section(block_class)){
+                m_rdma_conn_->return_connector(connector);
+                return false;
+            }
+        }
+    } else {
+        while(!connector->fetch_region(current_section_, current_section_index_, block_class, true, current_class_region_[block_class]) ) {
+            if(!new_cache_section(block_class)) {
+                m_rdma_conn_->return_connector(connector);
+                return false;
+            }
+        }
+    }
+    m_rdma_conn_->return_connector(connector);
+    return true;
+}
+
+bool ComputingNode::fill_cache_block(uint32_t block_class){
+    RDMAConnection* connector = m_rdma_conn_->fetch_connector();
+    if(block_class == 0){
+        for(int i = 0; i<cache_upper_bound; i++){
+            while(!connector->fetch_region_block(current_region_, ring_cache[writer].addr, ring_cache[writer].rkey, false)) {
+                // fetch new region
+                new_cache_region(block_class);
+            }
+            printf("fill cache:%lx\n", ring_cache[writer].addr);
+            if(use_global_rkey_) ring_cache[writer].rkey = get_global_rkey();
+            writer = (writer+1) % ring_buffer_size;
+        }
+    } else {
+        for(int i = 0; i<class_cache_upper_bound[block_class]; i++){
+            while(!connector->fetch_region_class_block(current_class_region_[block_class], block_class, ring_class_cache[block_class][class_writer[block_class]].addr, 
+                ring_class_cache[block_class][class_writer[block_class]].rkey, false)) {
+                // fetch new region
+                new_cache_region(block_class);
+            }
+            if(use_global_rkey_) ring_class_cache[block_class][class_writer[block_class]].rkey = get_global_rkey();
+            class_writer[block_class] = (class_writer[block_class] + 1) % class_ring_buffer_size;
+        }
+    }
+    m_rdma_conn_->return_connector(connector);
+    return true;
+}
+
+bool ComputingNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
+    for(int i = 0; i < cache_upper_bound; i++) {
+        if(ring_cache[reader].addr != 0 && ring_cache[reader].rkey != 0){
+            addr = ring_cache[reader].addr;
+            rkey = ring_cache[reader].rkey;
+            ring_cache[reader].addr = 0;
+            ring_cache[reader].rkey = 0;
+            reader = (reader + 1) % ring_buffer_size;
+            if(reader == writer)
+                break;
+            return true;
+        }
+    }
+    if(fill_cache_block(0)){
+        return fetch_mem_block(addr, rkey);
+    }
+    return false;
 }
 
 // bool ComputingNode::fetch_mem_block_one_sided(uint64_t &addr, uint32_t &rkey) {
@@ -213,23 +299,23 @@ void ComputingNode::stop(){
   */
 bool ComputingNode::alive() { return true; }
 
-// fetch memory in local side
-bool ComputingNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
-  // free_queue_manager->fetch_block(addr, rkey);
-  if(!free_queue_manager->fetch_block(addr, rkey)) {
-    for(int i=0;i<RUNTIME_WATERMARK;i++){
-      uint64_t fetch_addr_; uint32_t fetch_rkey_;
-      fetch_mem_block_remote(fetch_addr_, fetch_rkey_);
-      if (!free_queue_manager->fill_block(fetch_addr_, BLOCK_SIZE, fetch_rkey_)){
-        printf("Remote fetch failed!\n");
-        return false;
-      }
-    }
-    free_queue_manager->fetch_block(addr, rkey);
-    // printf("success get remote, %lu\n", addr);
-  }
-  return true;
-}
+// // fetch memory in local side
+// bool ComputingNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
+//   // free_queue_manager->fetch_block(addr, rkey);
+//   if(!free_queue_manager->fetch_block(addr, rkey)) {
+//     for(int i=0;i<RUNTIME_WATERMARK;i++){
+//       uint64_t fetch_addr_; uint32_t fetch_rkey_;
+//       fetch_mem_block_remote(fetch_addr_, fetch_rkey_);
+//       if (!free_queue_manager->fill_block(fetch_addr_, BLOCK_SIZE, fetch_rkey_)){
+//         printf("Remote fetch failed!\n");
+//         return false;
+//       }
+//     }
+//     free_queue_manager->fetch_block(addr, rkey);
+//     // printf("success get remote, %lu\n", addr);
+//   }
+//   return true;
+// }
 
 /**
  * @description: get block memory chunk address from remote heap
