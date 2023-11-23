@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:26
- * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-14 15:10:44
+ * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-11-22 21:58:04
  * @FilePath: /rmalloc_newbase/include/rdma_conn.h
  * @Description: RDMA Connection functions, with RDMA read/write and fetch block, used by both LocalHeap and RemoteHeap
  * 
@@ -41,10 +41,7 @@ struct one_side_info {
 /* RDMA connection */
 class RDMAConnection {
 public:
-    int init_async();
-    int connect_async(const std::string ip, const std::string port, uint8_t access_type);
     int init(const std::string ip, const std::string port, uint8_t access_type);
-    int init(const std::string ip, const std::string port, ibv_context* ctx, ibv_pd* pd, ibv_cq* cq, uint8_t access_type);
     one_side_info get_one_side_info() {return m_one_side_info_;};
     int register_remote_memory(uint64_t &addr, uint32_t &rkey, uint64_t size);
     int remote_read(void *ptr, uint64_t size, uint64_t remote_addr,
@@ -98,6 +95,7 @@ public:
     bool init_region_class(region_e &alloc_region, uint32_t block_class, bool is_exclusive);
     bool fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive) ;
     bool fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive) ;
+    bool free_region_block(uint64_t addr, bool is_exclusive) ;
 
     private:
 
