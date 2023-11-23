@@ -73,8 +73,8 @@ void* fetch_mem(void* arg) {
             bool result;
             unsigned cpu;
             unsigned node;
-            if(getcpu(&cpu,&node)==-1){
-                printf("getcpu bad \n");
+            if(sched_getcpu(&cpu,&node)==-1){
+                printf("sched_getcpu bad \n");
                 return NULL;
             }
             result = cpu_cache_.fetch_cache(cpu, addr[i], rkey[i]); 

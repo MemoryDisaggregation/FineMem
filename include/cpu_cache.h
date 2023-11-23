@@ -92,8 +92,8 @@ public:
     bool fetch_cache(uint64_t &addr, uint32_t &rkey){
         // just fetch one block in the current cpu_id --> ring buffer
         unsigned cpu; unsigned nproc;
-        if(getcpu(&cpu, &nproc) == -1){
-            printf("getcpu bad \n");
+        if(sched_getcpu(&cpu, &nproc) == -1){
+            printf("sched_getcpu bad \n");
             return false;
         }
         while(cpu_cache_content_->reader[nproc] == cpu_cache_content_->writer[nproc]) ;

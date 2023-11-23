@@ -1031,7 +1031,7 @@ bool RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
     uint32_t region_offset = (addr - heap_start_) / region_size_;
     uint32_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
     region_e region;
-    remote_read(&region, sizeof(region_e), region_offset_addr(region_offset), global_rkey_);
+    remote_read(&region, sizeof(region_e), region_metadata_addr(region_offset), global_rkey_);
     if(region.exclusive_ != is_exclusive) {
         printf("exclusive error, the actual exclusive bit is %d\n", region.exclusive_);
         return false;

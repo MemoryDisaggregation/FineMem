@@ -14,7 +14,7 @@
 #include <iostream>
 // #include "memory_heap.h"
 #include "memory_node.h"
-#include <gperftools/profiler.h>
+// #include <gperftools/profiler.h>
 
 int main(int argc, char *argv[]) {
   if (argc < 3) {
@@ -24,7 +24,7 @@ int main(int argc, char *argv[]) {
 
   std::string ip = argv[1];
   std::string port = argv[2];
-  ProfilerStart("rmalloc.prof");
+//   ProfilerStart("rmalloc.prof");
   mralloc::MemoryNode *heap = new mralloc::MemoryNode(true);
   heap->start(ip, port);
 
@@ -42,7 +42,7 @@ int main(int argc, char *argv[]) {
 
   // }
   getchar();
-  ProfilerStop();
+//   ProfilerStop();
   heap->stop();
   delete heap;
   return 0;
