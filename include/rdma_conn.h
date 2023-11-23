@@ -66,9 +66,9 @@ public:
 
     // << one-sided fetch API >>
 
-    inline uint64_t section_offset_addr(uint64_t section_offset) {return (uint64_t)((section_e*)section_header_ + section_offset);};
-    inline uint64_t fast_region_offset_addr(uint64_t fast_region_offset) {return (uint64_t)((fast_class_e*)fast_region_ + fast_region_offset);};
-    inline uint64_t region_offset_addr(uint64_t region_offset) {return (uint64_t)((region_e*)region_header_ + region_offset);};
+    inline uint64_t section_metadata_addr(uint64_t section_offset) {return (uint64_t)((section_e*)section_header_ + section_offset);};
+    inline uint64_t fast_region_metadata_addr(uint64_t fast_region_offset) {return (uint64_t)((fast_class_e*)fast_region_ + fast_region_offset);};
+    inline uint64_t region_metadata_addr(uint64_t region_offset) {return (uint64_t)((region_e*)region_header_ + region_offset);};
 
     uint64_t get_heap_start() {return heap_start_;};
     bool update_section(region_e region, alloc_advise advise);

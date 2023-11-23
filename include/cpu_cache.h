@@ -1,8 +1,10 @@
 
 
 #include <bits/stdint-uintn.h>
+#include <sched.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <sys/types.h>
@@ -23,50 +25,56 @@ public:
     };
 
     struct cpu_cache_storage {
-        item items_[nprocs][max_item];
+        uint64_t block_size;
+        item items[nprocs][max_item];
         uint32_t reader[nprocs];
         uint32_t writer[nprocs];
     };
 
+    cpu_cache() {
+        int fd = shm_open("/cpu_cache", O_RDWR, 0);
+        if (fd == -1) {
+            perror("init failed, no computing node running");
+        } else {
+            int port_flag = PROT_READ | PROT_WRITE;
+            int mm_flag   = MAP_SHARED; 
+            cpu_cache_content_ = (cpu_cache_storage*)mmap(NULL, sizeof(cpu_cache_storage), port_flag, mm_flag, fd, 0);
+            cache_size_ = cpu_cache_content_->block_size;
+        }
+        
+    }
+
     cpu_cache(uint64_t cache_size) : cache_size_(cache_size) {
-        // init cache at host/local side
-        // try to open the cpu cache shared memory
         int port_flag = PROT_READ | PROT_WRITE;
         int mm_flag   = MAP_SHARED; 
         int fd = shm_open("/cpu_cache", O_RDWR, 0);
         if(fd==-1){
             // if shm not exist, create and init it
             fd = shm_open("/cpu_cache", O_CREAT | O_EXCL | O_RDWR, 0600);
-            // change size to cpu number * max_item
             // TODO: our cpu number should be dynamic, max_item can be static
             // e.g. const uint8_t nprocs = get_nprocs();
-            ftruncate(fd, sizeof(item) * nprocs * (max_item) + 2 * sizeof(uint32_t) *nprocs);
-            shared_cpu_cache_ = (uint64_t*)mmap(NULL, sizeof(item) * nprocs * (max_item) + 2 * sizeof(uint32_t) * nprocs, port_flag, mm_flag, fd, 0);
-            // ring buffer read and write pointer
-            read_p_ = (uint32_t*)shared_cpu_cache_;
-            write_p_ = (uint32_t*)shared_cpu_cache_ + nprocs;
-            content_ = (item*)(shared_cpu_cache_ + nprocs);
-            // init all cpu ring buffer with -1
+            ftruncate(fd, sizeof(cpu_cache_storage));
+            cpu_cache_content_ = (cpu_cache_storage*)mmap(NULL, sizeof(cpu_cache_storage), port_flag, mm_flag, fd, 0);
             for (int i = 0; i < nprocs; i++) {
-                read_p_[i] = 0;
-                write_p_[i] = 0;
+                cpu_cache_content_->reader[i] = 0;
+                cpu_cache_content_->writer[i] = 0;
                 for(int j = 0; j < max_item; j++) {
-                    content_[i * max_item + j].addr = -1;
+                    cpu_cache_content_->items[i][j].addr = -1;
+                    cpu_cache_content_->items[i][j].rkey = 0;
+                    // content_[i * max_item + j].addr = -1;
                 }
             }
+            cpu_cache_content_->block_size = cache_size_;
         }
         else {
-            // open shm success, then mmap this file to local memory, and get ring buffer read and write 
-            shared_cpu_cache_ = (uint64_t*)mmap(NULL, sizeof(item) * nprocs * (max_item) + 2 * sizeof(uint32_t) * nprocs, port_flag, mm_flag, fd, 0);
-            read_p_ = (uint32_t*)shared_cpu_cache_;
-            write_p_ = (uint32_t*)shared_cpu_cache_ + nprocs;
-            content_ = (item*)(shared_cpu_cache_ + nprocs);
+            cpu_cache_content_ = (cpu_cache_storage*)mmap(NULL, sizeof(cpu_cache_storage), port_flag, mm_flag, fd, 0);
+            assert(cache_size_ == cpu_cache_content_->block_size);
         }
     }
 
     ~cpu_cache(){
-        if(shared_cpu_cache_)
-            munmap(shared_cpu_cache_, sizeof(item) * nprocs * (max_item) + 2 * sizeof(uint32_t) * nprocs);
+        if(cpu_cache_content_)
+            munmap(cpu_cache_content_, sizeof(cpu_cache_storage));
     }
 
     uint64_t get_cache_size(){
@@ -76,21 +84,27 @@ public:
 
     void free_cache(){
         // only the global host side need call this, to free all cpu_cache 
-        if(shared_cpu_cache_)
-            munmap(shared_cpu_cache_, sizeof(item) * nprocs * (max_item) + 2 * sizeof(uint32_t) * nprocs);
+        if(cpu_cache_content_)
+            munmap(cpu_cache_content_, sizeof(cpu_cache_storage));
         shm_unlink("/cpu_cache");
     }
 
-    bool fetch_cache(uint32_t nproc, uint64_t &addr, uint32_t &rkey){
+    bool fetch_cache(uint64_t &addr, uint32_t &rkey){
         // just fetch one block in the current cpu_id --> ring buffer
-        while(read_p_[nproc] == write_p_[nproc]) ;
-        item fetch_one = content_[nproc * max_item + read_p_[nproc]];
+        unsigned cpu; unsigned nproc;
+        if(getcpu(&cpu, &nproc) == -1){
+            printf("getcpu bad \n");
+            return false;
+        }
+        while(cpu_cache_content_->reader[nproc] == cpu_cache_content_->writer[nproc]) ;
+        uint32_t reader = cpu_cache_content_->reader[nproc];
+        item fetch_one = cpu_cache_content_->items[nproc][reader];
         if(fetch_one.addr != -1 && fetch_one.rkey != 0) {
             addr = fetch_one.addr;
             rkey = fetch_one.rkey;
-            content_[nproc * max_item + read_p_[nproc]].addr = -1;
-            content_[nproc * max_item + read_p_[nproc]].rkey = 0;
-            read_p_[nproc] = (read_p_[nproc] + 1) % max_item;
+            cpu_cache_content_->items[nproc][reader].addr = -1;
+            cpu_cache_content_->items[nproc][reader].rkey = 0;
+            cpu_cache_content_->reader[nproc] = (reader + 1) % max_item;
             return true;
         }
         else{
@@ -98,47 +112,53 @@ public:
         }
     }
 
-    void return_cache(uint32_t nproc, uint64_t addr, uint32_t rkey){
-        // using by local side, use to back a block at read_pointer as a block return path
-        uint32_t prev = (read_p_[nproc] - 1) % max_item;
-        if(content_[nproc * max_item + prev].addr == -1){
-            content_[nproc * max_item + prev].rkey = rkey;
-            content_[nproc * max_item + prev].addr = addr;
-            read_p_[nproc] = prev;
+    bool fetch_cache(uint32_t nproc, uint64_t &addr, uint32_t &rkey){
+        // just fetch one block in the current cpu_id --> ring buffer
+        while(cpu_cache_content_->reader[nproc] == cpu_cache_content_->writer[nproc]) ;
+        uint32_t reader = cpu_cache_content_->reader[nproc];
+        item fetch_one = cpu_cache_content_->items[nproc][reader];
+        if(fetch_one.addr != -1 && fetch_one.rkey != 0) {
+            addr = fetch_one.addr;
+            rkey = fetch_one.rkey;
+            cpu_cache_content_->items[nproc][reader].addr = -1;
+            cpu_cache_content_->items[nproc][reader].rkey = 0;
+            cpu_cache_content_->reader[nproc] = (reader + 1) % max_item;
+            return true;
+        }
+        else{
+            return false;
         }
     }
 
     void add_cache(uint32_t nproc, uint64_t addr, uint32_t rkey){
         // host side fill cache, add write pointer
-        if(content_[nproc * max_item + write_p_[nproc]].addr == -1){
-            content_[nproc * max_item + write_p_[nproc]].rkey = rkey;
-            content_[nproc * max_item + write_p_[nproc]].addr = addr;
-            write_p_[nproc] = (write_p_[nproc] + 1) % max_item;
+        uint32_t writer = cpu_cache_content_->writer[nproc];
+        if(cpu_cache_content_->items[nproc][writer].addr == -1){
+            cpu_cache_content_->items[nproc][writer].rkey = rkey;
+            cpu_cache_content_->items[nproc][writer].addr = addr;
+            cpu_cache_content_->writer[nproc] = (writer + 1) % max_item;
         }
     }
 
-    bool is_full(uint32_t nproc){
-        return (write_p_[nproc] == read_p_[nproc] && content_[nproc * max_item + write_p_[nproc]].addr != -1);
-    }
-
-    bool is_empty(uint32_t nproc){
-        return (write_p_[nproc] == read_p_[nproc] && content_[nproc * max_item + write_p_[nproc]].addr == -1);
-    }
-
     uint32_t get_length(uint32_t nproc) {
-        if (write_p_[nproc] >= read_p_[nproc]) {
-            return (write_p_[nproc] - read_p_[nproc]);
+        uint32_t writer = cpu_cache_content_->writer[nproc];
+        uint32_t reader = cpu_cache_content_->reader[nproc];
+        if (writer == reader) {
+            if (cpu_cache_content_->items[nproc][writer].addr == -1){
+                return 0;
+            } else {
+                return max_item;
+            }
+        }
+        if (writer > reader) {
+            return (writer - reader);
         } else {
-            return (max_item - read_p_[nproc] + write_p_[nproc]);
+            return (max_item - reader + writer);
         }
     }
     
 private:
-    // uint64_t *base_addr_;
-    uint64_t *shared_cpu_cache_;
-    item *content_;
-    uint32_t *read_p_;
-    uint32_t *write_p_;
+    cpu_cache_storage* cpu_cache_content_;
     uint64_t cache_size_;
 };
 

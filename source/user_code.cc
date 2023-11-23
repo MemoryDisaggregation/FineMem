@@ -22,7 +22,7 @@
 #include "memory_heap.h"
 #include <sys/time.h>
 
-const uint64_t cache_size = 1024*32*1024;
+const uint64_t cache_size = 1024*4*1024;
 
 const uint64_t iter_num = 128;
 
@@ -80,8 +80,8 @@ void* fetch_mem(void* arg) {
             result = cpu_cache_.fetch_cache(cpu, addr[i], rkey[i]); 
             if (result == false) {
                 printf("impossible!\n");
-            }
-            // printf("%lx,  %u\n", addr[i], rkey[i]);
+            } 
+                // printf("%lx,  %u\n", addr[i], rkey[i]);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);

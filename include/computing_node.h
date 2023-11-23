@@ -65,10 +65,23 @@ public:
     void pre_fetcher() ;
     void cache_filler() ;
 
+    inline uint64_t ring_buffer_length() {
+        if(reader == writer){
+            if(ring_cache[reader].addr == 0) {
+                return 0;
+            } else {
+                return ring_buffer_size;
+            }
+        } else {
+            return reader > writer ? ring_buffer_size - reader + writer : writer - reader;
+        }
+    };
+
     bool new_cache_section(uint32_t block_class);
     bool new_cache_region(uint32_t block_class);
     bool fill_cache_block(uint32_t block_class);
 
+    bool fetch_mem_block_nocached(uint64_t &addr, uint32_t &rkey);
     bool fetch_mem_block(uint64_t &addr, uint32_t &rkey);
     bool fetch_mem_class_block(uint64_t &addr, uint32_t &rkey);
 

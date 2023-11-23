@@ -8,344 +8,6 @@
 
 namespace mralloc {
 
-int RDMAConnection::init_async() {
-  m_cm_channel_ = rdma_create_event_channel();
-  if (!m_cm_channel_) {
-    perror("rdma_create_event_channel fail");
-    return -1;
-  }
-
-  if (rdma_create_id(m_cm_channel_, &m_cm_id_, NULL, RDMA_PS_TCP)) {
-    perror("rdma_create_id fail");
-    return -1;
-  }
-
-  m_pd_ = ibv_alloc_pd(m_cm_id_->verbs);
-  if (!m_pd_) {
-    perror("ibv_alloc_pd fail");
-    return -1;
-  }
-
-  struct ibv_comp_channel *comp_chan;
-  comp_chan = ibv_create_comp_channel(m_cm_id_->verbs);
-  if (!comp_chan) {
-    perror("ibv_create_comp_channel fail");
-    return -1;
-  }
-
-  m_cq_ = ibv_create_cq(m_cm_id_->verbs, 2, NULL, comp_chan, 0);
-  if (!m_cq_) {
-    perror("ibv_create_cq fail");
-    return -1;
-  }
-
-  if (ibv_req_notify_cq(m_cq_, 0)) {
-    perror("ibv_req_notify_cq fail");
-    return -1;
-  }
-
-  struct ibv_qp_init_attr qp_attr = {};
-  qp_attr.cap.max_send_wr = 2;
-  qp_attr.cap.max_send_sge = 1;
-  qp_attr.cap.max_recv_wr = 1;
-  qp_attr.cap.max_recv_sge = 1;
-
-  qp_attr.send_cq = m_cq_;
-  qp_attr.recv_cq = m_cq_;
-  qp_attr.qp_type = IBV_QPT_RC;
-  if (rdma_create_qp(m_cm_id_, m_pd_, &qp_attr)) {
-    perror("rdma_create_qp fail");
-    return -1;
-  }
-  return 0;
-}
-
-int RDMAConnection::connect_async(const std::string ip, const std::string port, uint8_t access_type) {
-
-  struct addrinfo *res;
-  if (getaddrinfo(ip.c_str(), port.c_str(), NULL, &res) < 0) {
-    perror("getaddrinfo fail");
-    return -1;
-  }
-
-  struct addrinfo *t = nullptr;
-  for (t = res; t; t = t->ai_next) {
-    if (!rdma_resolve_addr(m_cm_id_, NULL, t->ai_addr, RESOLVE_TIMEOUT_MS)) {
-      break;
-    }
-  }
-  if (!t) {
-    perror("getaddrdma_resolve_addrrinfo fail");
-    return -1;
-  }
-
-  struct rdma_cm_event *event;
-  if (rdma_get_cm_event(m_cm_channel_, &event)) {
-    perror("rdma_get_cm_event fail");
-    return -1;
-  }
-
-  if (event->event != RDMA_CM_EVENT_ADDR_RESOLVED) {
-    perror("RDMA_CM_EVENT_ADDR_RESOLVED fail");
-    return -1;
-  }
-
-  rdma_ack_cm_event(event);
-
-  if (rdma_resolve_route(m_cm_id_, RESOLVE_TIMEOUT_MS)) {
-    perror("rdma_resolve_route fail");
-    return -1;
-  }
-
-  if (rdma_get_cm_event(m_cm_channel_, &event)) {
-    perror("rdma_get_cm_event fail");
-    return 1;
-  }
-
-  if (event->event != RDMA_CM_EVENT_ROUTE_RESOLVED) {
-    printf("aaa: %d\n", event->event);
-    perror("RDMA_CM_EVENT_ROUTE_RESOLVED fail");
-    return -1;
-  }
-
-  rdma_ack_cm_event(event);
-
-  uint8_t access_type_ = access_type;
-  struct rdma_conn_param conn_param = {};
-  conn_param.responder_resources = 1;
-  conn_param.private_data = &access_type_;
-  conn_param.private_data_len = sizeof(access_type_);
-  conn_param.initiator_depth = 1;
-  conn_param.retry_count = 7;
-  if (rdma_connect(m_cm_id_, &conn_param)) {
-    perror("rdma_connect fail");
-    return -1;
-  }
-
-  if (rdma_get_cm_event(m_cm_channel_, &event)) {
-    perror("rdma_get_cm_event fail");
-    return -1;
-  }
-
-  if (event->event != RDMA_CM_EVENT_ESTABLISHED) {
-    perror("RDMA_CM_EVENT_ESTABLISHED fail");
-    return -1;
-  }
-
-  struct PData server_pdata;
-  memcpy(&server_pdata, event->param.conn.private_data, sizeof(server_pdata));
-
-  rdma_ack_cm_event(event);
-
-  m_server_cmd_msg_ = server_pdata.buf_addr;
-  m_server_cmd_rkey_ = server_pdata.buf_rkey;
-  if (access_type == CONN_FUSEE){
-    m_fusee_rkey = server_pdata.buf_rkey;
-  }
-  assert(server_pdata.size == sizeof(CmdMsgBlock));
-
-  // printf("private data, addr: %ld: rkey:%d, size: %d\n",
-  // server_pdata.buf_addr,
-  //        server_pdata.buf_rkey, server_pdata.size);
-
-  m_cmd_msg_ = new CmdMsgBlock();
-  memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
-  m_msg_mr_ = rdma_register_memory((void *)m_cmd_msg_, sizeof(CmdMsgBlock));
-  if (!m_msg_mr_) {
-    perror("ibv_reg_mr m_msg_mr_ fail");
-    return -1;
-  }
-
-  m_cmd_resp_ = new CmdMsgRespBlock();
-  memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));
-  m_resp_mr_ =
-      rdma_register_memory((void *)m_cmd_resp_, sizeof(CmdMsgRespBlock));
-  if (!m_resp_mr_) {
-    perror("ibv_reg_mr m_resp_mr_ fail");
-    return -1;
-  }
-
-  m_reg_buf_ = new char[MAX_REMOTE_SIZE];
-  m_reg_buf_mr_ = rdma_register_memory((void *)m_reg_buf_, MAX_REMOTE_SIZE);
-  if (!m_reg_buf_mr_) {
-    perror("ibv_reg_mr m_reg_buf_mr_ fail");
-    return -1;
-  }
-
-  return 0;
-}
-
-int RDMAConnection::init(const std::string ip, const std::string port, ibv_context* ctx, ibv_pd* pd, ibv_cq* cq, uint8_t access_type) {
-  m_cm_channel_ = rdma_create_event_channel();
-  if (!m_cm_channel_) {
-    perror("rdma_create_event_channel fail");
-    return -1;
-  }
-
-  if (rdma_create_id(m_cm_channel_, &m_cm_id_, ctx, RDMA_PS_TCP)) {
-    perror("rdma_create_id fail");
-    return -1;
-  }
-
-  struct addrinfo *res;
-  if (getaddrinfo(ip.c_str(), port.c_str(), NULL, &res) < 0) {
-    perror("getaddrinfo fail");
-    return -1;
-  }
-
-  struct addrinfo *t = nullptr;
-  for (t = res; t; t = t->ai_next) {
-    if (!rdma_resolve_addr(m_cm_id_, NULL, t->ai_addr, RESOLVE_TIMEOUT_MS)) {
-      break;
-    }
-  }
-  if (!t) {
-    perror("getaddrdma_resolve_addrrinfo fail");
-    return -1;
-  }
-
-  struct rdma_cm_event *event;
-  if (rdma_get_cm_event(m_cm_channel_, &event)) {
-    perror("rdma_get_cm_event fail");
-    return -1;
-  }
-
-  if (event->event != RDMA_CM_EVENT_ADDR_RESOLVED) {
-    perror("RDMA_CM_EVENT_ADDR_RESOLVED fail");
-    return -1;
-  }
-
-  rdma_ack_cm_event(event);
-
-  if (rdma_resolve_route(m_cm_id_, RESOLVE_TIMEOUT_MS)) {
-    perror("rdma_resolve_route fail");
-    return -1;
-  }
-
-  if (rdma_get_cm_event(m_cm_channel_, &event)) {
-    perror("rdma_get_cm_event fail");
-    return 1;
-  }
-
-  if (event->event != RDMA_CM_EVENT_ROUTE_RESOLVED) {
-    printf("aaa: %d\n", event->event);
-    perror("RDMA_CM_EVENT_ROUTE_RESOLVED fail");
-    return -1;
-  }
-
-  rdma_ack_cm_event(event);
-  if(pd) {
-    m_pd_ = pd;
-  } else {
-    m_pd_ = ibv_alloc_pd(m_cm_id_->verbs);
-    if (!m_pd_) {
-      perror("ibv_alloc_pd fail");
-      return -1;
-    }
-  }
-
-  struct ibv_comp_channel *comp_chan;
-  comp_chan = ibv_create_comp_channel(m_cm_id_->verbs);
-  if (!comp_chan) {
-    perror("ibv_create_comp_channel fail");
-    return -1;
-  }
-
-  if (cq) {
-    m_cq_ = cq;
-  } else {
-    m_cq_ = ibv_create_cq(m_cm_id_->verbs, 2, NULL, comp_chan, 0);
-    if (!m_cq_) {
-      perror("ibv_create_cq fail");
-      return -1;
-    }
-    
-
-    if (ibv_req_notify_cq(m_cq_, 0)) {
-      perror("ibv_req_notify_cq fail");
-      return -1;
-    }
-  }
-
-  struct ibv_qp_init_attr qp_attr = {};
-  qp_attr.cap.max_send_wr = 2;
-  qp_attr.cap.max_send_sge = 1;
-  qp_attr.cap.max_recv_wr = 1;
-  qp_attr.cap.max_recv_sge = 1;
-
-  qp_attr.send_cq = m_cq_;
-  qp_attr.recv_cq = m_cq_;
-  qp_attr.qp_type = IBV_QPT_RC;
-  if (rdma_create_qp(m_cm_id_, m_pd_, &qp_attr)) {
-    perror("rdma_create_qp fail");
-    return -1;
-  }
-
-  uint8_t access_type_ = access_type;
-  struct rdma_conn_param conn_param = {};
-  conn_param.responder_resources = 1;
-  conn_param.private_data = &access_type_;
-  conn_param.private_data_len = sizeof(access_type_);
-  conn_param.initiator_depth = 1;
-  conn_param.retry_count = 7;
-  if (rdma_connect(m_cm_id_, &conn_param)) {
-    perror("rdma_connect fail");
-    return -1;
-  }
-
-  if (rdma_get_cm_event(m_cm_channel_, &event)) {
-    perror("rdma_get_cm_event fail");
-    return -1;
-  }
-
-  if (event->event != RDMA_CM_EVENT_ESTABLISHED) {
-    perror("RDMA_CM_EVENT_ESTABLISHED fail");
-    return -1;
-  }
-
-  struct PData server_pdata;
-  memcpy(&server_pdata, event->param.conn.private_data, sizeof(server_pdata));
-
-  rdma_ack_cm_event(event);
-
-  m_server_cmd_msg_ = server_pdata.buf_addr;
-  m_server_cmd_rkey_ = server_pdata.buf_rkey;
-  if (access_type == CONN_FUSEE){
-    m_fusee_rkey = server_pdata.buf_rkey;
-  }
-  assert(server_pdata.size == sizeof(CmdMsgBlock));
-
-  // printf("private data, addr: %ld: rkey:%d, size: %d\n",
-  // server_pdata.buf_addr,
-  //        server_pdata.buf_rkey, server_pdata.size);
-
-  m_cmd_msg_ = new CmdMsgBlock();
-  memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
-  m_msg_mr_ = rdma_register_memory((void *)m_cmd_msg_, sizeof(CmdMsgBlock));
-  if (!m_msg_mr_) {
-    perror("ibv_reg_mr m_msg_mr_ fail");
-    return -1;
-  }
-
-  m_cmd_resp_ = new CmdMsgRespBlock();
-  memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));
-  m_resp_mr_ =
-      rdma_register_memory((void *)m_cmd_resp_, sizeof(CmdMsgRespBlock));
-  if (!m_resp_mr_) {
-    perror("ibv_reg_mr m_resp_mr_ fail");
-    return -1;
-  }
-
-  m_reg_buf_ = new char[MAX_REMOTE_SIZE];
-  m_reg_buf_mr_ = rdma_register_memory((void *)m_reg_buf_, MAX_REMOTE_SIZE);
-  if (!m_reg_buf_mr_) {
-    perror("ibv_reg_mr m_reg_buf_mr_ fail");
-    return -1;
-  }
-
-  return 0;
-}
-
 int RDMAConnection::init(const std::string ip, const std::string port, uint8_t access_type) {
     m_cm_channel_ = rdma_create_event_channel();
     if (!m_cm_channel_) {
@@ -723,9 +385,11 @@ bool RDMAConnection::remote_CAS(uint64_t swap, uint64_t *compare, uint64_t remot
     int ret = -1;
     struct ibv_wc wc;
     while (true) {
+        // printf("busy waiting\n");
+        
         if (TIME_DURATION_US(start, TIME_NOW) > RDMA_TIMEOUT_US) {
-        printf("rdma_remote_write timeout\n");
-        return -1;
+            printf("rdma_remote_write timeout\n");
+            return -1;
         }
         int rc = ibv_poll_cq(m_cq_, 1, &wc);
         if (rc > 0) {
@@ -968,7 +632,7 @@ bool RDMAConnection::update_section(region_e region, alloc_advise advise) {
     uint64_t section_offset = region.offset_/region_per_section;
     uint64_t region_offset = region.offset_%region_per_section;
     section_e section_old;
-    remote_read(&section_old, sizeof(section_old), section_offset_addr(section_offset), global_rkey_);
+    remote_read(&section_old, sizeof(section_old), section_metadata_addr(section_offset), global_rkey_);
     section_e section_new = section_old;
     if(advise == alloc_exclusive) {
         do{
@@ -977,7 +641,7 @@ bool RDMAConnection::update_section(region_e region, alloc_advise advise) {
             }
             section_new.alloc_map_ |= 1 << region_offset;
             section_new.class_map_ |= 1 << region_offset;
-        }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section_old, section_offset_addr(section_offset), global_rkey_));
+        }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section_old, section_metadata_addr(section_offset), global_rkey_));
         return true;
     } else if(advise == alloc_empty) {
         do{
@@ -986,7 +650,7 @@ bool RDMAConnection::update_section(region_e region, alloc_advise advise) {
             }
             section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
             section_new.class_map_ &= ~((bitmap32)1 << region_offset);
-        }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section_old, section_offset_addr(section_offset), global_rkey_));
+        }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section_old, section_metadata_addr(section_offset), global_rkey_));
         return true;
     } else if(advise == alloc_no_class) {
         do{
@@ -995,7 +659,7 @@ bool RDMAConnection::update_section(region_e region, alloc_advise advise) {
             }
             section_new.class_map_ &= ~((bitmap32)1 << region_offset);
             section_new.alloc_map_ |= 1 << region_offset;
-        }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section_old, section_offset_addr(section_offset), global_rkey_));
+        }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section_old, section_metadata_addr(section_offset), global_rkey_));
         return true;
     } else if(advise == alloc_class) {
         do{
@@ -1004,7 +668,7 @@ bool RDMAConnection::update_section(region_e region, alloc_advise advise) {
             }
             section_new.class_map_ |= 1 << region_offset;
             section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
-        }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section_old, section_offset_addr(section_offset), global_rkey_));
+        }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section_old, section_metadata_addr(section_offset), global_rkey_));
         return true;
     }
     return false;
@@ -1014,8 +678,8 @@ bool RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_of
     section_e section;
     if(advise == alloc_class) {
         for(int i = section_num_ - 1; i >= 0; i--) {
-            remote_read(&section, sizeof(section_e), section_offset_addr(i), global_rkey_);
-            if(section.class_map_ != ~(uint32_t)0){
+            remote_read(&section, sizeof(section_e), section_metadata_addr(i), global_rkey_);
+            if((section.class_map_ | section.alloc_map_) != ~(uint32_t)0){
                 alloc_section = section;
                 section_offset = i;
                 return true;
@@ -1023,8 +687,8 @@ bool RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_of
         }
     } else if(advise == alloc_no_class) {
         for(int i = section_num_ - 1; i >= 0; i--) {
-            remote_read(&section, sizeof(section_e), section_offset_addr(i), global_rkey_);
-            if(section.class_map_  != ~(uint32_t)0){
+            remote_read(&section, sizeof(section_e), section_metadata_addr(i), global_rkey_);
+            if((section.class_map_ | section.alloc_map_)  != ~(uint32_t)0){
                 alloc_section = section;
                 section_offset = i;
                 return true;
@@ -1032,7 +696,7 @@ bool RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_of
         }
     } else if (advise == alloc_empty) {
         for(int i = 0; i < section_num_; i++) {
-            remote_read(&section, sizeof(section_e), section_offset_addr(i), global_rkey_);
+            remote_read(&section, sizeof(section_e), section_metadata_addr(i), global_rkey_);
             if((section.class_map_ | section.alloc_map_ ) != ~(uint32_t)0){
                 alloc_section = section;
                 section_offset = i;
@@ -1050,11 +714,13 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         uint32_t free_map;
         int index;
         do {
-            free_map = alloc_section.class_map_;
-            // search no class block, from the lead
+            free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
             if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
-                printf("section has no free space!\n");
-                return false;
+                free_map = alloc_section.class_map_;
+                if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
+                    printf("section has no free space!\n");
+                    return false;
+                }
             }
             // if first alloc, do state update
             if(((alloc_section.alloc_map_>>index) & 1) != 0) {
@@ -1062,9 +728,9 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
             }
             new_section = alloc_section;
             new_section.alloc_map_ |= (1<<index);
-        }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_offset_addr(section_offset), global_rkey_));
+        }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_));
         alloc_section = new_section;
-        remote_read(&alloc_region, sizeof(region_e), region_offset_addr(section_offset*region_per_section+index), global_rkey_);
+        remote_read(&alloc_region, sizeof(region_e), region_metadata_addr(section_offset*region_per_section+index), global_rkey_);
         return true;
     }
     else if(block_class == 0 && shared == false) {
@@ -1072,19 +738,21 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         uint32_t free_map;
         int index;
         do {
-            free_map = alloc_section.class_map_;
-            // search exclusive block, from the tail
+            free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
             if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
-                printf("section has no free space!\n");
-                return false;
+                free_map = alloc_section.class_map_;
+                if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
+                    printf("section has no free space!\n");
+                    return false;
+                }
             }
             new_section = alloc_section;
             new_section.alloc_map_ |= (1<<index);
             new_section.class_map_ |= (1<<index);
-        }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_offset_addr(section_offset), global_rkey_));
+        }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_));
         alloc_section = new_section;
         region_e region_new, region_old;
-        remote_read(&region_old, sizeof(region_e), region_offset_addr(section_offset*region_per_section+index), global_rkey_);
+        remote_read(&region_old, sizeof(region_e), region_metadata_addr(section_offset*region_per_section+index), global_rkey_);
         do {
             region_new = region_old;
             if(region_new.exclusive_ == 1) {
@@ -1092,7 +760,7 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
                 return false;
             }
             region_new.exclusive_ = 1;
-        }while(!remote_CAS(*(uint64_t*)&region_new, (uint64_t*)&region_old, region_offset_addr(region_new.offset_), global_rkey_));
+        }while(!remote_CAS(*(uint64_t*)&region_new, (uint64_t*)&region_old, region_metadata_addr(region_new.offset_), global_rkey_));
         region_old = region_new;
         alloc_region = region_old;
         return true;
@@ -1103,10 +771,10 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         uint32_t fast_index = get_fast_region_index(section_offset, block_class);
         region_e region_new, region_old;
         fast_class_e class_region;
-        remote_read(&class_region, sizeof(fast_class_e), fast_region_offset_addr(fast_index), global_rkey_);
+        remote_read(&class_region, sizeof(fast_class_e), fast_region_metadata_addr(fast_index), global_rkey_);
         for(int i = 0; i < 4;i++){
             if((index = class_region.offset[i]) != 0){
-                remote_read(&region_old, sizeof(region_e), region_offset_addr(index), global_rkey_);
+                remote_read(&region_old, sizeof(region_e), region_metadata_addr(index), global_rkey_);
                 if(region_old.exclusive_ == 0 && region_old.block_class_ == block_class && region_old.class_map_ != bitmap16_filled) {
                     alloc_region = region_old;
                     return true;
@@ -1114,7 +782,7 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
                     fast_class_e new_class_region;
                     new_class_region = class_region;
                     new_class_region.offset[i] = 0;
-                    if(remote_CAS(*(uint64_t*)&new_class_region, (uint64_t*)&class_region, fast_region_offset_addr(fast_index), global_rkey_)){
+                    if(remote_CAS(*(uint64_t*)&new_class_region, (uint64_t*)&class_region, fast_region_metadata_addr(fast_index), global_rkey_)){
                         class_region = new_class_region;
                     }
                 }
@@ -1123,18 +791,20 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         uint32_t free_map;
         section_e new_section;
         do {
-            free_map = alloc_section.class_map_;
-            // search class block, from the tail
-            if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
-                printf("section has no free space!\n");
-                return false;
+            free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
+            if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
+                free_map = alloc_section.class_map_;
+                if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
+                    printf("section has no free space!\n");
+                    return false;
+                }
             }
             new_section = alloc_section;
             new_section.class_map_ |= (1<<index);
             new_section.alloc_map_ |= (0<<index);
-        }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_offset_addr(section_offset), global_rkey_));
+        }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_));
         alloc_section = new_section;
-        remote_read(&region_old, sizeof(region_e), region_offset_addr(section_offset*region_per_section+index), global_rkey_);
+        remote_read(&region_old, sizeof(region_e), region_metadata_addr(section_offset*region_per_section+index), global_rkey_);
         // do {
         //     region_new = region_old;
         //     if(region_new.exclusive_ == 1) {
@@ -1158,18 +828,20 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         uint32_t free_map;
         section_e new_section;
         do {
-            free_map = alloc_section.class_map_;
-            // search class block, from the tail
-            if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
-                printf("section has no free space!\n");
-                return false;
+            free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
+            if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
+                free_map = alloc_section.class_map_;
+                if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
+                    printf("section has no free space!\n");
+                    return false;
+                }
             }
             new_section = alloc_section;
             new_section.class_map_ |= (1<<index);
             new_section.alloc_map_ |= (1<<index);
-        }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_offset_addr(section_offset), global_rkey_));
+        }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_));
         alloc_section = new_section;
-        remote_read(&region_old, sizeof(region_e), region_offset_addr(section_offset*region_per_section+index), global_rkey_);
+        remote_read(&region_old, sizeof(region_e), region_metadata_addr(section_offset*region_per_section+index), global_rkey_);
         // do {
         //     region_new = region_old;
         //     if(region_new.exclusive_ == 1) {
@@ -1193,7 +865,7 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
 bool RDMAConnection::try_add_fast_region(uint32_t section_offset, uint32_t block_class, region_e &alloc_region){
     bool replace = true; uint32_t fast_index = get_fast_region_index(section_offset, block_class);
     fast_class_e class_region;
-    remote_read(&class_region, sizeof(fast_class_e), fast_region_offset_addr(fast_index), global_rkey_);
+    remote_read(&class_region, sizeof(fast_class_e), fast_region_metadata_addr(fast_index), global_rkey_);
     fast_class_e new_class_region = class_region;
     for(int i = 0; i < 4;i++){
         if(class_region.offset[i] == 0) {
@@ -1205,7 +877,7 @@ bool RDMAConnection::try_add_fast_region(uint32_t section_offset, uint32_t block
                 }
                 new_class_region = class_region;
                 new_class_region.offset[i] = alloc_region.offset_;
-            }while(!remote_CAS(*(uint64_t*)&new_class_region, (uint64_t*)&class_region, fast_region_offset_addr(fast_index), global_rkey_));
+            }while(!remote_CAS(*(uint64_t*)&new_class_region, (uint64_t*)&class_region, fast_region_metadata_addr(fast_index), global_rkey_));
             if(replace) return true;
         }
     }
@@ -1230,7 +902,7 @@ bool RDMAConnection::fetch_large_region(section_e &alloc_section, uint32_t secti
                 section_new.alloc_map_ |= mask;
                 section_new.class_map_ |= mask;
                 // find the section header changed
-                if(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&alloc_section, section_offset_addr(section_offset), global_rkey_)){
+                if(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_)){
                     i = 0; free_length = 0; free_map = alloc_section.alloc_map_ | alloc_section.class_map_;
                     continue;
                 }
@@ -1258,7 +930,7 @@ bool RDMAConnection::set_region_exclusive(region_e &alloc_region) {
             return false;
         }
         new_region.exclusive_ = 1;
-    } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_offset_addr(new_region.offset_), global_rkey_));
+    } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(new_region.offset_), global_rkey_));
     alloc_region = new_region;
     return true;
 }
@@ -1277,7 +949,7 @@ bool RDMAConnection::set_region_empty(region_e &alloc_region) {
         }
         new_region.exclusive_ = 0;
         new_region.block_class_ = 0;
-    } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_offset_addr(new_region.offset_), global_rkey_));
+    } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(new_region.offset_), global_rkey_));
     alloc_region = new_region;
     if(!update_section(alloc_region, alloc_empty)){
         return false;
@@ -1303,7 +975,7 @@ bool RDMAConnection::init_region_class(region_e &alloc_region, uint32_t block_cl
         }
         new_region.class_map_ = ~mask;
         new_region.block_class_ = block_class;
-    } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_offset_addr(new_region.offset_), global_rkey_));
+    } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(new_region.offset_), global_rkey_));
     alloc_region = new_region;
     return true;
 }
@@ -1312,7 +984,7 @@ bool RDMAConnection::fetch_region_block(region_e &alloc_region, uint64_t &addr, 
     int index; region_e new_region;
     do{
         if(alloc_region.exclusive_ != is_exclusive || alloc_region.block_class_ != 0) {
-            printf("state wrong\n");
+            printf("state wrong, addr = %lx, exclusive = %d, class = %u\n", get_region_addr(alloc_region), alloc_region.exclusive_, alloc_region.block_class_);
             return false;
         } 
         new_region = alloc_region;
@@ -1320,7 +992,7 @@ bool RDMAConnection::fetch_region_block(region_e &alloc_region, uint64_t &addr, 
             return false;
         }
         new_region.base_map_ |= 1<<index;
-    } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_offset_addr(new_region.offset_), global_rkey_));
+    } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(new_region.offset_), global_rkey_));
     alloc_region = new_region;
     addr = get_region_block_addr(alloc_region, index);
     rkey = get_region_block_rkey(alloc_region, index); 
@@ -1347,7 +1019,7 @@ bool RDMAConnection::fetch_region_class_block(region_e &alloc_region, uint32_t b
         }
         new_region.base_map_ |= mask;
         new_region.class_map_ |= 1<<index;
-    } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_offset_addr(new_region.offset_), global_rkey_));
+    } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(new_region.offset_), global_rkey_));
     alloc_region = new_region;
     addr = get_region_block_addr(alloc_region, index*(block_class + 1));
     rkey = get_region_class_block_rkey(alloc_region, index*(block_class + 1));
