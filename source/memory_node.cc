@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
- * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-21 22:35:14
+ * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-11-23 14:55:12
  * @FilePath: /rmalloc_newbase/source/memory_node.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -120,7 +120,7 @@ bool MemoryNode::start(const std::string addr, const std::string port) {
       return false;
     }
 
-    if (rdma_listen(m_listen_id_, 1024)) {
+    if (rdma_listen(m_listen_id_, 2048)) {
       perror("rdma_listen fail");
       return false;
     }
