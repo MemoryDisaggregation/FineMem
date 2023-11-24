@@ -117,6 +117,10 @@ public:
         }
     }
 
+    static bool fetch_cache_interface(cpu_cache* obj, uint64_t &addr, uint32_t &rkey) {
+        return obj->fetch_cache(addr, rkey);
+    }
+
     bool fetch_cache(uint32_t nproc, uint64_t &addr, uint32_t &rkey){
         // just fetch one block in the current cpu_id --> ring buffer
         while(get_length(nproc) == 0) ;
@@ -135,6 +139,10 @@ public:
         }
     }
 
+    static bool fetch_cache_interface(cpu_cache* obj, uint32_t nproc, uint64_t &addr, uint32_t &rkey){
+        return obj->fetch_cache(nproc, addr, rkey);
+    }
+
     void add_cache(uint32_t nproc, uint64_t addr, uint32_t rkey){
         // host side fill cache, add write pointer
         uint32_t writer = cpu_cache_content_->writer[nproc];
@@ -143,6 +151,10 @@ public:
             cpu_cache_content_->items[nproc][writer].addr = addr;
             cpu_cache_content_->writer[nproc] = (writer + 1) % max_item;
         }
+    }
+
+    static void add_cache_interface(cpucache* obj, uint32_t nproc, uint64_t addr, uint32_t rkey){
+        return obj->add_cache(nproc, addr, rkey);
     }
 
     void add_free_cache(uint64_t addr) {
@@ -156,6 +168,10 @@ public:
             cpu_cache_content_->free_items[nproc][writer] = addr;
             cpu_cache_content_->free_writer[nproc] = (writer + 1) % max_item;
         }
+    }
+
+    static void add_free_cache_interface(cpucache* obj, uint64_t addr) {
+        return obj->add_free_cache(addr);
     }
 
     bool fetch_free_cache(uint32_t nproc, uint64_t &addr) {
@@ -174,6 +190,10 @@ public:
             cpu_cache_content_->free_reader[nproc] = (reader + 1) % max_item;
             return false;
         }
+    }
+
+    static bool fetch_free_cache_interface(cpucache* obj, uint32_t nproc, uint64_t &addr){
+        return obj->fetch_free_cache(nproc, addr);
     }
 
     inline uint32_t get_length(uint32_t nproc) {
@@ -198,4 +218,31 @@ private:
     uint64_t cache_size_;
 };
 
+cpu_cache cache_;
+
 }
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+int cpucache_alloc(unsigned long long *addr, unsigned int *rkey){
+    uint64_t addr_;
+    uint32_t rkey_;
+    if(mrmalloc::cpu_cache::fetch_cache_interface(&cache_, addr_, rkey)) {
+        *addr = addr_;
+        *rkey = rkey_;
+        return 0;
+    } else {
+        return -1;
+    }
+}
+
+void cpucache_free(unsigned long long addr, unsigned int rkey) {
+    return mrmalloc::cpu_cache::add_cache_interface(&obj, addr, rkey);
+}
+
+#ifdef __cplusplus
+}
+#endif
