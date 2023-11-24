@@ -52,7 +52,6 @@ bool ComputingNode::start(const std::string addr, const std::string port){
     // init free queue manager, using REMOTE_BLOCKSIZE as init size
     set_global_rkey(m_rdma_conn_->get_global_rkey());
     // if(one_side_enabled_) {
-    //   m_one_side_info_ = m_rdma_conn_->get_one_side_info();
     //   header_list = (block_header*)malloc(m_one_side_info_.m_block_num*sizeof(block_header));
     //   rkey_list = (uint32_t*)malloc(m_one_side_info_.m_block_num*sizeof(uint32_t));
     //   update_mem_metadata();
@@ -60,7 +59,23 @@ bool ComputingNode::start(const std::string addr, const std::string port){
     // }
     running = 1;
     if(heap_enabled_ && one_side_enabled_) {
+
         bool ret;
+        m_one_side_info_ = m_rdma_conn_->get_one_side_info();
+        block_size_ = m_one_side_info_.block_size_;
+        block_num_ = m_one_side_info_.block_num_;
+        region_size_ = block_size_ * block_per_region;
+        region_num_ = block_num_ / block_per_region;
+        section_size_ = region_size_ * region_per_section;
+        section_num_ = region_num_ / region_per_section;
+
+        section_header_ = m_one_side_info_.section_header_;
+        fast_region_ = (uint64_t)((section_e*)section_header_ + section_num_);
+        region_header_ = (uint64_t)((fast_class*)fast_region_ + block_class_num*section_num_);
+        block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
+        class_block_rkey_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
+        heap_start_ = m_one_side_info_.heap_start_;
+
         ret = new_cache_section(0);
         ret &= new_cache_region(0);
         cache_watermark_high = 0.9;
@@ -203,11 +218,13 @@ bool ComputingNode::new_cache_section(uint32_t block_class){
 
 bool ComputingNode::new_cache_region(uint32_t block_class) {
     if(block_class == 0){
-        while(!m_rdma_conn_->fetch_region(current_section_, current_section_index_, block_class, true, current_region_) ) {
+        // exclusive, and fetch rkey must
+        while(!m_rdma_conn_->fetch_region(current_section_, current_section_index_, block_class, false, current_region_.region) ) {
             if(!new_cache_section(block_class)){
                 return false;
             }
         }
+        m_rdma_conn_->fetch_exclusive_region_rkey(current_region_.region, current_region_.rkey);
     } else {
         while(!m_rdma_conn_->fetch_region(current_section_, current_section_index_, block_class, true, current_class_region_[block_class]) ) {
             if(!new_cache_section(block_class)) {
@@ -222,13 +239,22 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
     if(block_class == 0){
         uint32_t length =  ring_buffer_length();
         for(int i = 0; i< cache_upper_bound - length; i++){
-            while(!m_rdma_conn_->fetch_region_block(current_region_, ring_cache[writer].addr, ring_cache[writer].rkey, false)) {
-                // fetch new region
-                printf("fetch new region\n");
+            if(current_region_.region.base_map_ != bitmap32_filled) {
+                int index = find_free_index_from_bitmap32_tail(current_region_.region.base_map_);
+                ring_cache[writer].addr = get_region_block_addr(current_region_.region, index);
+                ring_cache[writer].rkey = current_region_.rkey[index];
+            } else {
+                printf("no backup region, just fetch new region\n");
+                exclusive_region_[current_region_.region.offset_] = current_region_;
                 new_cache_region(block_class);
+                // while(!m_rdma_conn_->fetch_region_block(backup_region_, ring_cache[writer].addr, ring_cache[writer].rkey, false)) {
+                //     // fetch new region
+                //     printf("fetch new region\n");
+                //     new_cache_region(block_class);
+                // }
             }
             printf("fill cache:%lx\n", ring_cache[writer].addr);
-            if(use_global_rkey_) ring_cache[writer].rkey = get_global_rkey();
+            // if(use_global_rkey_) ring_cache[writer].rkey = get_global_rkey();
             writer = (writer+1) % ring_buffer_size;
         }
     } else {
@@ -263,7 +289,7 @@ bool ComputingNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
 
 bool ComputingNode::fetch_mem_block_nocached(uint64_t &addr, uint32_t &rkey){
     // while(ring_buffer_length() == 0);
-    while(!m_rdma_conn_->fetch_region_block(current_region_, addr,rkey, false)) {
+    while(!m_rdma_conn_->fetch_region_block(current_region_.region, addr,rkey, false)) {
         // fetch new region
         // printf("fetch new region\n");
         new_cache_region(0);

@@ -509,21 +509,10 @@ bool RemoteHeap::init_mw(ibv_qp *qp, ibv_cq *cq) {
   for(int i = 0; i < block_num_; i++){
     uint64_t block_addr_ = queue_manager_->get_block_addr(i);
     block_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
-    // printf("start bind block mw: %lx ", block_addr_);
     bind_mw(block_mw[i], block_addr_, REMOTE_MEM_SIZE, qp, cq);
-    // printf("first time: %u ", block_mw[i]->rkey);
-    // unbind_mw_type2(block_mw[i], block_addr_, REMOTE_MEM_SIZE, qp, cq);
     bind_mw(block_mw[i], block_addr_, REMOTE_MEM_SIZE, qp, cq);
-    // printf("second time: %u\n", block_mw[i]->rkey);
     queue_manager_->set_block_rkey(i, block_mw[i]->rkey);
-    // for (int j = 0; j < base_num; j ++){
-    //   uint64_t index = i * base_num + j;
-    //   base_mw[index] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
-    //   // printf("start bind base mw: %lx\n", block_addr_ + j * base_block_size);
-    //   bind_mw(base_mw[index], block_addr_ + j * base_block_size, base_block_size, qp, cq);
-    //   bind_mw(base_mw[index], block_addr_ + j * base_block_size, base_block_size, qp, cq);
-    //   queue_manager_->set_block_base_rkey(i, j, base_mw[index]->rkey);
-    // }
+
   }
   // sleep(10);
   printf("bind finished\n");

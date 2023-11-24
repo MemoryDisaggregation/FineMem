@@ -27,8 +27,11 @@ public:
     struct cpu_cache_storage {
         uint64_t block_size;
         item items[nprocs][max_item];
+        uint64_t free_items[nprocs][max_item];
         uint32_t reader[nprocs];
+        uint32_t free_reader[nprocs];
         uint32_t writer[nprocs];
+        uint32_t free_writer[nprocs];
     };
 
     cpu_cache() {
@@ -58,10 +61,12 @@ public:
             for (int i = 0; i < nprocs; i++) {
                 cpu_cache_content_->reader[i] = 0;
                 cpu_cache_content_->writer[i] = 0;
+                cpu_cache_content_->free_reader[i] = 0;
+                cpu_cache_content_->free_writer[i] = 0;
                 for(int j = 0; j < max_item; j++) {
                     cpu_cache_content_->items[i][j].addr = -1;
                     cpu_cache_content_->items[i][j].rkey = 0;
-                    // content_[i * max_item + j].addr = -1;
+                    cpu_cache_content_->free_items[i][j] = -1;
                 }
             }
             cpu_cache_content_->block_size = cache_size_;
@@ -91,12 +96,12 @@ public:
 
     bool fetch_cache(uint64_t &addr, uint32_t &rkey){
         // just fetch one block in the current cpu_id --> ring buffer
-        unsigned cpu; unsigned nproc;
+        unsigned nproc;
         if((nproc = sched_getcpu()) == -1){
             printf("sched_getcpu bad \n");
             return false;
         }
-        while(cpu_cache_content_->reader[nproc] == cpu_cache_content_->writer[nproc]) ;
+        while(get_length(nproc) == 0) ;
         uint32_t reader = cpu_cache_content_->reader[nproc];
         item fetch_one = cpu_cache_content_->items[nproc][reader];
         if(fetch_one.addr != -1 && fetch_one.rkey != 0) {
@@ -114,7 +119,7 @@ public:
 
     bool fetch_cache(uint32_t nproc, uint64_t &addr, uint32_t &rkey){
         // just fetch one block in the current cpu_id --> ring buffer
-        while(cpu_cache_content_->reader[nproc] == cpu_cache_content_->writer[nproc]) ;
+        while(get_length(nproc) == 0) ;
         uint32_t reader = cpu_cache_content_->reader[nproc];
         item fetch_one = cpu_cache_content_->items[nproc][reader];
         if(fetch_one.addr != -1 && fetch_one.rkey != 0) {
@@ -140,7 +145,38 @@ public:
         }
     }
 
-    uint32_t get_length(uint32_t nproc) {
+    void add_free_cache(uint64_t addr) {
+         unsigned nproc;
+        if((nproc = sched_getcpu()) == -1){
+            printf("sched_getcpu bad \n");
+            return;
+        }
+        uint32_t writer = cpu_cache_content_->free_writer[nproc];
+        if(cpu_cache_content_->free_items[nproc][writer] == -1){
+            cpu_cache_content_->free_items[nproc][writer] = addr;
+            cpu_cache_content_->free_writer[nproc] = (writer + 1) % max_item;
+        }
+    }
+
+    bool fetch_free_cache(uint32_t nproc, uint64_t &addr) {
+        if(get_length(nproc) == 0) {
+            return false;
+        } 
+        uint32_t reader = cpu_cache_content_->free_reader[nproc];
+        uint64_t fetch_one = cpu_cache_content_->free_items[nproc][reader];
+        if(fetch_one != -1 ) {
+            addr = fetch_one;
+            cpu_cache_content_->free_items[nproc][reader] = -1;
+            cpu_cache_content_->free_reader[nproc] = (reader + 1) % max_item;
+            return true;
+        }
+        else{
+            cpu_cache_content_->free_reader[nproc] = (reader + 1) % max_item;
+            return false;
+        }
+    }
+
+    inline uint32_t get_length(uint32_t nproc) {
         uint32_t writer = cpu_cache_content_->writer[nproc];
         uint32_t reader = cpu_cache_content_->reader[nproc];
         if (writer == reader) {

@@ -85,6 +85,12 @@ struct region_e {
 
 typedef std::atomic<region_e> region;
 
+struct region_with_rkey {
+    region_e region;
+    uint32_t rkey[block_per_region];
+};
+
+
 struct large_block_lockless {
     uint64_t bitmap;
     block_header_e header[large_block_items];

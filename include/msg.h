@@ -84,6 +84,32 @@ public:
     uint32_t size;
 };
 
+class ClassBindRequest : public RequestsMsg{
+public:
+    uint16_t region_offset;
+    uint16_t block_class;
+};
+CHECK_RDMA_MSG_SIZE(ClassBindRequest);
+
+class ClassBindResponse : public ResponseMsg {
+public:
+    uint32_t rkey;
+};
+CHECK_RDMA_MSG_SIZE(ClassBindResponse);
+
+class RebindBlockRequest : public RequestsMsg{
+public:
+    uint64_t addr[4];
+    uint16_t block_class;
+};
+CHECK_RDMA_MSG_SIZE(RebindBlockRequest);
+
+class RebindBlockResponse : public ResponseMsg {
+public:
+    uint32_t rkey[4];
+};
+CHECK_RDMA_MSG_SIZE(RebindBlockResponse);
+
 class RegisterRequest : public RequestsMsg {
 public:
     uint64_t size;

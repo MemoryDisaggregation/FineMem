@@ -76,7 +76,8 @@ public:
             return reader > writer ? ring_buffer_size - reader + writer : writer - reader;
         }
     };
-
+    
+    inline uint64_t get_region_block_addr(region_e region, uint32_t block_offset) {return heap_start_ + region.offset_ * region_size_ + block_offset * block_size_;} ;
     bool new_cache_section(uint32_t block_class);
     bool new_cache_region(uint32_t block_class);
     bool fill_cache_block(uint32_t block_class);
@@ -118,14 +119,32 @@ private:
     uint8_t running;
     bool use_global_rkey_;
     uint32_t global_rkey_;
-
+    
     pthread_t pre_fetch_thread_;
     pthread_t cache_fill_thread_;
 
+    uint64_t block_size_;
+    uint64_t block_num_;
+    uint64_t region_size_;
+    uint64_t region_num_;
+    uint64_t section_size_;
+    uint64_t section_num_;
+
+    // info before heap segment
+    uint64_t section_header_;
+    uint64_t fast_region_;
+    uint64_t region_header_;
+    uint64_t block_rkey_;
+    uint64_t class_block_rkey_;
+    uint64_t heap_start_;
+
     // << allocation metadata >>
+    one_side_info m_one_side_info_;
     section_e current_section_;
     uint32_t current_section_index_;
-    region_e current_region_;
+    region_with_rkey current_region_;
+    std::unordered_map<uint16_t, region_with_rkey> exclusive_region_;
+    region_e backup_region_;
     region_e current_class_region_[16];
 
     // << reserved block cache>>
@@ -149,7 +168,7 @@ private:
     uint8_t heap_worker_num_;
 
     // << one-side metadata >>
-    one_side_info m_one_side_info_;
+
     block_header_e* header_list;
     uint32_t* rkey_list;
     uint64_t last_alloc_;

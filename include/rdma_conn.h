@@ -76,7 +76,11 @@ public:
     bool try_add_fast_region(uint32_t section_offset, uint32_t block_class, region_e &alloc_region);
     bool set_region_exclusive(region_e &alloc_region);
     bool set_region_empty(region_e &alloc_region);
-    
+    bool fetch_exclusive_region_rkey(region_e &alloc_region, uint32_t* rkey_list) {
+        remote_read(rkey_list, sizeof(uint32_t)*block_per_region, block_rkey_ + alloc_region.offset_*block_per_region*sizeof(uint32_t), global_rkey_);
+        return true;
+    }
+
     inline uint32_t get_fast_region_index(uint32_t section_offset, uint32_t block_class) {return section_offset/4*block_class_num + block_class;};
     inline uint64_t get_section_region_addr(uint32_t section_offset, uint32_t region_offset) {return heap_start_ + section_offset*section_size_ + region_offset * region_size_ ;};
     inline uint64_t get_region_addr(region_e region) {return heap_start_ + region.offset_ * region_size_;};

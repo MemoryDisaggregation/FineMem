@@ -184,12 +184,21 @@ bool ConnectionManager::fetch_region_block(region_e &alloc_region, uint64_t &add
     m_rpc_conn_queue_->enqueue(conn);
     return ret;  
 }
+
 bool ConnectionManager::fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
     bool ret = conn->fetch_region_class_block(alloc_region, block_class, addr, rkey, is_exclusive);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;      
+}
+
+bool ConnectionManager::fetch_exclusive_region_rkey(region_e &alloc_region, uint32_t* rkey_list) {
+    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+    assert(conn != nullptr);
+    bool ret = conn->fetch_exclusive_region_rkey(alloc_region, rkey_list);
+    m_rpc_conn_queue_->enqueue(conn);
+    return ret;
 }
 
 }  // namespace kv

@@ -414,19 +414,12 @@ int MemoryNode::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
         } else {
             assert(m_worker_info_[num] == nullptr);
             m_worker_info_[num] = new WorkerInfo();
-            // cmd_msg = m_worker_info_[num%MAX_SERVER_WORKER]->cmd_msg;
-            // cmd_resp = m_worker_info_[num%MAX_SERVER_WORKER]->cmd_resp_msg;
-            // msg_mr = m_worker_info_[num%MAX_SERVER_WORKER]->msg_mr;
-            // resp_mr = m_worker_info_[num%MAX_SERVER_WORKER]->resp_mr;
             m_worker_info_[num]->cmd_msg = cmd_msg;
             m_worker_info_[num]->cmd_resp_msg = cmd_resp;
             m_worker_info_[num]->msg_mr = msg_mr;
             m_worker_info_[num]->resp_mr = resp_mr;
             m_worker_info_[num]->cm_id = cm_id;
             m_worker_info_[num]->cq = cq;
-
-            // assert(m_worker_threads_[num] == nullptr);
-
         } 
         rep_pdata.id = num;
         m_worker_num_ += 1;
@@ -457,7 +450,7 @@ int MemoryNode::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
     }
     
     if(!mw_binded) {
-        // init_mw(cm_id->qp, cq);
+        init_mw(cm_id->qp, cq);
         mw_binded = true;
     }
     return 0;
@@ -465,25 +458,17 @@ int MemoryNode::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
 
 bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
 
-    ServerBlockManagerv2* queue_manager_ = (ServerBlockManagerv2*)server_block_manager_;
-
-    uint64_t block_num_ = queue_manager_->get_block_num() * large_block_items ;
+    uint64_t block_num_ = server_block_manager_->get_block_num() ;
 
     block_mw = (ibv_mw**)malloc(block_num_ * sizeof(uint64_t));
 
-
     for(int i = 0; i < block_num_; i++){
-        uint64_t block_addr_ = queue_manager_->get_block_addr(i);
+        uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
         block_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
-        // printf("start bind block mw: %lx ", block_addr_);
-        bind_mw(block_mw[i], block_addr_, REMOTE_MEM_SIZE, qp, cq);
-        // printf("first time: %u ", block_mw[i]->rkey);
-        // unbind_mw_type2(block_mw[i], block_addr_, REMOTE_MEM_SIZE, qp, cq);
-        bind_mw(block_mw[i], block_addr_, REMOTE_MEM_SIZE, qp, cq);
-        // printf("second time: %u\n", block_mw[i]->rkey);
-        queue_manager_->set_block_rkey(i, block_mw[i]->rkey);
+        bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
+        bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
+        server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
     }
-    // sleep(10);
     printf("bind finished\n");
 
     return true;
@@ -530,111 +515,6 @@ bool MemoryNode::bind_mw(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, i
                 }
             }
         }
-    return true;
-}
-
-bool MemoryNode::bind_mw_type2(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq* cq){
-    if(mw == NULL){
-    // assert(size == base_block_size);
-        int index = (addr - heap_start_addr_)/base_block_size;
-        // if(m_mw_handler[index] == NULL) 
-        m_mw_handler[index] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_2);
-        printf("addr:%lx rkey_old: %u",  addr, m_mw_handler[index]->rkey);
-        // uint32_t newkey = ibv_inc_rkey(m_mw_handler[i]->rkey);
-        mw = m_mw_handler[index];
-    }
-
-    struct ibv_send_wr wr_ = {};
-    struct ibv_send_wr* bad_wr_;
-    wr_.wr_id = 0;
-    wr_.num_sge = 0;
-    wr_.next = NULL;
-    wr_.opcode = IBV_WR_BIND_MW;
-    wr_.sg_list = NULL;
-    wr_.send_flags = IBV_SEND_SIGNALED;
-    wr_.bind_mw.mw = mw;
-    wr_.bind_mw.rkey = mw->rkey;
-    wr_.bind_mw.bind_info.addr = addr;
-    wr_.bind_mw.bind_info.length = size;
-    wr_.bind_mw.bind_info.mr = global_mr_;
-    wr_.bind_mw.bind_info.mw_access_flags = IBV_ACCESS_REMOTE_READ | 
-                                IBV_ACCESS_REMOTE_WRITE;
-    // printf("try to bind with rkey: %d, old_rkey is %d, old mw is %d\n", mw->rkey, mw->rkey, mw->rkey);
-    if (ibv_post_send(qp, &wr_, &bad_wr_)) {
-        perror("ibv_post_send mw_bind fail");
-    } else {
-        while (true) {
-            ibv_wc wc;
-            int rc = ibv_poll_cq(cq, 1, &wc);
-            if (rc > 0) {
-            if (IBV_WC_SUCCESS == wc.status) {
-
-                // printf("bind success! rkey = %d, mw.rkey = %d \n", wr_.bind_mw.rkey, mw->rkey);
-                break;
-            } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
-                perror("cmd_send IBV_WC_WR_FLUSH_ERR");
-                break;
-            } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
-                perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
-                break;
-            } else {
-                perror("cmd_send ibv_poll_cq status error");
-                printf("%d\n", wc.status);
-                break;
-            }
-            } else if (0 == rc) {
-            continue;
-            } else {
-            perror("ibv_poll_cq fail");
-            break;
-            }
-        }
-    }
-    return true;
-}
-
-bool MemoryNode::unbind_mw_type2(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq* cq){
-
-    struct ibv_send_wr wr_ = {};
-    struct ibv_send_wr* bad_wr_;
-    wr_.wr_id = 0;
-    wr_.num_sge = 0;
-    wr_.next = NULL;
-    wr_.opcode = IBV_WR_LOCAL_INV;
-    wr_.sg_list = NULL;
-    wr_.send_flags = IBV_SEND_SIGNALED;
-    wr_.invalidate_rkey = mw->rkey;
-    // printf("try to bind with rkey: %d, old_rkey is %d, old mw is %d\n", mw->rkey, mw->rkey, mw->rkey);
-    if (ibv_post_send(qp, &wr_, &bad_wr_)) {
-        perror("ibv_post_send mw_bind fail");
-    } else {
-        while (true) {
-            ibv_wc wc;
-            int rc = ibv_poll_cq(cq, 1, &wc);
-            if (rc > 0) {
-            if (IBV_WC_SUCCESS == wc.status) {
-
-                // printf("bind success! rkey = %d, mw.rkey = %d \n", wr_.bind_mw.rkey, mw->rkey);
-                break;
-            } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
-                perror("cmd_send IBV_WC_WR_FLUSH_ERR");
-                break;
-            } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
-                perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
-                break;
-            } else {
-                perror("cmd_send ibv_poll_cq status error");
-                printf("%d\n", wc.status);
-                break;
-            }
-            } else if (0 == rc) {
-            continue;
-            } else {
-            perror("ibv_poll_cq fail");
-            break;
-            }
-        }
-    }
     return true;
 }
 
@@ -757,70 +637,69 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
         cmd_resp->notify = NOTIFY_WORK;
         active_id = -1;
         if (request->type == MSG_REGISTER) {
-        /* handle memory register requests */
-        RegisterRequest *reg_req = (RegisterRequest *)request;
-        // printf("receive a memory register message, size: %ld\n",
-        // reg_req->size);
-        RegisterResponse *resp_msg = (RegisterResponse *)cmd_resp;
-        if (allocate_and_register_memory(resp_msg->addr, resp_msg->rkey,
-                                        reg_req->size)) {
-            resp_msg->status = RES_FAIL;
-        } else {
-            resp_msg->status = RES_OK;
-        }
-        /* write response */
-        remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
-                    sizeof(CmdMsgRespBlock), reg_req->resp_addr,
-                    reg_req->resp_rkey);
+            /* handle memory register requests */
+            RegisterRequest *reg_req = (RegisterRequest *)request;
+            // printf("receive a memory register message, size: %ld\n",
+            // reg_req->size);
+            RegisterResponse *resp_msg = (RegisterResponse *)cmd_resp;
+            if (allocate_and_register_memory(resp_msg->addr, resp_msg->rkey,
+                                            reg_req->size)) {
+                resp_msg->status = RES_FAIL;
+            } else {
+                resp_msg->status = RES_OK;
+            }
+            /* write response */
+            remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                        sizeof(CmdMsgRespBlock), reg_req->resp_addr,
+                        reg_req->resp_rkey);
         } else if (request->type == MSG_FETCH_FAST) {
-        /* handle memory fetch requests */
-        // printf("receive a memory fetch message\n");
-        FetchBlockResponse *resp_msg = (FetchBlockResponse *)cmd_resp;
-        uint64_t addr;
-        uint32_t rkey;
-        while(!mw_binded) ;
-        if (fetch_mem_block(addr, rkey)) {
-            resp_msg->status = RES_OK;
-            resp_msg->addr = addr;
-            resp_msg->rkey = rkey;
-            resp_msg->size = server_block_manager_->get_block_size();
-        } else {
-            resp_msg->status = RES_FAIL;
-        }
-        printf("fetch memory, addr: %lx, rkey: %d, start addr: %lx, global rkey: %u\n", resp_msg->addr,
-                 resp_msg->rkey, heap_start_addr_, global_mr_->rkey);
-        /* write response */
-        remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
-                    sizeof(CmdMsgRespBlock), request->resp_addr,
-                    request->resp_rkey);
+            /* handle memory fetch requests */
+            // printf("receive a memory fetch message\n");
+            FetchBlockResponse *resp_msg = (FetchBlockResponse *)cmd_resp;
+            uint64_t addr;
+            uint32_t rkey;
+            while(!mw_binded) ;
+            if (fetch_mem_block(addr, rkey)) {
+                resp_msg->status = RES_OK;
+                resp_msg->addr = addr;
+                resp_msg->rkey = rkey;
+                resp_msg->size = server_block_manager_->get_block_size();
+            } else {
+                resp_msg->status = RES_FAIL;
+            }
+            printf("fetch memory, addr: %lx, rkey: %d, start addr: %lx, global rkey: %u\n", resp_msg->addr,
+                    resp_msg->rkey, heap_start_addr_, global_mr_->rkey);
+            /* write response */
+            remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                        sizeof(CmdMsgRespBlock), request->resp_addr,
+                        request->resp_rkey);
         } else if (request->type == MSG_MW_BIND) {
-        // Attension: no actual used at the critical path
-        // TODO: bind memory window, generate new rkey
-        // TODO: bath to rebind
+            // Attension: no actual used at the critical path
+            // TODO: bind memory window, generate new rkey
+            // TODO: bath to rebind
         } else if (request->type == RPC_FUSEE_SUBTABLE){
-        uint64_t addr = rpc_fusee_->mm_alloc_subtable();
-        // uint32_t rkey = rpc_fusee_->get_rkey();
-        uint32_t rkey = get_global_rkey();
-        FuseeSubtableResponse* resp_msg = (FuseeSubtableResponse*)cmd_resp;
-        if(addr != 0){
-            resp_msg->addr = addr;
-            resp_msg->rkey = rkey;
-            resp_msg->status = RES_OK;
-        } else {
-            resp_msg->status = RES_FAIL;
-        }
-        remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
-            sizeof(CmdMsgRespBlock), request->resp_addr,
-            request->resp_rkey);
-        }
+            uint64_t addr = rpc_fusee_->mm_alloc_subtable();
+            uint32_t rkey = get_global_rkey();
+            FuseeSubtableResponse* resp_msg = (FuseeSubtableResponse*)cmd_resp;
+            if(addr != 0){
+                resp_msg->addr = addr;
+                resp_msg->rkey = rkey;
+                resp_msg->status = RES_OK;
+            } else {
+                resp_msg->status = RES_FAIL;
+            }
+            remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                sizeof(CmdMsgRespBlock), request->resp_addr,
+                request->resp_rkey);
+            }
         else if (request->type == MSG_UNREGISTER) {
-        /* handle memory unregister requests */
-        UnregisterRequest *unreg_req = (UnregisterRequest *)request;
-        printf("receive a memory unregister message, addr: %ld\n",
+            /* handle memory unregister requests */
+            UnregisterRequest *unreg_req = (UnregisterRequest *)request;
+            printf("receive a memory unregister message, addr: %ld\n",
                 unreg_req->addr);
-        // TODO: implemente memory unregister
+            // TODO: implemente memory unregister
         } else {
-        printf("wrong request type\n");
+            printf("wrong request type\n");
         }
     }
 }
