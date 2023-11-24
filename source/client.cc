@@ -98,7 +98,7 @@ int main(int argc, char* argv[]){
     std::string ip = argv[1];
     std::string port = argv[2];
 
-    bool multitest = true;
+    bool multitest = false;
     if(!multitest) {
         mralloc::ComputingNode* heap = new mralloc::ComputingNode(true, true, true);
         heap->start(ip, port);

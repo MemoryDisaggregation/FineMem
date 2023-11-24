@@ -241,12 +241,15 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
         for(int i = 0; i< cache_upper_bound - length; i++){
             if(current_region_.region.base_map_ != bitmap32_filled) {
                 int index = find_free_index_from_bitmap32_tail(current_region_.region.base_map_);
+                current_region_.region.base_map_ |= 1<<index;
                 ring_cache[writer].addr = get_region_block_addr(current_region_.region, index);
                 ring_cache[writer].rkey = current_region_.rkey[index];
             } else {
                 printf("no backup region, just fetch new region\n");
                 exclusive_region_[current_region_.region.offset_] = current_region_;
-                new_cache_region(block_class);
+                if(new_cache_region(block_class)) {
+                    return fill_cache_block(block_class);
+                } else return false;
                 // while(!m_rdma_conn_->fetch_region_block(backup_region_, ring_cache[writer].addr, ring_cache[writer].rkey, false)) {
                 //     // fetch new region
                 //     printf("fetch new region\n");
