@@ -143,11 +143,11 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
     // if (access_type == CONN_FUSEE){
     //   m_fusee_rkey =  server_pdata.buf_rkey;
     // }
-    // m_one_side_info_ = {server_pdata.block_size_,
-    //                     server_pdata.block_num_,
-    //                     server_pdata.global_rkey_, 
-    //                     server_pdata.section_header_, 
-    //                     server_pdata.heap_start_};
+    m_one_side_info_ = {server_pdata.block_size_,
+                        server_pdata.block_num_,
+                        server_pdata.global_rkey_, 
+                        server_pdata.section_header_, 
+                        server_pdata.heap_start_};
     global_rkey_ = server_pdata.global_rkey_;
     conn_id_ = server_pdata.id;
     
