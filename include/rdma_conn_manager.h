@@ -66,6 +66,8 @@ class ConnectionManager {
     bool remote_CAS(uint64_t swap, uint64_t* compare, uint64_t remote_addr, 
                         uint32_t rkey);
     int remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t &newkey);
+    int remote_rebind(uint64_t addr, uint32_t block_class, uint32_t &newkey);
+    int remote_memzero(uint64_t addr, uint64_t size);
     int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size);
     int remote_fetch_block(uint64_t &addr, uint32_t &rkey);
     uint32_t get_global_rkey() {return global_rkey_;};
@@ -77,7 +79,7 @@ class ConnectionManager {
         m_rpc_conn_queue_->enqueue(connector);
     };
 
-    bool update_section(region_e region, alloc_advise advise);
+    bool update_section(region_e region, alloc_advise advise, alloc_advise compare);
     bool find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
 
     bool fetch_large_region(section_e &alloc_section, uint32_t section_offset, uint64_t region_num, uint64_t &addr) ;

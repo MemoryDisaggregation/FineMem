@@ -64,6 +64,7 @@ public:
 
     void pre_fetcher() ;
     void cache_filler() ;
+    void recycler() ;
 
     inline uint64_t ring_buffer_length() {
         if(reader == writer){
@@ -77,6 +78,11 @@ public:
         }
     };
     
+    inline void show_ring_length() {
+        printf("ring length:%lu\n", ring_buffer_length());
+        return ;
+    }
+
     inline uint64_t get_region_block_addr(region_e region, uint32_t block_offset) {return heap_start_ + region.offset_ * region_size_ + block_offset * block_size_;} ;
     bool new_cache_section(uint32_t block_class);
     bool new_cache_region(uint32_t block_class);
@@ -84,7 +90,18 @@ public:
 
     bool fetch_mem_block_nocached(uint64_t &addr, uint32_t &rkey);
     bool fetch_mem_block(uint64_t &addr, uint32_t &rkey);
+    bool free_mem_block(uint64_t addr);
+
     bool fetch_mem_class_block(uint64_t &addr, uint32_t &rkey);
+    inline bool add_ring_cache(uint64_t addr, uint32_t rkey) {
+        if(ring_cache[writer].addr == -1 && ring_cache[writer].rkey == 0) {
+            ring_cache[writer].addr = addr;
+            ring_cache[writer].rkey = rkey;
+            writer = (writer+1) % ring_buffer_size;
+            return true;
+        }
+        return false;
+    }
 
     // << one-sided block fetch >>
     // bool update_mem_metadata();

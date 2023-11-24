@@ -53,6 +53,8 @@ public:
     int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size);
     int remote_fetch_block(uint64_t &addr, uint32_t &rkey);
     int remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t &newkey);
+    int remote_rebind(uint64_t addr, uint32_t block_class, uint32_t &newkey);
+    int remote_memzero(uint64_t addr, uint64_t size);
     int remote_fusee_alloc(uint64_t &addr, uint32_t &rkey);
     uint32_t get_rkey() {return m_fusee_rkey;};
     uint32_t get_global_rkey() {return global_rkey_;};
@@ -68,7 +70,8 @@ public:
     inline uint64_t region_metadata_addr(uint64_t region_offset) {return (uint64_t)((region_e*)region_header_ + region_offset);};
 
     uint64_t get_heap_start() {return heap_start_;};
-    bool update_section(region_e region, alloc_advise advise);
+    inline bool check_section(section_e alloc_section, alloc_advise advise, uint32_t offset);
+    bool update_section(region_e region, alloc_advise advise, alloc_advise compare);
     bool find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
 
     bool fetch_large_region(section_e &alloc_section, uint32_t section_offset, uint64_t region_num, uint64_t &addr) ;

@@ -38,6 +38,10 @@ void * run_pre_fetcher(void* arg) {
   return NULL;
 } 
 
+void* run_recycler(void* arg) {
+    return NULL;
+}
+
 /**
   * @description: start local memory service
   * @param {string} addr   the address string of RemoteHeap to connect
@@ -134,8 +138,8 @@ void ComputingNode::pre_fetcher() {
         if(update_time != time_stamp_) {
             update_time = time_stamp_;
             length = ring_buffer_length();
-            if(length < cache_upper_bound *0.3)
-                fill_cache_block(0);
+            // if(length < cache_upper_bound *0.3)
+            //     fill_cache_block(0);
             // // printf("I'll do update\n");
             // if(length < cache_upper_bound * cache_watermark_low) {
             //     cache_upper_bound += 1;
@@ -146,6 +150,17 @@ void ComputingNode::pre_fetcher() {
             // } else if(length != cache_upper_bound ) {
             //     fill_cache_block(0);
             // }
+        }
+    }
+}
+
+void ComputingNode::recycler() {
+    uint64_t addr;
+    while(running) {
+        for(int i = 0; i < nprocs; i++){
+            while(cpu_cache_->fetch_free_cache(i, addr)) {
+                free_mem_block(addr);
+            }
         }
     }
 }
@@ -242,8 +257,7 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
             if(current_region_.region.base_map_ != bitmap32_filled) {
                 int index = find_free_index_from_bitmap32_tail(current_region_.region.base_map_);
                 current_region_.region.base_map_ |= 1<<index;
-                ring_cache[writer].addr = get_region_block_addr(current_region_.region, index);
-                ring_cache[writer].rkey = current_region_.rkey[index];
+                add_ring_cache(get_region_block_addr(current_region_.region, index), current_region_.rkey[index]);
             } else {
                 printf("no backup region, just fetch new region\n");
                 exclusive_region_[current_region_.region.offset_] = current_region_;
@@ -258,7 +272,6 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
             }
             printf("fill cache:%lx\n", ring_cache[writer].addr);
             // if(use_global_rkey_) ring_cache[writer].rkey = get_global_rkey();
-            writer = (writer+1) % ring_buffer_size;
         }
     } else {
         for(int i = 0; i<class_cache_upper_bound[block_class]; i++){
@@ -290,10 +303,27 @@ bool ComputingNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
     return false;
 }
 
+bool ComputingNode::free_mem_block(uint64_t addr){
+    uint64_t region_offset = (addr - heap_start_) / region_size_;
+    uint64_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
+    if( exclusive_region_.find(region_offset) == exclusive_region_.end() ){
+        printf("Not an exclusive block! And the shared block free is not completed\n");
+        return false;
+    } 
+    region_with_rkey* region = &exclusive_region_[region_offset];
+    m_rdma_conn_->remote_memzero(addr, (region->region.block_class_+1)*block_size_);
+    if(!m_rdma_conn_->remote_rebind(addr, region->region.block_class_, region->rkey[region_block_offset])){
+        // region->region.base_map_ &= ~(uint64_t)(1<<region_block_offset);
+        add_ring_cache(addr, region->rkey[region_block_offset]);
+    }
+    // if(free_bit_in_bitmap32(region->region.base_map_) > block_per_region/2) {
+    //     printf("time to reuse this region!\n");
+    // }
+    return false;
+}
+
 bool ComputingNode::fetch_mem_block_nocached(uint64_t &addr, uint32_t &rkey){
-    // while(ring_buffer_length() == 0);
     while(!m_rdma_conn_->fetch_region_block(current_region_.region, addr,rkey, false)) {
-        // fetch new region
         // printf("fetch new region\n");
         new_cache_region(0);
     }

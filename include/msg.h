@@ -31,7 +31,7 @@ namespace mralloc {
   (std::chrono::duration_cast<std::chrono::microseconds>((END) - (START)) \
        .count())
 
-enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_FETCH, MSG_FETCH_FAST, MSG_MW_BIND, RPC_FUSEE_SUBTABLE };
+enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_FETCH, MSG_FETCH_FAST, MSG_MW_BIND, RPC_FUSEE_SUBTABLE, MSG_MW_REBIND };
 
 enum ResStatus { RES_OK, RES_FAIL };
 
@@ -99,14 +99,14 @@ CHECK_RDMA_MSG_SIZE(ClassBindResponse);
 
 class RebindBlockRequest : public RequestsMsg{
 public:
-    uint64_t addr[4];
+    uint64_t addr;
     uint16_t block_class;
 };
 CHECK_RDMA_MSG_SIZE(RebindBlockRequest);
 
 class RebindBlockResponse : public ResponseMsg {
 public:
-    uint32_t rkey[4];
+    uint32_t rkey;
 };
 CHECK_RDMA_MSG_SIZE(RebindBlockResponse);
 

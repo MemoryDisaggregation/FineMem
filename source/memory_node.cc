@@ -677,6 +677,20 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
             // Attension: no actual used at the critical path
             // TODO: bind memory window, generate new rkey
             // TODO: bath to rebind
+        } else if (request->type == MSG_MW_REBIND) {
+            RebindBlockRequest *reg_req = (RebindBlockRequest *)request;
+            RebindBlockResponse *resp_msg = (RebindBlockResponse *)cmd_resp;
+            uint32_t block_id = (reg_req->addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
+            if (!bind_mw(block_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
+                resp_msg->status = RES_FAIL;
+            } else {
+                resp_msg->status = RES_OK;
+            }
+            resp_msg->rkey = block_mw[block_id]->rkey;
+            /* write response */
+            remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                        sizeof(CmdMsgRespBlock), reg_req->resp_addr,
+                        reg_req->resp_rkey);
         } else if (request->type == RPC_FUSEE_SUBTABLE){
             uint64_t addr = rpc_fusee_->mm_alloc_subtable();
             uint32_t rkey = get_global_rkey();
