@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-23 14:55:12
+ * @LastEditTime: 2023-11-24 15:31:53
  * @FilePath: /rmalloc_newbase/source/memory_node.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -178,7 +178,7 @@ bool MemoryNode::fill_cache_block(uint32_t block_class){
                 // fetch new region
                 new_cache_region(block_class);
             }
-            printf("fill cache:%lx\n", simple_cache_addr[i]);
+            printf("fill cache:%lx %u\n", simple_cache_addr[i], simple_cache_rkey[i]);
             if(global_rkey) simple_cache_rkey[i] = get_global_rkey();
         }
     } else {

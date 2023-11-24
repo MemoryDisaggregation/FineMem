@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-14 09:42:48
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-22 15:04:02
+ * @LastEditTime: 2023-11-24 15:31:35
  * @FilePath: /rmalloc_newbase/source/free_block_manager.cc
  * @Description: 
  * 
@@ -423,7 +423,6 @@ namespace mralloc {
                 printf("full, change region\n");
                 return false;
             }
-            printf("alloc test %u\n",index);
             new_region.base_map_ |= 1<<index;
         } while (!region_header_[new_region.offset_].compare_exchange_strong(alloc_region, new_region));
         alloc_region = new_region;
