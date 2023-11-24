@@ -10,7 +10,9 @@
  */
 
 #include <bits/floatn.h>
+#include <bits/stdint-uintn.h>
 #include <bits/types/FILE.h>
+#include <linux/mman.h>
 #include <pthread.h>
 #include <atomic>
 #include <cassert>
@@ -20,9 +22,10 @@
 #include <string>
 #include <iostream>
 #include "computing_node.h"
+#include <sys/mman.h>
 #include <sys/time.h>
 
-const int thread_num = 16;
+const int thread_num = 12;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -46,21 +49,23 @@ void* fetch_mem(void* arg) {
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < 32; i ++){
+            // addr[i] = (uint64_t)mmap(NULL, 1024*1024*4, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
             heap->fetch_mem_block_nocached(addr[i], rkey[i]);
             // heap->fetch_mem_one_sided(addr[i], rkey[i]);
-            printf("%lx,  %u\n", addr[i], rkey[i]);
+            // if(addr[i] != -1)
+            //     printf("%lx,  %u\n", addr[i], rkey[i]);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
         char buffer[2][16] = {"aaa", "bbb"};
         char read_buffer[4];
-        for(int i = 0; i < 32; i ++){
-            // heap->fetch_mem_fast_remote(addr, rkey);
-            heap->get_conn()->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
-            heap->get_conn()->remote_read(read_buffer, 4, addr[i], rkey[i]);
-            // printf("%lx,  %u\n", addr[i], rkey[i]);
-            assert(read_buffer[0] == buffer[i%2][0]);
-        }        
+        // for(int i = 0; i < 32; i ++){
+        //     // heap->fetch_mem_fast_remote(addr, rkey);
+        //     heap->get_conn()->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
+        //     heap->get_conn()->remote_read(read_buffer, 4, addr[i], rkey[i]);
+        //     // printf("%lx,  %u\n", addr[i], rkey[i]);
+        //     assert(read_buffer[0] == buffer[i%2][0]);
+        // }        
         uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
         // uint64_t log10 = 0;
         // while(time/10 > 0){

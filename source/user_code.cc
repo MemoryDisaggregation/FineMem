@@ -73,7 +73,7 @@ void* fetch_mem(void* arg) {
             bool result;
             unsigned cpu;
             unsigned node;
-            if(sched_getcpu(&cpu,&node)==-1){
+            if((cpu = sched_getcpu())==-1){
                 printf("sched_getcpu bad \n");
                 return NULL;
             }

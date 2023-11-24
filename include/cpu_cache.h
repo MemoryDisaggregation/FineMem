@@ -92,7 +92,7 @@ public:
     bool fetch_cache(uint64_t &addr, uint32_t &rkey){
         // just fetch one block in the current cpu_id --> ring buffer
         unsigned cpu; unsigned nproc;
-        if(sched_getcpu(&cpu, &nproc) == -1){
+        if((nproc = sched_getcpu()) == -1){
             printf("sched_getcpu bad \n");
             return false;
         }
