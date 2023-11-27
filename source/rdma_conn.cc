@@ -943,11 +943,11 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         do {
             free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
             if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
-                free_map = alloc_section.class_map_;
-                if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
-                    printf("section has no free space!\n");
+                // free_map = alloc_section.class_map_;
+                // if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
+                //     printf("section has no free space!\n");
                     return false;
-                }
+                // }
             }
             new_section = alloc_section;
             new_section.class_map_ |= (1<<index);
@@ -955,19 +955,9 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_));
         alloc_section = new_section;
         remote_read(&region_old, sizeof(region_e), region_metadata_addr(section_offset*region_per_section+index), global_rkey_);
-        // do {
-        //     region_new = region_old;
-        //     if(region_new.exclusive_ == 1) {
-        //         printf("impossible problem: exclusive is already set\n");
-        //         return false;
-        //     }
-        //     if(region_new.block_class_ != 0) {
-        //         printf("impossible problem: class is already set\n");
-        //         return false;
-        //     }
-        //     region_new.block_class_ = block_class;
-        // } while (!region_header_[region_new.offset_].compare_exchange_strong(region_old, region_new));
         init_region_class(region_old, block_class, 0);
+        remote_class_bind(region_old.offset_, block_class);
+        try_add_fast_region(section_offset, block_class, region_old);
         alloc_region = region_old;
         return true;
     }
@@ -980,11 +970,11 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         do {
             free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
             if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
-                free_map = alloc_section.class_map_;
-                if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
-                    printf("section has no free space!\n");
+                // free_map = alloc_section.class_map_;
+                // if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
+                    // printf("section has no free space!\n");
                     return false;
-                }
+                // }
             }
             new_section = alloc_section;
             new_section.class_map_ |= (1<<index);
@@ -992,20 +982,9 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_));
         alloc_section = new_section;
         remote_read(&region_old, sizeof(region_e), region_metadata_addr(section_offset*region_per_section+index), global_rkey_);
-        // do {
-        //     region_new = region_old;
-        //     if(region_new.exclusive_ == 1) {
-        //         printf("impossible problem: exclusive is already set\n");
-        //         return false;
-        //     }
-        //     if(region_new.block_class_ != 0) {
-        //         printf("impossible problem: class is already set\n");
-        //         return false;
-        //     }
-        //     region_new.block_class_ = block_class;
-        //     region_new.exclusive_ = 1;
-        // } while (!region_header_[region_new.offset_].compare_exchange_strong(region_old, region_new));
         init_region_class(region_old, block_class, 1);
+        remote_class_bind(region_old.offset_, block_class);
+        try_add_fast_region(section_offset, block_class, region_old);
         alloc_region = region_old;
         return true;
     }

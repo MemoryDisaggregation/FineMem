@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 16:08:03
- * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-14 17:47:06
+ * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-11-27 22:39:05
  * @FilePath: /rmalloc_newbase/source/local_heap.cc
  * @Description: 
  * 
@@ -226,7 +226,7 @@ void ComputingNode::cache_filler() {
                     cpu_cache_->add_class_cache(i, init_addr_, init_rkey_);
                 }
                 update += cpu_class_watermark[i];
-                // printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
+                printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
             }
             else if(free_ < cpu_class_watermark[i] && free_ > 1) {
                 if(cpu_class_watermark[1] > 1)
