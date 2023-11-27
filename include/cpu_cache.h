@@ -17,20 +17,114 @@ namespace mralloc {
 const uint32_t nprocs = 80;
 const uint32_t max_item = 1024;
 
+template <typename T>
+class ring_buffer{
+public:
+    ring_buffer(uint32_t max_length, T* buffer, T zero, uint32_t* reader, uint32_t* writer)
+         : max_length_(max_length), buffer_(buffer), zero_(zero), reader_(reader), writer_(writer) {
+    }
+    
+    void clear() {
+        for(int i = 0; i < max_length_; i++) {
+            buffer_[i] = zero_;
+        }
+        *reader_ = 0;
+        *writer_ = 0;
+    }
+
+    uint32_t get_length() {
+        if (*reader_ == *writer_) {
+            return 0;
+        }
+        if (*writer_ > *reader_) {
+            return (*writer_ - *reader_);
+        } else {
+            return (max_length_ - *reader_ + *writer_);
+        }
+    }
+
+    void add_cache(T value){
+        // host side fill cache, add write pointer
+        uint32_t writer = *writer_;
+        if(get_length() < max_length_-1 && buffer_[writer] == zero_){
+            buffer_[writer] = value;
+            *writer_ = (writer + 1) % max_item;
+        }
+    }
+
+    bool force_fetch_cache(T &value) {
+        while(get_length() == 0) ;
+        uint32_t reader = *reader_;
+        if(!(buffer_[reader] == zero_ )) {
+            value = buffer_[reader];
+            buffer_[reader] = zero_;
+            *reader_ = (reader + 1) % max_item;
+            return true;
+        }
+        else{
+            printf("fetch cache failed\n");
+            return false;
+        }
+    }
+
+    bool try_fetch_cache(T &value) {
+        if(get_length() == 0) {
+            return false;
+        } 
+        uint32_t reader = *reader_;
+        if(!(buffer_[reader] == zero_ )) {
+            value = buffer_[reader];
+            buffer_[reader] = zero_;
+            *reader_ = (reader + 1) % max_item;
+            return true;
+        }
+        else{
+            printf("fetch cache failed\n");
+            return false;
+        }
+    }
+
+private:
+    uint32_t max_length_;
+    T* buffer_;
+    T zero_;
+    uint32_t* reader_;
+    uint32_t* writer_;
+};
+
+class rdma_addr{
+public:
+    rdma_addr(uint64_t addr, uint32_t rkey): addr(addr), rkey(rkey) {}
+    bool operator==(rdma_addr &compare) {
+        return addr == compare.addr && rkey == compare.rkey;
+    }
+    rdma_addr& operator=(rdma_addr &value) {
+        this->addr = value.addr;
+        this->rkey = value.rkey;
+        return *this;
+    }
+    uint64_t addr;
+    uint32_t rkey;
+
+} ;
+
+const uint32_t class_num = 16;
+
 class cpu_cache{
 public:
-    struct item {
-        uint64_t addr;
-        uint32_t rkey;
-    };
 
     struct cpu_cache_storage {
         uint64_t block_size;
-        item items[nprocs][max_item];
+        rdma_addr items[nprocs][max_item];
         uint64_t free_items[nprocs][max_item];
+        rdma_addr class_items[class_num][max_item];
+
         uint32_t reader[nprocs];
+        uint32_t class_reader[class_num];
         uint32_t free_reader[nprocs];
+
         uint32_t writer[nprocs];
+        uint32_t class_writer[class_num];
         uint32_t free_writer[nprocs];
     };
 
@@ -43,6 +137,17 @@ public:
             int mm_flag   = MAP_SHARED; 
             cpu_cache_content_ = (cpu_cache_storage*)mmap(NULL, sizeof(cpu_cache_storage), port_flag, mm_flag, fd, 0);
             cache_size_ = cpu_cache_content_->block_size;
+            for(int i = 0; i < nprocs; i++) {
+                alloc_ring[i] = new ring_buffer<rdma_addr>(max_item, cpu_cache_content_->items[i], rdma_addr(-1,-1), 
+                    &cpu_cache_content_->reader[i], &cpu_cache_content_->writer[i]);
+                free_ring[i] = new ring_buffer<uint64_t>(max_item, cpu_cache_content_->free_items[i], -1, 
+                    &cpu_cache_content_->free_reader[i], &cpu_cache_content_->free_writer[i]);
+                
+            }
+            for(int i = 0; i < class_num; i++) {
+                class_ring[i] = new ring_buffer<rdma_addr>(max_item, cpu_cache_content_->class_items[i], rdma_addr(-1,-1), 
+                    &cpu_cache_content_->class_reader[i], &cpu_cache_content_->class_writer[i]);
+            }
         }
         
     }
@@ -58,22 +163,37 @@ public:
             // e.g. const uint8_t nprocs = get_nprocs();
             ftruncate(fd, sizeof(cpu_cache_storage));
             cpu_cache_content_ = (cpu_cache_storage*)mmap(NULL, sizeof(cpu_cache_storage), port_flag, mm_flag, fd, 0);
-            for (int i = 0; i < nprocs; i++) {
-                cpu_cache_content_->reader[i] = 0;
-                cpu_cache_content_->writer[i] = 0;
-                cpu_cache_content_->free_reader[i] = 0;
-                cpu_cache_content_->free_writer[i] = 0;
-                for(int j = 0; j < max_item; j++) {
-                    cpu_cache_content_->items[i][j].addr = -1;
-                    cpu_cache_content_->items[i][j].rkey = 0;
-                    cpu_cache_content_->free_items[i][j] = -1;
-                }
+            for(int i = 0; i < nprocs; i++) {
+                alloc_ring[i] = new ring_buffer<rdma_addr>(max_item, cpu_cache_content_->items[i], rdma_addr(-1,-1), 
+                    &cpu_cache_content_->reader[i], &cpu_cache_content_->writer[i]);
+                alloc_ring[i]->clear();
+                free_ring[i] = new ring_buffer<uint64_t>(max_item, cpu_cache_content_->free_items[i], -1, 
+                    &cpu_cache_content_->free_reader[i], &cpu_cache_content_->free_writer[i]);
+                alloc_ring[i]->clear();
+                free_ring[i]->clear();
+            }
+            for(int i = 0; i < class_num; i++) {
+                class_ring[i] = new ring_buffer<rdma_addr>(max_item, cpu_cache_content_->class_items[i], rdma_addr(-1,-1), 
+                    &cpu_cache_content_->class_reader[i], &cpu_cache_content_->class_writer[i]);
+                class_ring[i]->clear();
             }
             cpu_cache_content_->block_size = cache_size_;
         }
         else {
             cpu_cache_content_ = (cpu_cache_storage*)mmap(NULL, sizeof(cpu_cache_storage), port_flag, mm_flag, fd, 0);
             assert(cache_size_ == cpu_cache_content_->block_size);
+            cache_size_ = cpu_cache_content_->block_size;
+            for(int i = 0; i < nprocs; i++) {
+                alloc_ring[i] = new ring_buffer<rdma_addr>(max_item, cpu_cache_content_->items[i], rdma_addr(-1,-1), 
+                    &cpu_cache_content_->reader[i], &cpu_cache_content_->writer[i]);
+                free_ring[i] = new ring_buffer<uint64_t>(max_item, cpu_cache_content_->free_items[i], -1, 
+                    &cpu_cache_content_->free_reader[i], &cpu_cache_content_->free_writer[i]);
+                
+            }
+            for(int i = 0; i < class_num; i++) {
+                class_ring[i] = new ring_buffer<rdma_addr>(max_item, cpu_cache_content_->class_items[i], rdma_addr(-1,-1), 
+                    &cpu_cache_content_->class_reader[i], &cpu_cache_content_->class_writer[i]);
+            }
         }
     }
 
@@ -101,101 +221,53 @@ public:
             printf("sched_getcpu bad \n");
             return false;
         }
-        while(get_length(nproc) == 0) ;
-        uint32_t reader = cpu_cache_content_->reader[nproc];
-        item fetch_one = cpu_cache_content_->items[nproc][reader];
-        if(fetch_one.addr != -1 && fetch_one.rkey != 0) {
-            addr = fetch_one.addr;
-            rkey = fetch_one.rkey;
-            cpu_cache_content_->items[nproc][reader].addr = -1;
-            cpu_cache_content_->items[nproc][reader].rkey = 0;
-            cpu_cache_content_->reader[nproc] = (reader + 1) % max_item;
-            return true;
-        }
-        else{
-            return false;
-        }
+        rdma_addr result(-1, -1);
+        bool ret = alloc_ring[nproc]->force_fetch_cache(result);
+        addr = result.addr; rkey = result.rkey;
+        return ret;
     }
 
     bool fetch_cache(uint32_t nproc, uint64_t &addr, uint32_t &rkey){
         // just fetch one block in the current cpu_id --> ring buffer
-        while(get_length(nproc) == 0) ;
-        uint32_t reader = cpu_cache_content_->reader[nproc];
-        item fetch_one = cpu_cache_content_->items[nproc][reader];
-        if(fetch_one.addr != -1 && fetch_one.rkey != 0) {
-            addr = fetch_one.addr;
-            rkey = fetch_one.rkey;
-            cpu_cache_content_->items[nproc][reader].addr = -1;
-            cpu_cache_content_->items[nproc][reader].rkey = 0;
-            cpu_cache_content_->reader[nproc] = (reader + 1) % max_item;
-            return true;
-        }
-        else{
-            return false;
-        }
+        rdma_addr result(-1, -1);
+        bool ret = alloc_ring[nproc]->force_fetch_cache(result);
+        addr = result.addr; rkey = result.rkey;
+        return ret;
     }
 
     void add_cache(uint32_t nproc, uint64_t addr, uint32_t rkey){
         // host side fill cache, add write pointer
-        uint32_t writer = cpu_cache_content_->writer[nproc];
-        if(cpu_cache_content_->items[nproc][writer].addr == -1){
-            cpu_cache_content_->items[nproc][writer].rkey = rkey;
-            cpu_cache_content_->items[nproc][writer].addr = addr;
-            cpu_cache_content_->writer[nproc] = (writer + 1) % max_item;
-        }
+        rdma_addr result(addr, rkey);
+        alloc_ring[nproc]->add_cache(result);
     }
 
     void add_free_cache(uint64_t addr) {
-         unsigned nproc;
+        unsigned nproc;
         if((nproc = sched_getcpu()) == -1){
             printf("sched_getcpu bad \n");
             return;
         }
-        uint32_t writer = cpu_cache_content_->free_writer[nproc];
-        if(cpu_cache_content_->free_items[nproc][writer] == -1){
-            cpu_cache_content_->free_items[nproc][writer] = addr;
-            cpu_cache_content_->free_writer[nproc] = (writer + 1) % max_item;
-        }
+        free_ring[nproc]->add_cache(addr);
     }
 
     bool fetch_free_cache(uint32_t nproc, uint64_t &addr) {
-        if(get_length(nproc) == 0) {
-            return false;
-        } 
-        uint32_t reader = cpu_cache_content_->free_reader[nproc];
-        uint64_t fetch_one = cpu_cache_content_->free_items[nproc][reader];
-        if(fetch_one != -1 ) {
-            addr = fetch_one;
-            cpu_cache_content_->free_items[nproc][reader] = -1;
-            cpu_cache_content_->free_reader[nproc] = (reader + 1) % max_item;
-            return true;
-        }
-        else{
-            cpu_cache_content_->free_reader[nproc] = (reader + 1) % max_item;
-            return false;
-        }
+        return free_ring[nproc]->try_fetch_cache(addr);
     }
 
     inline uint32_t get_length(uint32_t nproc) {
-        uint32_t writer = cpu_cache_content_->writer[nproc];
-        uint32_t reader = cpu_cache_content_->reader[nproc];
-        if (writer == reader) {
-            if (cpu_cache_content_->items[nproc][writer].addr == -1){
-                return 0;
-            } else {
-                return max_item;
-            }
-        }
-        if (writer > reader) {
-            return (writer - reader);
-        } else {
-            return (max_item - reader + writer);
-        }
+        return alloc_ring[nproc]->get_length();
+    }
+
+    inline uint32_t get_free_length(uint32_t nproc) {
+        return free_ring[nproc]->get_length();
     }
     
 private:
     cpu_cache_storage* cpu_cache_content_;
     uint64_t cache_size_;
+    ring_buffer<rdma_addr>* alloc_ring[nprocs];
+    ring_buffer<rdma_addr>* class_ring[nprocs];
+    ring_buffer<uint64_t>* free_ring[nprocs];
 };
 
 }

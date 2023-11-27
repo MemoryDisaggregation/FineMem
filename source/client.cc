@@ -79,6 +79,7 @@ void* fetch_mem(void* arg) {
         time = time / 32;
         avg_time_ = (avg_time_*count_ + time)/(count_ + 1);
         count_ += 1;
+        sleep(1);
     }
     printf("avg time:%lu, max_time:%lu\n", avg_time_, max_time_);
     for(int i=0;i<10;i++){
@@ -104,7 +105,7 @@ int main(int argc, char* argv[]){
         heap->start(ip, port);
 
         // << single thread, local test, fetch remote memory >>
-        int iter = 10;
+        int iter = 500;
         uint64_t addr;
         uint32_t rkey=0;
         char buffer[2][64*1024] = {"aaa", "bbb"};

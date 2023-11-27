@@ -39,6 +39,8 @@ void * run_pre_fetcher(void* arg) {
 } 
 
 void* run_recycler(void* arg) {
+    ComputingNode *heap = (ComputingNode*)arg;
+    heap->recycler();
     return NULL;
 }
 
@@ -126,6 +128,8 @@ bool ComputingNode::start(const std::string addr, const std::string port){
       heap_worker_num_ = 1;
       for(int i =0;i< heap_worker_num_;i++)
         pthread_create(&cache_fill_thread_, NULL, run_cache_filler, this);
+    pthread_create(&recycle_thread_, NULL, run_recycler, this);   
+        
     }
     return true;
 }
@@ -160,6 +164,7 @@ void ComputingNode::recycler() {
         for(int i = 0; i < nprocs; i++){
             while(cpu_cache_->fetch_free_cache(i, addr)) {
                 free_mem_block(addr);
+                printf("add free cache addr:%lx, current:%lu\n", addr, ring_buffer_length());
             }
         }
     }
@@ -295,6 +300,7 @@ bool ComputingNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
         ring_cache[reader].addr = 0;
         ring_cache[reader].rkey = 0;
         reader = (reader + 1) % ring_buffer_size;
+        // printf("free cache remain: %lu\n", ring_buffer_length());
         return true;
     } 
     // if(fill_cache_block(0)){
@@ -306,15 +312,22 @@ bool ComputingNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
 bool ComputingNode::free_mem_block(uint64_t addr){
     uint64_t region_offset = (addr - heap_start_) / region_size_;
     uint64_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
-    if( exclusive_region_.find(region_offset) == exclusive_region_.end() ){
-        printf("Not an exclusive block! And the shared block free is not completed\n");
-        return false;
-    } 
-    region_with_rkey* region = &exclusive_region_[region_offset];
-    m_rdma_conn_->remote_memzero(addr, (region->region.block_class_+1)*block_size_);
+    region_with_rkey* region;
+    if(region_offset == current_region_.region.offset_) {
+        region = &current_region_;    
+    }
+    else {
+        if( exclusive_region_.find(region_offset) == exclusive_region_.end() ){
+            printf("Not an exclusive block! And the shared block free is not completed\n");
+            return false;
+        } 
+        region = &exclusive_region_[region_offset];
+    }
+    // m_rdma_conn_->remote_memzero(addr, (region->region.block_class_+1)*block_size_);
     if(!m_rdma_conn_->remote_rebind(addr, region->region.block_class_, region->rkey[region_block_offset])){
         // region->region.base_map_ &= ~(uint64_t)(1<<region_block_offset);
         add_ring_cache(addr, region->rkey[region_block_offset]);
+        return true;
     }
     // if(free_bit_in_bitmap32(region->region.base_map_) > block_per_region/2) {
     //     printf("time to reuse this region!\n");

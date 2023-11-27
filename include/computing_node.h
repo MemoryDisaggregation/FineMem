@@ -68,11 +68,7 @@ public:
 
     inline uint64_t ring_buffer_length() {
         if(reader == writer){
-            if(ring_cache[reader].addr == 0) {
-                return 0;
-            } else {
-                return ring_buffer_size;
-            }
+            return 0;
         } else {
             return reader > writer ? ring_buffer_size - reader + writer : writer - reader;
         }
@@ -94,7 +90,7 @@ public:
 
     bool fetch_mem_class_block(uint64_t &addr, uint32_t &rkey);
     inline bool add_ring_cache(uint64_t addr, uint32_t rkey) {
-        if(ring_cache[writer].addr == -1 && ring_cache[writer].rkey == 0) {
+        if(ring_buffer_length() < ring_buffer_size - 1&& ring_cache[writer].addr == 0 && ring_cache[writer].rkey == 0) {
             ring_cache[writer].addr = addr;
             ring_cache[writer].rkey = rkey;
             writer = (writer+1) % ring_buffer_size;
@@ -139,6 +135,7 @@ private:
     
     pthread_t pre_fetch_thread_;
     pthread_t cache_fill_thread_;
+    pthread_t recycle_thread_;
 
     uint64_t block_size_;
     uint64_t block_num_;
