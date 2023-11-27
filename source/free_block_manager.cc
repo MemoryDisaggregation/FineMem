@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-14 09:42:48
- * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-24 15:31:35
+ * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-11-27 22:53:02
  * @FilePath: /rmalloc_newbase/source/free_block_manager.cc
  * @Description: 
  * 
@@ -62,15 +62,15 @@ namespace mralloc {
             block_rkey_[i] = 0;
         }
 
-        // init: try to allocate each size on each section
-        for(int i = 0; i < section_num_/4; i++) {
-            for(int j = 1; j < block_class_num; j ++) {
-                section_e section = section_header_[i*4+3].load();
-                region_e alloc_region;
-                fetch_region(section, i*4, j, true, alloc_region);
-                try_add_fast_region(i*4, j, alloc_region);
-            }
-        }
+        // // init: try to allocate each size on each section
+        // for(int i = 0; i < section_num_/4; i++) {
+        //     for(int j = 1; j < block_class_num; j ++) {
+        //         section_e section = section_header_[i*4+3].load();
+        //         region_e alloc_region;
+        //         fetch_region(section, i*4, j, true, alloc_region);
+        //         try_add_fast_region(i*4, j, alloc_region);
+        //     }
+        // }
 
         return true;
     }
