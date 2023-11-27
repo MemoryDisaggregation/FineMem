@@ -214,6 +214,7 @@ public:
     bool fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive) ;
 
     inline bool set_block_rkey(uint64_t index, uint32_t rkey) {block_rkey_[index] = rkey; return true;};
+    inline bool set_class_block_rkey(uint64_t index, uint32_t rkey) {class_block_rkey_[index] = rkey; return true;};
 
     inline uint64_t get_block_num() {return block_num_;};
 

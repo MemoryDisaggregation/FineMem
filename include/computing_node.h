@@ -50,6 +50,12 @@ public:
 
     ComputingNode(bool heap_enabled, bool cache_enabled, bool one_side_enabled): heap_enabled_(heap_enabled), cpu_cache_enabled_(cache_enabled), one_side_enabled_(one_side_enabled) {
         if(cpu_cache_enabled_)  assert(heap_enabled_);
+        ring_cache = new ring_buffer<rdma_addr>(ring_buffer_size, ring_cache_content, rdma_addr(-1, -1), &reader, &writer);
+        ring_cache->clear();
+        for(int i = 0; i<class_num; i++) {
+            ring_class_cache[i] = new ring_buffer<rdma_addr>(class_ring_buffer_size, ring_class_cache_content[i], rdma_addr(-1, -1), &class_reader[i], &class_writer[i]);
+            ring_class_cache[i]->clear();
+        }
     }
 
     bool start(const std::string addr, const std::string port) ;
@@ -65,17 +71,9 @@ public:
     void pre_fetcher() ;
     void cache_filler() ;
     void recycler() ;
-
-    inline uint64_t ring_buffer_length() {
-        if(reader == writer){
-            return 0;
-        } else {
-            return reader > writer ? ring_buffer_size - reader + writer : writer - reader;
-        }
-    };
     
     inline void show_ring_length() {
-        printf("ring length:%lu\n", ring_buffer_length());
+        printf("ring length:%u\n", ring_cache->get_length());
         return ;
     }
 
@@ -88,16 +86,7 @@ public:
     bool fetch_mem_block(uint64_t &addr, uint32_t &rkey);
     bool free_mem_block(uint64_t addr);
 
-    bool fetch_mem_class_block(uint64_t &addr, uint32_t &rkey);
-    inline bool add_ring_cache(uint64_t addr, uint32_t rkey) {
-        if(ring_buffer_length() < ring_buffer_size - 1&& ring_cache[writer].addr == 0 && ring_cache[writer].rkey == 0) {
-            ring_cache[writer].addr = addr;
-            ring_cache[writer].rkey = rkey;
-            writer = (writer+1) % ring_buffer_size;
-            return true;
-        }
-        return false;
-    }
+    bool fetch_mem_class_block(uint16_t block_class, uint64_t &addr, uint32_t &rkey);
 
     // << one-sided block fetch >>
     // bool update_mem_metadata();
@@ -162,14 +151,18 @@ private:
     region_e current_class_region_[16];
 
     // << reserved block cache>>
-    rdma_mem_t ring_cache[ring_buffer_size];
-    uint32_t reader, writer;
+    ring_buffer<rdma_addr>* ring_cache;
+    ring_buffer<rdma_addr>* ring_class_cache[16];
+    rdma_addr ring_cache_content[ring_buffer_size];
+    rdma_addr ring_class_cache_content[16][class_ring_buffer_size];
+    // rdma_mem_t ring_cache[ring_buffer_size];
+    std::atomic<uint32_t> reader, writer;
     float cache_watermark_low;
     float cache_watermark_high;
     uint64_t cache_upper_bound;
-    rdma_mem_t ring_class_cache[16][class_ring_buffer_size];
+    // rdma_mem_t ring_class_cache[16][class_ring_buffer_size];
     uint64_t class_cache_upper_bound[16];
-    uint32_t class_reader[16], class_writer[16];
+    std::atomic<uint32_t> class_reader[16], class_writer[16];
 
     // << function enabled >>
     bool heap_enabled_;

@@ -462,6 +462,8 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
 
     block_mw = (ibv_mw**)malloc(block_num_ * sizeof(uint64_t));
 
+    block_class_mw = (ibv_mw**)malloc(block_num_ * sizeof(uint64_t));
+
     for(int i = 0; i < block_num_; i++){
         uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
         block_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
@@ -473,6 +475,20 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
 
     return true;
 }
+
+bool MemoryNode::init_class_mw(uint16_t region_offset, uint16_t block_class, ibv_qp* qp, ibv_cq *cq) {
+    uint32_t class_size = block_class + 1;
+    uint32_t block_offset = region_offset * block_per_region;
+    for(int i = 0; i < block_per_region/class_size; i++){
+        uint64_t block_addr_ = server_block_manager_->get_block_addr(block_offset + i*class_size);
+        block_class_mw[block_offset + i*class_size] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
+        bind_mw(block_class_mw[block_offset + i*class_size], block_addr_, server_block_manager_->get_block_size()*class_size, qp, cq);
+        bind_mw(block_class_mw[block_offset + i*class_size], block_addr_, server_block_manager_->get_block_size()*class_size, qp, cq);
+        server_block_manager_->set_class_block_rkey(block_offset + i*class_size, block_class_mw[block_offset + i*class_size]->rkey);
+    }
+    return true;
+}
+
 
 bool MemoryNode::bind_mw(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq* cq){
     if(mw == NULL){
@@ -677,16 +693,38 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
             // Attension: no actual used at the critical path
             // TODO: bind memory window, generate new rkey
             // TODO: bath to rebind
-        } else if (request->type == MSG_MW_REBIND) {
-            RebindBlockRequest *reg_req = (RebindBlockRequest *)request;
-            RebindBlockResponse *resp_msg = (RebindBlockResponse *)cmd_resp;
-            uint32_t block_id = (reg_req->addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
-            if (!bind_mw(block_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
+        } else if (request->type == MSG_MW_CLASS_BIND) {
+            ClassBindRequest *reg_req = (ClassBindRequest *)request;
+            ClassBindResponse *resp_msg = (ClassBindResponse *)cmd_resp;
+            if (!init_class_mw(reg_req->region_offset, reg_req->block_class, work_info->cm_id->qp, work_info->cq)) {
                 resp_msg->status = RES_FAIL;
             } else {
                 resp_msg->status = RES_OK;
             }
-            resp_msg->rkey = block_mw[block_id]->rkey;
+            resp_msg->rkey = 0;
+            /* write response */
+            remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                        sizeof(CmdMsgRespBlock), reg_req->resp_addr,
+                        reg_req->resp_rkey);
+        } else if (request->type == MSG_MW_REBIND) {
+            RebindBlockRequest *reg_req = (RebindBlockRequest *)request;
+            RebindBlockResponse *resp_msg = (RebindBlockResponse *)cmd_resp;
+            uint32_t block_id = (reg_req->addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
+            if(reg_req->block_class == 0) {
+                if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
+                    resp_msg->status = RES_FAIL;
+                } else {
+                    resp_msg->status = RES_OK;
+                }
+                resp_msg->rkey = block_mw[block_id]->rkey;
+            } else {
+                if (!bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
+                    resp_msg->status = RES_FAIL;
+                } else {
+                    resp_msg->status = RES_OK;
+                }
+                resp_msg->rkey = block_class_mw[block_id]->rkey;
+            }
             /* write response */
             remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
                         sizeof(CmdMsgRespBlock), reg_req->resp_addr,
@@ -705,8 +743,7 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
             remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
                 sizeof(CmdMsgRespBlock), request->resp_addr,
                 request->resp_rkey);
-            }
-        else if (request->type == MSG_UNREGISTER) {
+        } else if (request->type == MSG_UNREGISTER) {
             /* handle memory unregister requests */
             UnregisterRequest *unreg_req = (UnregisterRequest *)request;
             printf("receive a memory unregister message, addr: %ld\n",

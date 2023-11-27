@@ -87,12 +87,8 @@ bool ComputingNode::start(const std::string addr, const std::string port){
         cache_watermark_high = 0.9;
         cache_watermark_low = 0.1;
         cache_upper_bound = 512;
-        reader = 0;
-        writer = 0;
         ret &= fill_cache_block(0);
         for(int i = 1; i < block_class_num; i++) {
-            class_reader[i] = 0;
-            class_writer[i] = 0;
             ret &= new_cache_region(i);
             class_cache_upper_bound[i] = 1;
             ret &= fill_cache_block(i);
@@ -110,25 +106,20 @@ bool ComputingNode::start(const std::string addr, const std::string port){
     }
     // init cpu cache, insert a block for each cpu cache ring buffer
     if(cpu_cache_enabled_) {
-      uint64_t remote_addr; uint32_t remote_rkey;
-      cpu_cache_ = new cpu_cache(BLOCK_SIZE);
-      for(int i = 0; i < nprocs; i++){
-        // if(cpu_cache_->is_empty(i)){
-          // TODO: here we just fill 10 blocks, an automated or valified number should be tested
-          for(int j = 0; j<1; j++) {
-            fetch_mem_block(remote_addr, remote_rkey);
-            assert(remote_addr!=0);
-            cpu_cache_->add_cache(i, remote_addr, remote_rkey);
-            printf("init @%d of %d, addr:%lx rkey:%u\n", i, j, remote_addr, remote_rkey);
-          }
-        // }
-      }
-      pthread_t running_thread;
-      heap_worker_id_ = 0;
-      heap_worker_num_ = 1;
-      for(int i =0;i< heap_worker_num_;i++)
+        uint64_t remote_addr; uint32_t remote_rkey;
+        cpu_cache_ = new cpu_cache(BLOCK_SIZE);
+        for(int i = 0; i < nprocs; i++){
+            // TODO: here we just fill 10 blocks, an automated or valified number should be tested
+            for(int j = 0; j<1; j++) {
+                fetch_mem_block(remote_addr, remote_rkey);
+                assert(remote_addr!=0);
+                cpu_cache_->add_cache(i, remote_addr, remote_rkey);
+                printf("init @%d of %d, addr:%lx rkey:%u\n", i, j, remote_addr, remote_rkey);
+            }
+        }
+        pthread_t running_thread;
         pthread_create(&cache_fill_thread_, NULL, run_cache_filler, this);
-    pthread_create(&recycle_thread_, NULL, run_recycler, this);   
+        pthread_create(&recycle_thread_, NULL, run_recycler, this);   
         
     }
     return true;
@@ -141,7 +132,7 @@ void ComputingNode::pre_fetcher() {
     while(running) {
         if(update_time != time_stamp_) {
             update_time = time_stamp_;
-            length = ring_buffer_length();
+            length = ring_cache->get_length();
             // if(length < cache_upper_bound *0.3)
             //     fill_cache_block(0);
             // // printf("I'll do update\n");
@@ -164,7 +155,7 @@ void ComputingNode::recycler() {
         for(int i = 0; i < nprocs; i++){
             while(cpu_cache_->fetch_free_cache(i, addr)) {
                 free_mem_block(addr);
-                printf("add free cache addr:%lx, current:%lu\n", addr, ring_buffer_length());
+                printf("add free cache addr:%lx, current:%u\n", addr, ring_cache->get_length());
             }
         }
     }
@@ -175,49 +166,87 @@ void ComputingNode::cache_filler() {
   // scan the cpu cache and refill them
     time_stamp_ = 0; uint64_t update = 0;
     uint64_t cpu_cache_watermark[nprocs];
+    uint64_t cpu_class_watermark[class_num];
     for(int i=0; i<nprocs; i++) {
         cpu_cache_watermark[i] = 1;
     }
-    uint64_t init_addr_ = 0; uint32_t init_rkey_;
-    uint8_t id = heap_worker_id_++;
+    for(int i=0; i<class_num; i++) {
+        cpu_class_watermark[i] = 1;
+    }
+    uint64_t init_addr_ = -1; uint32_t init_rkey_ = -1;
     while(running) {
         update = 0;
-        for(int i = id; i < nprocs; i+=heap_worker_num_){
-        // if empty, fill it with 10 blocks
-        // TODO: a automated filler, will choose how much blocks to fill
-        int free_ = cpu_cache_->get_length(i);
-        if(free_ == 0){
-            // TODO: an iteration to call times of fetch blocks is somehow too ugly
-            if (cpu_cache_watermark[i] < 8)
-                cpu_cache_watermark[i] += 1;
-            for( int j = 0; j < cpu_cache_watermark[i]; j++){
-                if(!fetch_mem_block(init_addr_, init_rkey_)){
-                    printf("fetch local cache failed!\n");
+        for(int i = 0; i < nprocs; i++){
+            int free_ = cpu_cache_->get_length(i);
+            // empty    --> fill and +1
+            // 1 left   --> fill
+            // > 1 left --> fill and -1
+            if(free_ == 0){
+                if (cpu_cache_watermark[i] < 8)
+                    cpu_cache_watermark[i] += 1;
+                for( int j = 0; j < cpu_cache_watermark[i]; j++){
+                    if(!fetch_mem_block(init_addr_, init_rkey_)){
+                        printf("fetch local cache failed!\n");
+                    }
+                    cpu_cache_->add_cache(i, init_addr_, init_rkey_);
                 }
-                cpu_cache_->add_cache(i, init_addr_, init_rkey_);
+                update += cpu_cache_watermark[i];
+                // printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
             }
-            update += cpu_cache_watermark[i];
-            // printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
+            else if(free_ < cpu_cache_watermark[i] && free_ > 1) {
+                if(cpu_cache_watermark[1] > 1)
+                    cpu_cache_watermark[i] -= 1;
+                for( int j = 0; j < cpu_cache_watermark[i] - free_; j++){
+                    if(!fetch_mem_block(init_addr_, init_rkey_)){
+                        printf("fetch local cache failed!\n");
+                    }
+                    cpu_cache_->add_cache(i, init_addr_, init_rkey_);
+                }
+                update += cpu_cache_watermark[i] - free_;
+            } else if(free_ == 1) {
+                for( int j = 0; j < cpu_cache_watermark[i] - free_; j++){
+                    if(!fetch_mem_block(init_addr_, init_rkey_)){
+                        printf("fetch local cache failed!\n");
+                    }
+                    cpu_cache_->add_cache(i, init_addr_, init_rkey_);
+                }
+                update += cpu_cache_watermark[i] - free_;
+            } 
         }
-        else if(free_ < cpu_cache_watermark[i] && free_ > 1) {
-            if(cpu_cache_watermark[1] > 1)
-                cpu_cache_watermark[i] -= 1;
-            for( int j = 0; j < cpu_cache_watermark[i] - free_; j++){
-                if(!fetch_mem_block(init_addr_, init_rkey_)){
-                    printf("fetch local cache failed!\n");
+        // TODO: the two phase are lineral, time cost may be large?
+        for(int i = 1; i < class_num; i++){ 
+            int free_ = cpu_cache_->get_class_length(i);
+            if(free_ == 0){
+               if ( cpu_class_watermark[i] < 8)
+                    cpu_class_watermark[i] += 1;
+                for( int j = 0; j < cpu_class_watermark[i]; j++){
+                    if(!fetch_mem_class_block(i, init_addr_, init_rkey_)){
+                        printf("fetch local cache failed!\n");
+                    }
+                    cpu_cache_->add_class_cache(i, init_addr_, init_rkey_);
                 }
-                cpu_cache_->add_cache(i, init_addr_, init_rkey_);
+                update += cpu_class_watermark[i];
+                // printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
             }
-            update += cpu_cache_watermark[i] - free_;
-        } else if(free_ == 1) {
-            for( int j = 0; j < cpu_cache_watermark[i] - free_; j++){
-                if(!fetch_mem_block(init_addr_, init_rkey_)){
-                    printf("fetch local cache failed!\n");
+            else if(free_ < cpu_class_watermark[i] && free_ > 1) {
+                if(cpu_class_watermark[1] > 1)
+                    cpu_class_watermark[i] -= 1;
+                for( int j = 0; j < cpu_class_watermark[i] - free_; j++){
+                    if(!fetch_mem_class_block(i, init_addr_, init_rkey_)){
+                        printf("fetch local cache failed!\n");
+                    }
+                    cpu_cache_->add_class_cache(i, init_addr_, init_rkey_);
                 }
-                cpu_cache_->add_cache(i, init_addr_, init_rkey_);
+                update += cpu_class_watermark[i] - free_;
+            } else if(free_ == 1) {
+                for( int j = 0; j < cpu_class_watermark[i] - free_; j++){
+                    if(!fetch_mem_class_block(i, init_addr_, init_rkey_)){
+                        printf("fetch local cache failed!\n");
+                    }
+                    cpu_cache_->add_class_cache(i, init_addr_, init_rkey_);
+                }
+                update += cpu_class_watermark[i] - free_;
             }
-            update += cpu_cache_watermark[i] - free_;
-        } 
         }
         if(update) {
             time_stamp_ += 1;
@@ -257,56 +286,48 @@ bool ComputingNode::new_cache_region(uint32_t block_class) {
 
 bool ComputingNode::fill_cache_block(uint32_t block_class){
     if(block_class == 0){
-        uint32_t length =  ring_buffer_length();
+        uint32_t length =  ring_cache->get_length();
         for(int i = 0; i< cache_upper_bound - length; i++){
             if(current_region_.region.base_map_ != bitmap32_filled) {
                 int index = find_free_index_from_bitmap32_tail(current_region_.region.base_map_);
                 current_region_.region.base_map_ |= 1<<index;
-                add_ring_cache(get_region_block_addr(current_region_.region, index), current_region_.rkey[index]);
+                rdma_addr addr(get_region_block_addr(current_region_.region, index), current_region_.rkey[index]);
+                printf("fill cache:%lx\n", addr.addr);
+                ring_cache->add_cache(addr);
             } else {
                 printf("no backup region, just fetch new region\n");
                 exclusive_region_[current_region_.region.offset_] = current_region_;
                 if(new_cache_region(block_class)) {
                     return fill_cache_block(block_class);
                 } else return false;
-                // while(!m_rdma_conn_->fetch_region_block(backup_region_, ring_cache[writer].addr, ring_cache[writer].rkey, false)) {
-                //     // fetch new region
-                //     printf("fetch new region\n");
-                //     new_cache_region(block_class);
-                // }
             }
-            printf("fill cache:%lx\n", ring_cache[writer].addr);
-            // if(use_global_rkey_) ring_cache[writer].rkey = get_global_rkey();
         }
     } else {
         for(int i = 0; i<class_cache_upper_bound[block_class]; i++){
-            while(!m_rdma_conn_->fetch_region_class_block(current_class_region_[block_class], block_class, ring_class_cache[block_class][class_writer[block_class]].addr, 
-                ring_class_cache[block_class][class_writer[block_class]].rkey, false)) {
+            rdma_addr addr;
+            while(!m_rdma_conn_->fetch_region_class_block(current_class_region_[block_class], block_class, addr.addr, 
+                addr.rkey, false)) {
                 // fetch new region
                 new_cache_region(block_class);
             }
-            if(use_global_rkey_) ring_class_cache[block_class][class_writer[block_class]].rkey = get_global_rkey();
-            class_writer[block_class] = (class_writer[block_class] + 1) % class_ring_buffer_size;
+            ring_class_cache[block_class]->add_cache(addr);
         }
     }
     return true;
 }
 
 bool ComputingNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
-    while(ring_buffer_length() == 0);
-    if(ring_cache[reader].addr != 0 && ring_cache[reader].rkey != 0) {
-        addr = ring_cache[reader].addr;
-        rkey = ring_cache[reader].rkey;
-        ring_cache[reader].addr = 0;
-        ring_cache[reader].rkey = 0;
-        reader = (reader + 1) % ring_buffer_size;
-        // printf("free cache remain: %lu\n", ring_buffer_length());
-        return true;
-    } 
-    // if(fill_cache_block(0)){
-    //     return fetch_mem_block(addr, rkey);
-    // }
-    return false;
+    rdma_addr result;
+    bool ret = ring_cache->force_fetch_cache(result);
+    addr = result.addr; rkey = result.rkey;
+    return ret;
+}
+
+bool ComputingNode::fetch_mem_class_block(uint16_t block_class, uint64_t &addr, uint32_t &rkey){
+    rdma_addr result;
+    bool ret = ring_class_cache[block_class]->force_fetch_cache(result);
+    addr = result.addr; rkey = result.rkey;
+    return ret;
 }
 
 bool ComputingNode::free_mem_block(uint64_t addr){
@@ -326,12 +347,13 @@ bool ComputingNode::free_mem_block(uint64_t addr){
     // m_rdma_conn_->remote_memzero(addr, (region->region.block_class_+1)*block_size_);
     if(!m_rdma_conn_->remote_rebind(addr, region->region.block_class_, region->rkey[region_block_offset])){
         // region->region.base_map_ &= ~(uint64_t)(1<<region_block_offset);
-        add_ring_cache(addr, region->rkey[region_block_offset]);
+        rdma_addr value(addr, region->rkey[region_block_offset]);
+        ring_cache->add_cache(value);
+        // if(free_bit_in_bitmap32(region->region.base_map_) > block_per_region/2) {
+        //     printf("time to reuse this region!\n");
+        // }
         return true;
     }
-    // if(free_bit_in_bitmap32(region->region.base_map_) > block_per_region/2) {
-    //     printf("time to reuse this region!\n");
-    // }
     return false;
 }
 

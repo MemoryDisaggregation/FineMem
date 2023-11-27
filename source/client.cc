@@ -105,7 +105,7 @@ int main(int argc, char* argv[]){
         heap->start(ip, port);
 
         // << single thread, local test, fetch remote memory >>
-        int iter = 500;
+        int iter = 5;
         uint64_t addr;
         uint32_t rkey=0;
         char buffer[2][64*1024] = {"aaa", "bbb"};

@@ -31,7 +31,7 @@ namespace mralloc {
   (std::chrono::duration_cast<std::chrono::microseconds>((END) - (START)) \
        .count())
 
-enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_FETCH, MSG_FETCH_FAST, MSG_MW_BIND, RPC_FUSEE_SUBTABLE, MSG_MW_REBIND };
+enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_FETCH, MSG_FETCH_FAST, MSG_MW_BIND, RPC_FUSEE_SUBTABLE, MSG_MW_REBIND, MSG_MW_CLASS_BIND };
 
 enum ResStatus { RES_OK, RES_FAIL };
 

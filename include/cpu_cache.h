@@ -4,6 +4,7 @@
 #include <sched.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -20,7 +21,7 @@ const uint32_t max_item = 1024;
 template <typename T>
 class ring_buffer{
 public:
-    ring_buffer(uint32_t max_length, T* buffer, T zero, uint32_t* reader, uint32_t* writer)
+    ring_buffer(uint32_t max_length, T* buffer, T zero, std::atomic<uint32_t>* reader, std::atomic<uint32_t>* writer)
          : max_length_(max_length), buffer_(buffer), zero_(zero), reader_(reader), writer_(writer) {
     }
     
@@ -28,72 +29,93 @@ public:
         for(int i = 0; i < max_length_; i++) {
             buffer_[i] = zero_;
         }
-        *reader_ = 0;
-        *writer_ = 0;
+        reader_->store(0);
+        writer_->store(0);
     }
 
     uint32_t get_length() {
-        if (*reader_ == *writer_) {
+        uint32_t reader = reader_->load();
+        uint32_t writer = writer_->load();
+        if (reader == writer) {
             return 0;
         }
-        if (*writer_ > *reader_) {
-            return (*writer_ - *reader_);
+        if (writer > reader) {
+            return (writer - reader);
         } else {
-            return (max_length_ - *reader_ + *writer_);
+            return (max_length_ - reader + writer);
         }
     }
 
     void add_cache(T value){
         // host side fill cache, add write pointer
-        uint32_t writer = *writer_;
-        if(get_length() < max_length_-1 && buffer_[writer] == zero_){
-            buffer_[writer] = value;
-            *writer_ = (writer + 1) % max_item;
-        }
+        uint32_t writer = writer_->load();
+        uint32_t new_writer;
+        do{
+            new_writer = writer;
+            if(get_length() < max_length_-1 && buffer_[writer] == zero_){
+                new_writer = (new_writer + 1) % max_item;
+            } else {
+                return;
+            }
+        } while(!writer_->compare_exchange_weak(writer, new_writer));
+        buffer_[writer] = value;
     }
 
     bool force_fetch_cache(T &value) {
-        while(get_length() == 0) ;
-        uint32_t reader = *reader_;
-        if(!(buffer_[reader] == zero_ )) {
-            value = buffer_[reader];
-            buffer_[reader] = zero_;
-            *reader_ = (reader + 1) % max_item;
-            return true;
-        }
-        else{
-            printf("fetch cache failed\n");
-            return false;
-        }
+        uint32_t reader = reader_->load();
+        uint32_t new_reader;
+        do {
+            while(get_length() == 0) ;
+            if(!(buffer_[reader] == zero_ )) {
+                new_reader = (reader + 1) % max_item;
+            }
+            else{
+                printf("fetch cache failed\n");
+                return false;
+            }
+        }while(!reader_->compare_exchange_weak(reader, new_reader));
+        value = buffer_[reader];
+        buffer_[reader] = zero_;
+        return true;
     }
 
     bool try_fetch_cache(T &value) {
-        if(get_length() == 0) {
-            return false;
-        } 
-        uint32_t reader = *reader_;
-        if(!(buffer_[reader] == zero_ )) {
-            value = buffer_[reader];
-            buffer_[reader] = zero_;
-            *reader_ = (reader + 1) % max_item;
-            return true;
-        }
-        else{
-            printf("fetch cache failed\n");
-            return false;
-        }
+        uint32_t reader = reader_->load();
+        uint32_t new_reader;
+        do {
+            if(get_length() == 0) {
+                return false;
+            } 
+            if(!(buffer_[reader] == zero_ )) {
+
+                new_reader = (reader + 1) % max_item;
+            }
+            else{
+                printf("fetch cache failed\n");
+                return false;
+            }
+        }while(!reader_->compare_exchange_weak(reader, new_reader));
+        value = buffer_[reader];
+        buffer_[reader] = zero_;
+        return true;
     }
 
 private:
     uint32_t max_length_;
     T* buffer_;
     T zero_;
-    uint32_t* reader_;
-    uint32_t* writer_;
+    std::atomic<uint32_t>* reader_;
+    std::atomic<uint32_t>* writer_;
+};
+
+struct rdma_addr_{
+    uint64_t addr;
+    uint32_t rkey;
 };
 
 class rdma_addr{
 public:
+    rdma_addr() {addr = -1; rkey = -1;}
     rdma_addr(uint64_t addr, uint32_t rkey): addr(addr), rkey(rkey) {}
     bool operator==(rdma_addr &compare) {
         return addr == compare.addr && rkey == compare.rkey;
@@ -105,7 +127,6 @@ public:
     }
     uint64_t addr;
     uint32_t rkey;
-
 } ;
 
 const uint32_t class_num = 16;
@@ -119,13 +140,13 @@ public:
         uint64_t free_items[nprocs][max_item];
         rdma_addr class_items[class_num][max_item];
 
-        uint32_t reader[nprocs];
-        uint32_t class_reader[class_num];
-        uint32_t free_reader[nprocs];
+        std::atomic<uint32_t> reader[nprocs];
+        std::atomic<uint32_t> class_reader[class_num];
+        std::atomic<uint32_t> free_reader[nprocs];
 
-        uint32_t writer[nprocs];
-        uint32_t class_writer[class_num];
-        uint32_t free_writer[nprocs];
+        std::atomic<uint32_t> writer[nprocs];
+        std::atomic<uint32_t> class_writer[class_num];
+        std::atomic<uint32_t> free_writer[nprocs];
     };
 
     cpu_cache() {
@@ -212,6 +233,13 @@ public:
         if(cpu_cache_content_)
             munmap(cpu_cache_content_, sizeof(cpu_cache_storage));
         shm_unlink("/cpu_cache");
+        for(int i = 0; i < nprocs; i++) {
+            delete(alloc_ring[i]);
+            delete(free_ring[i]);
+        }
+        for(int i = 0; i < class_num; i++) {
+            delete(class_ring[i]);
+        }
     }
 
     bool fetch_cache(uint64_t &addr, uint32_t &rkey){
@@ -235,6 +263,19 @@ public:
         return ret;
     }
 
+    bool fetch_free_cache(uint32_t nproc, uint64_t &addr) {
+        return free_ring[nproc]->try_fetch_cache(addr);
+    }
+
+    bool fetch_class_cache(uint16_t block_class, uint64_t &addr, uint32_t &rkey){
+        // just fetch one block in the current cpu_id --> ring buffer
+        rdma_addr result(-1, -1);
+        bool ret = class_ring[block_class]->force_fetch_cache(result);
+        addr = result.addr; rkey = result.rkey;
+        return ret;
+    }
+
+
     void add_cache(uint32_t nproc, uint64_t addr, uint32_t rkey){
         // host side fill cache, add write pointer
         rdma_addr result(addr, rkey);
@@ -250,8 +291,9 @@ public:
         free_ring[nproc]->add_cache(addr);
     }
 
-    bool fetch_free_cache(uint32_t nproc, uint64_t &addr) {
-        return free_ring[nproc]->try_fetch_cache(addr);
+    void add_class_cache(uint16_t block_class, uint64_t addr, uint32_t rkey) {
+        rdma_addr result(addr, rkey);
+        class_ring[block_class]->add_cache(result);
     }
 
     inline uint32_t get_length(uint32_t nproc) {
@@ -260,6 +302,10 @@ public:
 
     inline uint32_t get_free_length(uint32_t nproc) {
         return free_ring[nproc]->get_length();
+    }
+
+    inline uint32_t get_class_length(uint32_t nproc) {
+        return class_ring[nproc]->get_length();
     }
     
 private:

@@ -208,6 +208,15 @@ int ConnectionManager::remote_rebind(uint64_t addr, uint32_t block_class, uint32
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }
+
+int ConnectionManager::remote_class_bind(uint16_t region_offset, uint16_t block_class) {
+    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+    assert(conn != nullptr);
+    int ret = conn->remote_class_bind(region_offset, block_class);
+    m_rpc_conn_queue_->enqueue(conn);
+    return ret;
+}
+
 int ConnectionManager::remote_memzero(uint64_t addr, uint64_t size) {
         RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);

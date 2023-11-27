@@ -105,6 +105,7 @@ public:
     void print_alloc_info();
 
     bool init_mw(ibv_qp* qp, ibv_cq *cq);
+    bool init_class_mw(uint16_t region_offset, uint16_t block_class, ibv_qp* qp, ibv_cq *cq);
     bool bind_mw(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq *cq);
     bool bind_mw_type2(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq *cq);
     bool unbind_mw_type2(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq *cq);
@@ -173,7 +174,7 @@ private:
 
     // << memory window? >>
     ibv_mw** block_mw;
-    ibv_mw** base_mw;
+    ibv_mw** block_class_mw;
     ServerBlockManager *server_block_manager_;
     uint8_t running;
     uint32_t global_rkey_;
