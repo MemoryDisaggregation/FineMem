@@ -122,7 +122,8 @@ inline int find_free_index_from_bitmap32_tail(uint32_t bitmap) {
 }
 
 inline int find_free_index_from_bitmap16_tail(uint16_t bitmap) {
-    if(~bitmap == 0) return -1;
+    if(bitmap == 0xffff) return -1;
+    if(bitmap == 0) return 0;
     return __builtin_ctz(~bitmap);
 }
 

@@ -74,11 +74,13 @@ void* fetch_mem(void* arg) {
         // alloc phase
         for(int i = 0; i < iter_num; i ++){
             bool result;
-            result = cpu_cache_.fetch_cache(addr[i], rkey[i]); 
+            printf("try to fetch %d\n", i%15+1);
+            result = cpu_cache_.fetch_class_cache(i%15+1, addr[i], rkey[i]); 
+            // result = cpu_cache_.fetch_cache(addr[i], rkey[i]); 
             if (result == false) {
                 printf("impossible!\n");
             } 
-                // printf("%lx,  %u\n", addr[i], rkey[i]);
+            printf("%d, %lx,  %u\n", i%15+1, addr[i], rkey[i]);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
@@ -98,7 +100,7 @@ void* fetch_mem(void* arg) {
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < iter_num; i ++){
-            cpu_cache_.add_free_cache(addr[i]); 
+            // cpu_cache_.add_free_cache(addr[i]); 
                 // printf("%lx,  %u\n", addr[i], rkey[i]);
         }
         gettimeofday(&end, NULL);
