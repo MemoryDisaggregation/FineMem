@@ -90,7 +90,7 @@ bool ComputingNode::start(const std::string addr, const std::string port){
         ret &= fill_cache_block(0);
         for(int i = 1; i < block_class_num; i++) {
             ret &= new_cache_region(i);
-            class_cache_upper_bound[i] = 1;
+            class_cache_upper_bound[i] = 4;
             ret &= fill_cache_block(i);
         }
         if(!ret) {
@@ -109,13 +109,16 @@ bool ComputingNode::start(const std::string addr, const std::string port){
         uint64_t remote_addr; uint32_t remote_rkey;
         cpu_cache_ = new cpu_cache(BLOCK_SIZE);
         for(int i = 0; i < nprocs; i++){
-            // TODO: here we just fill 10 blocks, an automated or valified number should be tested
-            for(int j = 0; j<1; j++) {
-                fetch_mem_block(remote_addr, remote_rkey);
-                assert(remote_addr!=0);
-                cpu_cache_->add_cache(i, remote_addr, remote_rkey);
-                printf("init @%d of %d, addr:%lx rkey:%u\n", i, j, remote_addr, remote_rkey);
-            }
+            fetch_mem_block(remote_addr, remote_rkey);
+            assert(remote_addr!=0);
+            cpu_cache_->add_cache(i, remote_addr, remote_rkey);
+            printf("init @%d addr:%lx rkey:%u\n", i, remote_addr, remote_rkey);
+        }
+        for(int i = 1; i < class_num; i++){
+            fetch_mem_class_block(i, remote_addr, remote_rkey);
+            assert(remote_addr!=0);
+            cpu_cache_->add_class_cache(i, remote_addr, remote_rkey);
+            printf("init class %d addr:%lx rkey:%u\n", i, remote_addr, remote_rkey);
         }
         pthread_t running_thread;
         pthread_create(&cache_fill_thread_, NULL, run_cache_filler, this);
@@ -308,8 +311,11 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
             while(!m_rdma_conn_->fetch_region_class_block(current_class_region_[block_class], block_class, addr.addr, 
                 addr.rkey, false)) {
                 // fetch new region
+                printf("no backup region, just fetch new region\n");
                 new_cache_region(block_class);
             }
+            printf("fill class %d cache:%lx\n", block_class, addr.addr);
+            // printf("region info:%lx,%x\n", current_class_region_[block_class].base_map_, current_class_region_[block_class].class_map_);
             ring_class_cache[block_class]->add_cache(addr);
         }
     }

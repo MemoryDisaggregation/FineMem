@@ -1135,14 +1135,16 @@ bool RDMAConnection::fetch_region_block(region_e &alloc_region, uint64_t &addr, 
 bool RDMAConnection::fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive) {
     int index; region_e new_region;
     do {
-        if(alloc_region.exclusive_ != is_exclusive || alloc_region.block_class_ == 0) {
+        if(alloc_region.exclusive_ != is_exclusive || alloc_region.block_class_ != block_class) {
             printf("already exclusive\n");
             return false;
         } 
         new_region = alloc_region;
         if((index = find_free_index_from_bitmap16_tail(alloc_region.class_map_)) == -1) {
+            printf("already full\n");
             return false;
         }
+        // printf("index = %d\n", index);
         uint16_t mask = 0;
         for(int i = 0;i < block_class + 1;i++) {
             mask |= 1<<(index*(block_class + 1)+i);
