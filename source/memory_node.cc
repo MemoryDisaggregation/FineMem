@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-29 10:55:41
+ * @LastEditTime: 2023-11-29 20:38:09
  * @FilePath: /rmalloc_newbase/source/memory_node.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -726,9 +726,10 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
             RebindBlockResponse *resp_msg = (RebindBlockResponse *)cmd_resp;
             uint32_t block_id = (reg_req->addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
             if(reg_req->block_class == 0) {
-                // if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
-                bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
-                if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_)) {
+                // bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq);
+                if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
+                // bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
+                // if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_)) {
                     resp_msg->status = RES_FAIL;
                 } else {
                     server_block_manager_->set_block_rkey(block_id, block_mw[block_id]->rkey);
@@ -738,6 +739,7 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
             } else {
                 bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
                 if (!bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_)) {
+                // bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq);
                 // if (!bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
                     resp_msg->status = RES_FAIL;
                 } else {
