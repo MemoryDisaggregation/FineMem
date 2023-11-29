@@ -90,7 +90,7 @@ bool ComputingNode::start(const std::string addr, const std::string port){
         ret &= fill_cache_block(0);
         for(int i = 1; i < block_class_num; i++) {
             ret &= new_cache_region(i);
-            class_cache_upper_bound[i] = 4;
+            class_cache_upper_bound[i] = 8;
             ret &= fill_cache_block(i);
         }
         if(!ret) {
@@ -161,6 +161,12 @@ void ComputingNode::recycler() {
                 printf("add free cache addr:%lx, current:%u\n", addr, ring_cache->get_length());
             }
         }
+        for(int i = 0; i < class_num; i++){
+            while(cpu_cache_->fetch_class_free_cache(i, addr)) {
+                free_mem_block(addr);
+                printf("add free class %d cache addr:%lx, current:%u\n", i, addr, ring_class_cache[i]->get_length());
+            }
+        }
     }
 }
 
@@ -206,7 +212,7 @@ void ComputingNode::cache_filler() {
                     cpu_cache_->add_cache(i, init_addr_, init_rkey_);
                 }
                 update += cpu_cache_watermark[i] - free_;
-            } else if(free_ == 1) {
+            } else if(cpu_cache_watermark[i] > 1 && free_ == 1) {
                 for( int j = 0; j < cpu_cache_watermark[i] - free_; j++){
                     if(!fetch_mem_block(init_addr_, init_rkey_)){
                         printf("fetch local cache failed!\n");
@@ -227,9 +233,9 @@ void ComputingNode::cache_filler() {
                         printf("fetch local cache failed!\n");
                     }
                     cpu_cache_->add_class_cache(i, init_addr_, init_rkey_);
+                    printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
                 }
                 update += cpu_class_watermark[i];
-                printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
             }
             else if(free_ < cpu_class_watermark[i] && free_ > 1) {
                 if(cpu_class_watermark[1] > 1)
@@ -239,16 +245,20 @@ void ComputingNode::cache_filler() {
                         printf("fetch local cache failed!\n");
                     }
                     cpu_cache_->add_class_cache(i, init_addr_, init_rkey_);
+                    printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
                 }
                 update += cpu_class_watermark[i] - free_;
-            } else if(free_ == 1) {
+
+            } else if(cpu_cache_watermark[i] > 1 && free_ == 1) {
                 for( int j = 0; j < cpu_class_watermark[i] - free_; j++){
                     if(!fetch_mem_class_block(i, init_addr_, init_rkey_)){
                         printf("fetch local cache failed!\n");
                     }
                     cpu_cache_->add_class_cache(i, init_addr_, init_rkey_);
+                    printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
                 }
                 update += cpu_class_watermark[i] - free_;
+
             }
         }
         if(update) {
@@ -314,7 +324,7 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
                 printf("no backup region, just fetch new region\n");
                 new_cache_region(block_class);
             }
-            printf("fill class %d cache:%lx\n", block_class, addr.addr);
+            printf("fill class %d cache:%lx, %u\n", block_class, addr.addr, addr.rkey);
             // printf("region info:%lx,%x\n", current_class_region_[block_class].base_map_, current_class_region_[block_class].class_map_);
             ring_class_cache[block_class]->add_cache(addr);
         }
@@ -331,7 +341,12 @@ bool ComputingNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
 
 bool ComputingNode::fetch_mem_class_block(uint16_t block_class, uint64_t &addr, uint32_t &rkey){
     rdma_addr result;
-    bool ret = ring_class_cache[block_class]->force_fetch_cache(result);
+    // bool ret = ring_class_cache[block_class]->force_fetch_cache(result);
+    bool ret = ring_class_cache[block_class]->try_fetch_cache(result);
+    if(!ret){
+        fill_cache_block(block_class);
+        ret = ring_class_cache[block_class]->force_fetch_cache(result);
+    }
     addr = result.addr; rkey = result.rkey;
     return ret;
 }
@@ -345,8 +360,12 @@ bool ComputingNode::free_mem_block(uint64_t addr){
     }
     else {
         if( exclusive_region_.find(region_offset) == exclusive_region_.end() ){
-            printf("Not an exclusive block! And the shared block free is not completed\n");
-            return false;
+            printf("Not a local single block free, try to free the remote metadata\n");
+            if(!m_rdma_conn_->free_region_block(addr, false)){
+                printf("Free the remote metadata failed\n");
+                return false;
+            }
+            return true;
         } 
         region = &exclusive_region_[region_offset];
     }

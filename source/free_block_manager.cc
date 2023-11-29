@@ -87,7 +87,7 @@ namespace mralloc {
                 }
                 section_new.alloc_map_ |= 1 << region_offset;
                 section_new.class_map_ |= 1 << region_offset;
-            }while(section_header_[section_offset].compare_exchange_strong(section_old, section_new));
+            }while(!section_header_[section_offset].compare_exchange_strong(section_old, section_new));
             return true;
         } else if(advise == alloc_empty) {
             do{
@@ -96,7 +96,7 @@ namespace mralloc {
                 }
                 section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
                 section_new.class_map_ &= ~((bitmap32)1 << region_offset);
-            }while(section_header_[section_offset].compare_exchange_strong(section_old, section_new));
+            }while(!section_header_[section_offset].compare_exchange_strong(section_old, section_new));
             return true;
         } else if(advise == alloc_no_class) {
             do{
@@ -105,7 +105,7 @@ namespace mralloc {
                 }
                 section_new.class_map_ &= ~((bitmap32)1 << region_offset);
                 section_new.alloc_map_ |= 1 << region_offset;
-            }while(section_header_[section_offset].compare_exchange_strong(section_old, section_new));
+            }while(!section_header_[section_offset].compare_exchange_strong(section_old, section_new));
             return true;
         } else if(advise == alloc_class) {
             do{
@@ -114,7 +114,7 @@ namespace mralloc {
                 }
                 section_new.class_map_ |= 1 << region_offset;
                 section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
-            }while(section_header_[section_offset].compare_exchange_strong(section_old, section_new));
+            }while(!section_header_[section_offset].compare_exchange_strong(section_old, section_new));
             return true;
         }
         return false;

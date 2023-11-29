@@ -218,9 +218,17 @@ int ConnectionManager::remote_class_bind(uint16_t region_offset, uint16_t block_
 }
 
 int ConnectionManager::remote_memzero(uint64_t addr, uint64_t size) {
-        RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
     int ret = conn->remote_memzero(addr, size);
+    m_rpc_conn_queue_->enqueue(conn);
+    return ret;
+}
+
+bool ConnectionManager::free_region_block(uint64_t addr, bool is_exclusive) {
+    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+    assert(conn != nullptr);
+    bool ret = conn->free_region_block(addr, is_exclusive);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }
