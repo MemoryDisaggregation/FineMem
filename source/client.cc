@@ -111,16 +111,17 @@ int main(int argc, char* argv[]){
         char buffer[2][64*1024] = {"aaa", "bbb"};
         char read_buffer[4];
         while(iter--){
-            heap->fetch_mem_block(addr, rkey);
+            heap->fetch_mem_class_block(1, addr, rkey);
+            // heap->fetch_mem_block(addr, rkey);
             heap->show_ring_length();
             std::cout << "write addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
-            for(int i = 0; i < 2; i++)
-                heap->get_conn()->remote_write(buffer[iter%2], 64, addr+i*64, rkey);
+            for(int i = 0; i < 64; i++)
+                heap->get_conn()->remote_write(buffer[iter%2], 64*1024, addr+i*64*1024, rkey);
             std::cout << "read addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
-            for(int i = 0; i < 2; i++)
-                heap->get_conn()->remote_read(read_buffer, 4, addr, rkey);
+            for(int i = 0; i < 64; i++)
+                heap->get_conn()->remote_read(read_buffer, 4, addr+i*64*1024, rkey);
             printf("alloc: %lx : %u, content: %s\n", addr, rkey, read_buffer);
-            heap->free_mem_block(addr);
+            // heap->free_mem_block(addr);
             heap->show_ring_length();
         // heap->mr_bind_remote(2*1024*1024, addr, rkey, 114514);
         // std::cout << "addr mw bind success " << std::endl;

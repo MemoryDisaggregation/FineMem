@@ -16,7 +16,7 @@
 namespace mralloc {
 
 const uint32_t nprocs = 80;
-const uint32_t max_item = 1024;
+const uint32_t max_item = 16;
 
 template <typename T>
 class ring_buffer{
@@ -53,7 +53,7 @@ public:
         do{
             new_writer = writer;
             if(get_length() < max_length_-1 && buffer_[writer] == zero_){
-                new_writer = (new_writer + 1) % max_item;
+                new_writer = (new_writer + 1) % max_length_;
             } else {
                 return;
             }
@@ -67,7 +67,7 @@ public:
         do {
             while(get_length() == 0) ;
             if(!(buffer_[reader] == zero_ )) {
-                new_reader = (reader + 1) % max_item;
+                new_reader = (reader + 1) % max_length_;
             }
             else{
                 printf("fetch cache failed\n");
@@ -88,7 +88,7 @@ public:
             } 
             if(!(buffer_[reader] == zero_ )) {
 
-                new_reader = (reader + 1) % max_item;
+                new_reader = (reader + 1) % max_length_;
             }
             else{
                 printf("fetch cache failed\n");
@@ -139,17 +139,21 @@ public:
         rdma_addr items[nprocs][max_item];
         uint64_t free_items[nprocs][max_item];
         rdma_addr class_items[class_num][max_item];
+        uint64_t class_free_items[class_num][max_item];
 
         std::atomic<uint32_t> reader[nprocs];
         std::atomic<uint32_t> class_reader[class_num];
         std::atomic<uint32_t> free_reader[nprocs];
+        std::atomic<uint32_t> class_free_reader[nprocs];
 
         std::atomic<uint32_t> writer[nprocs];
         std::atomic<uint32_t> class_writer[class_num];
         std::atomic<uint32_t> free_writer[nprocs];
+        std::atomic<uint32_t> class_free_writer[nprocs];
     };
 
     cpu_cache() {
+        this->null = {0,0};
         int fd = shm_open("/cpu_cache", O_RDWR, 0);
         if (fd == -1) {
             perror("init failed, no computing node running");
@@ -168,6 +172,8 @@ public:
             for(int i = 0; i < class_num; i++) {
                 class_ring[i] = new ring_buffer<rdma_addr>(max_item, cpu_cache_content_->class_items[i], rdma_addr(-1,-1), 
                     &cpu_cache_content_->class_reader[i], &cpu_cache_content_->class_writer[i]);
+                class_free_ring[i] = new ring_buffer<uint64_t>(max_item, cpu_cache_content_->class_free_items[i], -1, 
+                    &cpu_cache_content_->class_free_reader[i], &cpu_cache_content_->class_free_writer[i]);
             }
         }
         
@@ -188,15 +194,19 @@ public:
                 alloc_ring[i] = new ring_buffer<rdma_addr>(max_item, cpu_cache_content_->items[i], rdma_addr(-1,-1), 
                     &cpu_cache_content_->reader[i], &cpu_cache_content_->writer[i]);
                 alloc_ring[i]->clear();
+
                 free_ring[i] = new ring_buffer<uint64_t>(max_item, cpu_cache_content_->free_items[i], -1, 
                     &cpu_cache_content_->free_reader[i], &cpu_cache_content_->free_writer[i]);
-                alloc_ring[i]->clear();
                 free_ring[i]->clear();
             }
             for(int i = 0; i < class_num; i++) {
                 class_ring[i] = new ring_buffer<rdma_addr>(max_item, cpu_cache_content_->class_items[i], rdma_addr(-1,-1), 
                     &cpu_cache_content_->class_reader[i], &cpu_cache_content_->class_writer[i]);
                 class_ring[i]->clear();
+
+                class_free_ring[i] = new ring_buffer<uint64_t>(max_item, cpu_cache_content_->class_free_items[i], -1, 
+                    &cpu_cache_content_->class_free_reader[i], &cpu_cache_content_->class_free_writer[i]);
+                class_free_ring[i]->clear();
             }
             cpu_cache_content_->block_size = cache_size_;
         }
@@ -214,6 +224,8 @@ public:
             for(int i = 0; i < class_num; i++) {
                 class_ring[i] = new ring_buffer<rdma_addr>(max_item, cpu_cache_content_->class_items[i], rdma_addr(-1,-1), 
                     &cpu_cache_content_->class_reader[i], &cpu_cache_content_->class_writer[i]);
+                class_free_ring[i] = new ring_buffer<uint64_t>(max_item, cpu_cache_content_->class_free_items[i], -1, 
+                    &cpu_cache_content_->class_free_reader[i], &cpu_cache_content_->class_free_writer[i]);
             }
         }
     }
@@ -275,6 +287,9 @@ public:
         return ret;
     }
 
+    bool fetch_class_free_cache(uint32_t nproc, uint64_t &addr) {
+        return class_free_ring[nproc]->try_fetch_cache(addr);
+    }
 
     void add_cache(uint32_t nproc, uint64_t addr, uint32_t rkey){
         // host side fill cache, add write pointer
@@ -296,6 +311,10 @@ public:
         class_ring[block_class]->add_cache(result);
     }
 
+    void add_class_free_cache(uint16_t block_class, uint64_t addr) {
+        class_free_ring[block_class]->add_cache(addr);
+    }
+
     inline uint32_t get_length(uint32_t nproc) {
         return alloc_ring[nproc]->get_length();
     }
@@ -308,12 +327,18 @@ public:
         return class_ring[nproc]->get_length();
     }
     
+    inline uint32_t get_class_free_length(uint32_t nproc) {
+        return class_ring[nproc]->get_length();
+    }
+
 private:
     cpu_cache_storage* cpu_cache_content_;
     uint64_t cache_size_;
     ring_buffer<rdma_addr>* alloc_ring[nprocs];
     ring_buffer<rdma_addr>* class_ring[nprocs];
     ring_buffer<uint64_t>* free_ring[nprocs];
+    ring_buffer<uint64_t>* class_free_ring[nprocs];
+    rdma_addr_ null;
 };
 
 }

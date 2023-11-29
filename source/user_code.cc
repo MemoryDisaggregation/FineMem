@@ -28,7 +28,7 @@ const uint64_t cache_size = 1024*4*1024;
 
 const uint64_t iter_num = 128;
 
-const uint64_t epoch_num = 4;
+const uint64_t epoch_num = 1;
 
 const int thread_num = 1;
 
@@ -101,6 +101,7 @@ void* fetch_mem(void* arg) {
         gettimeofday(&start, NULL);
         for(int i = 0; i < iter_num; i ++){
             // cpu_cache_.add_free_cache(addr[i]); 
+            cpu_cache_.add_class_free_cache(i%15+1, addr[i]); 
                 // printf("%lx,  %u\n", addr[i], rkey[i]);
         }
         gettimeofday(&end, NULL);
