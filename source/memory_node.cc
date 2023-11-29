@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
- * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-24 15:31:53
+ * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-11-29 10:55:41
  * @FilePath: /rmalloc_newbase/source/memory_node.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -37,7 +37,7 @@
 #define REMOTE_MEM_SIZE 4194304
 // #define REMOTE_MEM_SIZE 4096
 
-#define INIT_MEM_SIZE ((uint64_t)16*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)32*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 
@@ -91,11 +91,18 @@ bool MemoryNode::start(const std::string addr, const std::string port) {
       return false;
     }
 
-    mw_queue_ = new MWPool(m_pd_);
-    if (!mw_queue_) {
-      perror("memeory window init fail");
-      return false;
+    struct ibv_device_attr device_attr;
+    ibv_query_device(m_context_, & device_attr);
+    if (!(device_attr.device_cap_flags & IBV_DEVICE_MEM_WINDOW)) {
+        printf("do not support memory window\n");
+    } else {
+        printf("support %d memory window total\n", device_attr.max_mw);
     }
+    // mw_queue_ = new MWPool(m_pd_);
+    // if (!mw_queue_) {
+    //   perror("memeory window init fail");
+    //   return false;
+    // }
 
     // create connection manager and listen
 
@@ -423,6 +430,9 @@ int MemoryNode::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
         } 
         rep_pdata.id = num;
         m_worker_num_ += 1;
+    } else {
+        one_side_qp_ = cm_id->qp;
+        one_side_cq_ = cq;
     }
 
     rep_pdata.buf_addr = (uintptr_t)cmd_msg;
@@ -481,10 +491,11 @@ bool MemoryNode::init_class_mw(uint16_t region_offset, uint16_t block_class, ibv
     uint32_t block_offset = region_offset * block_per_region;
     for(int i = 0; i < block_per_region/class_size; i++){
         uint64_t block_addr_ = server_block_manager_->get_block_addr(block_offset + i*class_size);
-        block_class_mw[block_offset + i*class_size] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
+        if(block_class_mw[block_offset + i*class_size] == NULL) block_class_mw[block_offset + i*class_size] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
         bind_mw(block_class_mw[block_offset + i*class_size], block_addr_, server_block_manager_->get_block_size()*class_size, qp, cq);
         bind_mw(block_class_mw[block_offset + i*class_size], block_addr_, server_block_manager_->get_block_size()*class_size, qp, cq);
         server_block_manager_->set_class_block_rkey(block_offset + i*class_size, block_class_mw[block_offset + i*class_size]->rkey);
+        printf("addr %lx bind class %d, with rkey %u\n", block_addr_, block_class, block_class_mw[block_offset + i*class_size]->rkey);
     }
     return true;
 }
@@ -501,7 +512,7 @@ bool MemoryNode::bind_mw(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, i
                                             .addr = addr, 
                                             .length = size,
                                             .mw_access_flags = IBV_ACCESS_REMOTE_READ | 
-                                                IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC} ;
+                                                IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND | IBV_ACCESS_HUGETLB} ;
     struct ibv_mw_bind bind_ = {.wr_id = 0, .send_flags = IBV_SEND_SIGNALED, .bind_info = bind_info_};
     if(ibv_bind_mw(qp, mw, &bind_)){
         perror("ibv_post_send mw_bind fail");
@@ -510,7 +521,10 @@ bool MemoryNode::bind_mw(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, i
         while (true) {
             ibv_wc wc;
             int rc = ibv_poll_cq(cq, 1, &wc);
-            if (rc > 0) {
+            if (rc == 1) {
+                if (wc.opcode != IBV_WC_BIND_MW) {
+                    printf("bind failed\n");
+                }
                 if (IBV_WC_SUCCESS == wc.status) {
                     break;
                 } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
@@ -523,14 +537,14 @@ bool MemoryNode::bind_mw(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, i
                     perror("cmd_send ibv_poll_cq status error");
                     break;
                 }
-                } else if (0 == rc) {
+            } else if (0 == rc) {
                 continue;
-                } else {
+            } else {
                 perror("ibv_poll_cq fail");
                 break;
-                }
             }
         }
+    }
     return true;
 }
 
@@ -538,7 +552,7 @@ struct ibv_mr *MemoryNode::rdma_register_memory(void *ptr, uint64_t size) {
     struct ibv_mr *mr =
         ibv_reg_mr(m_pd_, ptr, size,
                     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
-                        IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND );
+                        IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND | IBV_ACCESS_HUGETLB );
     if (!mr) {
         perror("ibv_reg_mr fail");
         return nullptr;
@@ -696,7 +710,8 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
         } else if (request->type == MSG_MW_CLASS_BIND) {
             ClassBindRequest *reg_req = (ClassBindRequest *)request;
             ClassBindResponse *resp_msg = (ClassBindResponse *)cmd_resp;
-            if (!init_class_mw(reg_req->region_offset, reg_req->block_class, work_info->cm_id->qp, work_info->cq)) {
+            if (!init_class_mw(reg_req->region_offset, reg_req->block_class, one_side_qp_, one_side_cq_)) {
+            // if (!init_class_mw(reg_req->region_offset, reg_req->block_class, work_info->cm_id->qp, work_info->cq)) {
                 resp_msg->status = RES_FAIL;
             } else {
                 resp_msg->status = RES_OK;
@@ -711,16 +726,22 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
             RebindBlockResponse *resp_msg = (RebindBlockResponse *)cmd_resp;
             uint32_t block_id = (reg_req->addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
             if(reg_req->block_class == 0) {
-                if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
+                // if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
+                bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
+                if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_)) {
                     resp_msg->status = RES_FAIL;
                 } else {
+                    server_block_manager_->set_block_rkey(block_id, block_mw[block_id]->rkey);
                     resp_msg->status = RES_OK;
                 }
                 resp_msg->rkey = block_mw[block_id]->rkey;
             } else {
-                if (!bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
+                bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
+                if (!bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_)) {
+                // if (!bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
                     resp_msg->status = RES_FAIL;
                 } else {
+                    server_block_manager_->set_class_block_rkey(block_id, block_class_mw[block_id]->rkey);
                     resp_msg->status = RES_OK;
                 }
                 resp_msg->rkey = block_class_mw[block_id]->rkey;

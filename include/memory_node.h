@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-11-21 17:26:29
- * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-21 20:49:45
+ * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-11-28 17:23:36
  * @FilePath: /rmalloc_newbase/include/memory_node.h
  * @Description: 
  * 
@@ -152,6 +152,8 @@ private:
 
     // << function enabled >>
     bool one_sided_enabled_;
+    ibv_qp* one_side_qp_;
+    ibv_cq* one_side_cq_;
 
     struct ibv_mr *global_mr_;
     struct rdma_event_channel *m_cm_channel_;
