@@ -37,7 +37,7 @@
 
 namespace mralloc {
 
-const uint32_t ring_buffer_size = 1024;
+const uint32_t ring_buffer_size = 4096;
 const uint32_t class_ring_buffer_size = 128;
 
 
@@ -70,12 +70,16 @@ public:
 
     void pre_fetcher() ;
     void cache_filler() ;
+    void print_cpu_cache() ;
     void recycler() ;
     
     inline void show_ring_length() {
         printf("ring length:%u\n", ring_cache->get_length());
         return ;
     }
+
+    void increase_watermark(uint64_t &upper_bound);
+    void decrease_watermark(uint64_t &upper_bound);
 
     inline uint64_t get_region_block_addr(region_e region, uint32_t block_offset) {return heap_start_ + region.offset_ * region_size_ + block_offset * block_size_;} ;
     bool new_cache_section(uint32_t block_class);
@@ -132,6 +136,7 @@ private:
     uint64_t region_num_;
     uint64_t section_size_;
     uint64_t section_num_;
+    uint64_t fill_counter = 0;
 
     // info before heap segment
     uint64_t section_header_;
@@ -163,6 +168,8 @@ private:
     // rdma_mem_t ring_class_cache[16][class_ring_buffer_size];
     uint64_t class_cache_upper_bound[16];
     std::atomic<uint32_t> class_reader[16], class_writer[16];
+    uint64_t cpu_cache_watermark[nprocs];
+    uint64_t cpu_class_watermark[class_num];
 
     // << function enabled >>
     bool heap_enabled_;

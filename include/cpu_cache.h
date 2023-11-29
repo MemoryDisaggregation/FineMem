@@ -16,7 +16,8 @@
 namespace mralloc {
 
 const uint32_t nprocs = 80;
-const uint32_t max_item = 16;
+const uint32_t max_alloc_item = 16;
+const uint32_t max_free_item = 256;
 
 template <typename T>
 class ring_buffer{
@@ -52,12 +53,12 @@ public:
         uint32_t new_writer;
         do{
             new_writer = writer;
-            if(get_length() < max_length_-1 && buffer_[writer] == zero_){
+            if(get_length() < max_length_-1){
                 new_writer = (new_writer + 1) % max_length_;
             } else {
                 return;
             }
-        } while(!writer_->compare_exchange_weak(writer, new_writer));
+        } while(!writer_->compare_exchange_strong(writer, new_writer));
         buffer_[writer] = value;
     }
 
@@ -66,14 +67,16 @@ public:
         uint32_t new_reader;
         do {
             while(get_length() == 0) ;
-            if(!(buffer_[reader] == zero_ )) {
-                new_reader = (reader + 1) % max_length_;
-            }
-            else{
-                printf("fetch cache failed\n");
-                return false;
-            }
-        }while(!reader_->compare_exchange_weak(reader, new_reader));
+            new_reader = (reader + 1) % max_length_;
+            // if(!(buffer_[reader] == zero_ )) {
+            //     new_reader = (reader + 1) % max_length_;
+            // }
+            // else{
+            //     printf("fetch cache failed\n");
+            //     return false;
+            // }
+        }while(!reader_->compare_exchange_strong(reader, new_reader));
+        while(buffer_[reader] == zero_);
         value = buffer_[reader];
         buffer_[reader] = zero_;
         return true;
@@ -86,15 +89,16 @@ public:
             if(get_length() == 0) {
                 return false;
             } 
-            if(!(buffer_[reader] == zero_ )) {
-
-                new_reader = (reader + 1) % max_length_;
-            }
-            else{
-                printf("fetch cache failed\n");
-                return false;
-            }
-        }while(!reader_->compare_exchange_weak(reader, new_reader));
+            new_reader = (reader + 1) % max_length_;
+            // if(!(buffer_[reader] == zero_ )) {
+            //     new_reader = (reader + 1) % max_length_;
+            // }
+            // else{
+            //     printf("fetch cache failed\n");
+            //     return false;
+            // }
+        }while(!reader_->compare_exchange_strong(reader, new_reader));
+        while(buffer_[reader] == zero_);
         value = buffer_[reader];
         buffer_[reader] = zero_;
         return true;
@@ -136,10 +140,10 @@ public:
 
     struct cpu_cache_storage {
         uint64_t block_size;
-        rdma_addr items[nprocs][max_item];
-        uint64_t free_items[nprocs][max_item];
-        rdma_addr class_items[class_num][max_item];
-        uint64_t class_free_items[class_num][max_item];
+        rdma_addr items[nprocs][max_alloc_item];
+        uint64_t free_items[nprocs][max_free_item];
+        rdma_addr class_items[class_num][max_alloc_item];
+        uint64_t class_free_items[class_num][max_free_item];
 
         std::atomic<uint32_t> reader[nprocs];
         std::atomic<uint32_t> class_reader[class_num];
@@ -163,16 +167,16 @@ public:
             cpu_cache_content_ = (cpu_cache_storage*)mmap(NULL, sizeof(cpu_cache_storage), port_flag, mm_flag, fd, 0);
             cache_size_ = cpu_cache_content_->block_size;
             for(int i = 0; i < nprocs; i++) {
-                alloc_ring[i] = new ring_buffer<rdma_addr>(max_item, cpu_cache_content_->items[i], rdma_addr(-1,-1), 
+                alloc_ring[i] = new ring_buffer<rdma_addr>(max_alloc_item, cpu_cache_content_->items[i], rdma_addr(-1,-1), 
                     &cpu_cache_content_->reader[i], &cpu_cache_content_->writer[i]);
-                free_ring[i] = new ring_buffer<uint64_t>(max_item, cpu_cache_content_->free_items[i], -1, 
+                free_ring[i] = new ring_buffer<uint64_t>(max_free_item, cpu_cache_content_->free_items[i], -1, 
                     &cpu_cache_content_->free_reader[i], &cpu_cache_content_->free_writer[i]);
                 
             }
             for(int i = 0; i < class_num; i++) {
-                class_ring[i] = new ring_buffer<rdma_addr>(max_item, cpu_cache_content_->class_items[i], rdma_addr(-1,-1), 
+                class_ring[i] = new ring_buffer<rdma_addr>(max_alloc_item, cpu_cache_content_->class_items[i], rdma_addr(-1,-1), 
                     &cpu_cache_content_->class_reader[i], &cpu_cache_content_->class_writer[i]);
-                class_free_ring[i] = new ring_buffer<uint64_t>(max_item, cpu_cache_content_->class_free_items[i], -1, 
+                class_free_ring[i] = new ring_buffer<uint64_t>(max_free_item, cpu_cache_content_->class_free_items[i], -1, 
                     &cpu_cache_content_->class_free_reader[i], &cpu_cache_content_->class_free_writer[i]);
             }
         }
@@ -191,20 +195,20 @@ public:
             ftruncate(fd, sizeof(cpu_cache_storage));
             cpu_cache_content_ = (cpu_cache_storage*)mmap(NULL, sizeof(cpu_cache_storage), port_flag, mm_flag, fd, 0);
             for(int i = 0; i < nprocs; i++) {
-                alloc_ring[i] = new ring_buffer<rdma_addr>(max_item, cpu_cache_content_->items[i], rdma_addr(-1,-1), 
+                alloc_ring[i] = new ring_buffer<rdma_addr>(max_alloc_item, cpu_cache_content_->items[i], rdma_addr(-1,-1), 
                     &cpu_cache_content_->reader[i], &cpu_cache_content_->writer[i]);
                 alloc_ring[i]->clear();
 
-                free_ring[i] = new ring_buffer<uint64_t>(max_item, cpu_cache_content_->free_items[i], -1, 
+                free_ring[i] = new ring_buffer<uint64_t>(max_free_item, cpu_cache_content_->free_items[i], -1, 
                     &cpu_cache_content_->free_reader[i], &cpu_cache_content_->free_writer[i]);
                 free_ring[i]->clear();
             }
             for(int i = 0; i < class_num; i++) {
-                class_ring[i] = new ring_buffer<rdma_addr>(max_item, cpu_cache_content_->class_items[i], rdma_addr(-1,-1), 
+                class_ring[i] = new ring_buffer<rdma_addr>(max_alloc_item, cpu_cache_content_->class_items[i], rdma_addr(-1,-1), 
                     &cpu_cache_content_->class_reader[i], &cpu_cache_content_->class_writer[i]);
                 class_ring[i]->clear();
 
-                class_free_ring[i] = new ring_buffer<uint64_t>(max_item, cpu_cache_content_->class_free_items[i], -1, 
+                class_free_ring[i] = new ring_buffer<uint64_t>(max_free_item, cpu_cache_content_->class_free_items[i], -1, 
                     &cpu_cache_content_->class_free_reader[i], &cpu_cache_content_->class_free_writer[i]);
                 class_free_ring[i]->clear();
             }
@@ -215,16 +219,16 @@ public:
             assert(cache_size_ == cpu_cache_content_->block_size);
             cache_size_ = cpu_cache_content_->block_size;
             for(int i = 0; i < nprocs; i++) {
-                alloc_ring[i] = new ring_buffer<rdma_addr>(max_item, cpu_cache_content_->items[i], rdma_addr(-1,-1), 
+                alloc_ring[i] = new ring_buffer<rdma_addr>(max_alloc_item, cpu_cache_content_->items[i], rdma_addr(-1,-1), 
                     &cpu_cache_content_->reader[i], &cpu_cache_content_->writer[i]);
-                free_ring[i] = new ring_buffer<uint64_t>(max_item, cpu_cache_content_->free_items[i], -1, 
+                free_ring[i] = new ring_buffer<uint64_t>(max_free_item, cpu_cache_content_->free_items[i], -1, 
                     &cpu_cache_content_->free_reader[i], &cpu_cache_content_->free_writer[i]);
                 
             }
             for(int i = 0; i < class_num; i++) {
-                class_ring[i] = new ring_buffer<rdma_addr>(max_item, cpu_cache_content_->class_items[i], rdma_addr(-1,-1), 
+                class_ring[i] = new ring_buffer<rdma_addr>(max_alloc_item, cpu_cache_content_->class_items[i], rdma_addr(-1,-1), 
                     &cpu_cache_content_->class_reader[i], &cpu_cache_content_->class_writer[i]);
-                class_free_ring[i] = new ring_buffer<uint64_t>(max_item, cpu_cache_content_->class_free_items[i], -1, 
+                class_free_ring[i] = new ring_buffer<uint64_t>(max_free_item, cpu_cache_content_->class_free_items[i], -1, 
                     &cpu_cache_content_->class_free_reader[i], &cpu_cache_content_->class_free_writer[i]);
             }
         }

@@ -86,7 +86,7 @@ bool ComputingNode::start(const std::string addr, const std::string port){
         ret &= new_cache_region(0);
         cache_watermark_high = 0.9;
         cache_watermark_low = 0.1;
-        cache_upper_bound = 512;
+        cache_upper_bound = 81;
         ret &= fill_cache_block(0);
         for(int i = 1; i < block_class_num; i++) {
             ret &= new_cache_region(i);
@@ -128,26 +128,52 @@ bool ComputingNode::start(const std::string addr, const std::string port){
     return true;
 }
 
+void ComputingNode::increase_watermark(uint64_t &upper_bound) {
+    if(upper_bound >= 2*block_per_region) {
+        upper_bound += block_per_region;
+    } else {
+        upper_bound += 1;
+    }
+}
+
+void ComputingNode::decrease_watermark(uint64_t &upper_bound) {
+    if(upper_bound > 2*block_per_region) {
+        upper_bound -= block_per_region;
+    } else {
+        upper_bound -= 1;
+    }
+}
+
 // a infinite loop worker
 void ComputingNode::pre_fetcher() {
     uint64_t update_time = time_stamp_;
     uint32_t length;
+    bool breakdown = false;
+    cache_upper_bound = block_per_region;
     while(running) {
+        if(ring_cache->get_length() == 0) {
+            breakdown = true;
+            increase_watermark(cache_upper_bound);
+            fill_cache_block(0);
+        }
         if(update_time != time_stamp_) {
             update_time = time_stamp_;
-            length = ring_cache->get_length();
-            // if(length < cache_upper_bound *0.3)
-            //     fill_cache_block(0);
-            // // printf("I'll do update\n");
-            // if(length < cache_upper_bound * cache_watermark_low) {
-            //     cache_upper_bound += 1;
-            //     fill_cache_block(0);
-            // } else if(length < cache_upper_bound && length > cache_upper_bound * cache_watermark_high) {
-            //     cache_upper_bound -= 1;
-            //     fill_cache_block(0);
-            // } else if(length != cache_upper_bound ) {
-            //     fill_cache_block(0);
-            // }
+            if(breakdown) {
+                breakdown = false;
+                continue;
+            } else {
+                length = ring_cache->get_length();
+                if(length < cache_upper_bound * cache_watermark_low) {
+                    increase_watermark(cache_upper_bound);
+                    fill_cache_block(0);
+                } else if(length < cache_upper_bound && length > cache_upper_bound * cache_watermark_high) {
+                    decrease_watermark(cache_upper_bound);
+                    fill_cache_block(0);
+                } else if(length < cache_upper_bound ) {
+                    fill_cache_block(0);
+                }
+            }
+            printf("watermark: %lu, free space: %u, total used mem:%luMiB\n", cache_upper_bound, ring_cache->get_length(), fill_counter*4);
         }
     }
 }
@@ -158,7 +184,7 @@ void ComputingNode::recycler() {
         for(int i = 0; i < nprocs; i++){
             while(cpu_cache_->fetch_free_cache(i, addr)) {
                 free_mem_block(addr);
-                printf("add free cache addr:%lx, current:%u\n", addr, ring_cache->get_length());
+                // printf("add free cache addr:%lx, current:%u\n", addr, ring_cache->get_length());
             }
         }
         for(int i = 0; i < class_num; i++){
@@ -170,12 +196,20 @@ void ComputingNode::recycler() {
     }
 }
 
+void ComputingNode::print_cpu_cache() {
+    for(int i = 0;i < nprocs; i++) {
+        if(cpu_cache_watermark[i] != 1 || cpu_cache_->get_length(i) != 1)
+            printf("%d:%d/%lu\t", i, cpu_cache_->get_length(i), cpu_cache_watermark[i]);
+    }
+    printf("\n");
+
+}
+
 // a infinite loop worker
 void ComputingNode::cache_filler() {
   // scan the cpu cache and refill them
     time_stamp_ = 0; uint64_t update = 0;
-    uint64_t cpu_cache_watermark[nprocs];
-    uint64_t cpu_class_watermark[class_num];
+
     for(int i=0; i<nprocs; i++) {
         cpu_cache_watermark[i] = 1;
     }
@@ -263,7 +297,7 @@ void ComputingNode::cache_filler() {
         }
         if(update) {
             time_stamp_ += 1;
-            printf("filling total %lu\n",update);
+            // print_cpu_cache();
         }
         // printf("I'm running!\n");
     }
@@ -305,8 +339,9 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
                 int index = find_free_index_from_bitmap32_tail(current_region_.region.base_map_);
                 current_region_.region.base_map_ |= 1<<index;
                 rdma_addr addr(get_region_block_addr(current_region_.region, index), current_region_.rkey[index]);
-                printf("fill cache:%lx\n", addr.addr);
+                // printf("fill cache:%lx\n", addr.addr);
                 ring_cache->add_cache(addr);
+                fill_counter += 1;
             } else {
                 printf("no backup region, just fetch new region\n");
                 exclusive_region_[current_region_.region.offset_] = current_region_;

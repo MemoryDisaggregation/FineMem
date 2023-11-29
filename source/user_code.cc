@@ -26,11 +26,11 @@
 
 const uint64_t cache_size = 1024*4*1024;
 
-const uint64_t iter_num = 128;
+const uint64_t iter_num = 64;
 
-const uint64_t epoch_num = 1;
+const uint64_t epoch_num = 3;
 
-const int thread_num = 1;
+const int thread_num = 16;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -45,19 +45,19 @@ mralloc::ConnectionManager* m_rdma_conn_;
 
 void* fetch_mem(void* arg) {
 
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    int id = core_id.fetch_add(1);
-    CPU_SET(id, &cpuset);
-    pthread_t this_tid = pthread_self();
-    uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
-    // assert(ret == 0);
-    ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
-    for (int i = 0; i < sysconf(_SC_NPROCESSORS_CONF); i ++) {
-        if (CPU_ISSET(i, &cpuset)) {
-            printf("client %d main process running on core: %d\n",id , i);
-        }
-    }
+    // cpu_set_t cpuset;
+    // CPU_ZERO(&cpuset);
+    // int id = core_id.fetch_add(1);
+    // CPU_SET(id, &cpuset);
+    // pthread_t this_tid = pthread_self();
+    // uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    // // assert(ret == 0);
+    // ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    // for (int i = 0; i < sysconf(_SC_NPROCESSORS_CONF); i ++) {
+    //     if (CPU_ISSET(i, &cpuset)) {
+    //         printf("client %d main process running on core: %d\n",id , i);
+    //     }
+    // }
 
     uint64_t avg_time_alloc = 0, avg_time_free = 0;
     uint64_t count_ = 0;
@@ -74,13 +74,13 @@ void* fetch_mem(void* arg) {
         // alloc phase
         for(int i = 0; i < iter_num; i ++){
             bool result;
-            printf("try to fetch %d\n", i%15+1);
-            result = cpu_cache_.fetch_class_cache(i%15+1, addr[i], rkey[i]); 
-            // result = cpu_cache_.fetch_cache(addr[i], rkey[i]); 
+            // printf("try to fetch %d\n", i%15+1);
+            // result = cpu_cache_.fetch_class_cache(i%15+1, addr[i], rkey[i]); 
+            result = cpu_cache_.fetch_cache(addr[i], rkey[i]); 
             if (result == false) {
                 printf("impossible!\n");
             } 
-            printf("%d, %lx,  %u\n", i%15+1, addr[i], rkey[i]);
+            // printf("%d, %lx,  %u\n", i%15+1, addr[i], rkey[i]);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
@@ -94,15 +94,15 @@ void* fetch_mem(void* arg) {
             // heap->fetch_mem_fast_remote(addr, rkey);
             m_rdma_conn_->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
             m_rdma_conn_->remote_read(read_buffer, 4, addr[i], rkey[i]);
-            printf("%lx,  %u\n", addr[i], rkey[i]);
+            // printf("%lx,  %u\n", addr[i], rkey[i]);
             assert(read_buffer[0] == buffer[i%2][0]);
         }        
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < iter_num; i ++){
-            // cpu_cache_.add_free_cache(addr[i]); 
-            cpu_cache_.add_class_free_cache(i%15+1, addr[i]); 
-                // printf("%lx,  %u\n", addr[i], rkey[i]);
+            cpu_cache_.add_free_cache(addr[i]); 
+            // cpu_cache_.add_class_free_cache(i%15+1, addr[i]); 
+            // printf("free %lx,  %u\n", addr[i], rkey[i]);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
@@ -114,7 +114,7 @@ void* fetch_mem(void* arg) {
         // std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     printf("avg alloc time:%lu, max alloc time:%lu\n", avg_time_alloc, max_time_alloc);
-    printf("avg free time:%lu, max free time:%lu\n", avg_time_alloc, max_time_alloc);
+    printf("avg free time:%lu, max free time:%lu\n", avg_time_free, max_time_free);
     for(int i=0;i<10;i++){
         record_global[i].fetch_add(record[i]);
     }
