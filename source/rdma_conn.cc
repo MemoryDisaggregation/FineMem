@@ -830,7 +830,8 @@ bool RDMAConnection::update_section(region_e region, alloc_advise advise, alloc_
 bool RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
     section_e section;
     if(advise == alloc_class) {
-        for(int i = section_num_ - 1; i >= 0; i--) {
+        // for(int i = section_num_ - 1; i >= 0; i--) {
+        for(int i = 0; i < section_num_; i++) {
             remote_read(&section, sizeof(section_e), section_metadata_addr(i), global_rkey_);
             if((section.class_map_ | section.alloc_map_) != ~(uint32_t)0){
                 alloc_section = section;
@@ -839,7 +840,8 @@ bool RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_of
             }
         }
     } else if(advise == alloc_no_class) {
-        for(int i = section_num_ - 1; i >= 0; i--) {
+        // for(int i = section_num_ - 1; i >= 0; i--) {
+        for(int i = 0; i < section_num_; i++) {
             remote_read(&section, sizeof(section_e), section_metadata_addr(i), global_rkey_);
             if((section.class_map_ | section.alloc_map_)  != ~(uint32_t)0){
                 alloc_section = section;
@@ -868,9 +870,9 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         int index;
         do {
             free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
-            if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
+            if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
                 free_map = alloc_section.class_map_;
-                if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
+                if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
                     printf("section has no free space!\n");
                     return false;
                 }
@@ -892,7 +894,7 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         int index;
         do {
             free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
-            if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
+            if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
                 printf("section has no free space!\n");
                 return false;
             }
@@ -943,7 +945,7 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         section_e new_section;
         do {
             free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
-            if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
+            if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
                 // free_map = alloc_section.class_map_;
                 // if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
                 //     printf("section has no free space!\n");
@@ -970,7 +972,7 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         section_e new_section;
         do {
             free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
-            if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
+            if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
                 // free_map = alloc_section.class_map_;
                 // if( (index = find_free_index_from_bitmap32_lead(free_map)) == -1 ){
                     // printf("section has no free space!\n");
@@ -1160,7 +1162,7 @@ bool RDMAConnection::fetch_region_block(region_e &alloc_region, uint64_t &addr, 
             return false;
         } 
         new_region = alloc_region;
-        if((index = find_free_index_from_bitmap32_lead(alloc_region.base_map_)) == -1) {
+        if((index = find_free_index_from_bitmap32_tail(alloc_region.base_map_)) == -1) {
             return false;
         }
         new_region.base_map_ |= 1<<index;

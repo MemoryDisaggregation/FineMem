@@ -127,7 +127,7 @@ bool MemoryNode::start(const std::string addr, const std::string port) {
       return false;
     }
 
-    if (rdma_listen(m_listen_id_, 2048)) {
+    if (rdma_listen(m_listen_id_, 1024)) {
       perror("rdma_listen fail");
       return false;
     }

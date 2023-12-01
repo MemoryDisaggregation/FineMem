@@ -163,14 +163,15 @@ void ComputingNode::pre_fetcher() {
                 continue;
             } else {
                 length = ring_cache->get_length();
-                if(length < cache_upper_bound * cache_watermark_low) {
+                if(length <= cache_upper_bound * cache_watermark_low) {
                     increase_watermark(cache_upper_bound);
                     fill_cache_block(0);
-                } else if(length < cache_upper_bound && length > cache_upper_bound * cache_watermark_high) {
+                } else if(length < cache_upper_bound && length >= cache_upper_bound * cache_watermark_high) {
                     decrease_watermark(cache_upper_bound);
                     fill_cache_block(0);
                 } else if(length < cache_upper_bound ) {
                     fill_cache_block(0);
+                    // printf("fill: %lu ", cache_upper_bound - length);
                 }
             }
             printf("watermark: %lu, free space: %u, total used mem:%luMiB\n", cache_upper_bound, ring_cache->get_length(), fill_counter*4);
@@ -370,7 +371,9 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
 bool ComputingNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
     rdma_addr result;
     bool ret = ring_cache->force_fetch_cache(result);
-    addr = result.addr; rkey = result.rkey;
+    addr = result.addr; 
+    rkey = get_global_rkey();
+    // rkey = result.rkey;
     return ret;
 }
 
