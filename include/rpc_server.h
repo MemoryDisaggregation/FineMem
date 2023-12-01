@@ -7,7 +7,7 @@
 namespace mralloc{
 
 const uint64_t server_base_addr = 0x10000000;
-const bool fusee_enable = false;
+const bool fusee_enable = true;
 
 #define MAX_REP_NUM         10
 
