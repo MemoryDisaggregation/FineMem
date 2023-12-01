@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-11 16:42:26
- * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-22 22:12:11
+ * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-12-01 10:49:17
  * @FilePath: /rmalloc_newbase/include/free_block_manager.h
  * @Description: Buddy tree for memory management 
  * 
@@ -176,10 +176,10 @@ public:
         if(cal_header_size() > page_size) {
             printf("too large memory region, out of range!\n");
         }
-        init_size = size + page_size;
+        init_size = size + align;
         init_addr = num_align_upper(addr, align);
-        addr = init_addr + page_size;
-        assert(init_addr % page_size == 0);
+        addr = init_addr + align;
+        assert(init_addr % align == 0);
     };
 
     uint64_t cal_header_size() {

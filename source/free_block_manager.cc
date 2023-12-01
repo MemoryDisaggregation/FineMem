@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-14 09:42:48
- * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-27 22:53:02
+ * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-12-01 14:24:25
  * @FilePath: /rmalloc_newbase/source/free_block_manager.cc
  * @Description: 
  * 
@@ -30,14 +30,14 @@ namespace mralloc {
         region_header_ = (region*)(fast_region_ + block_class_num*section_num_);
         block_rkey_ = (uint32_t*)(region_header_ + region_num_);
         class_block_rkey_ = (uint32_t*)(block_rkey_ + block_num_);
-
-        if((uint64_t)(class_block_rkey_ + block_num_) > heap_start_) {
-            printf("metadata out of bound\n");
-        }
         
         heap_start_ = addr;
         heap_size_ = size;
         assert(heap_start_ > (uint64_t)(block_rkey_ + block_num_));
+
+        if((uint64_t)(class_block_rkey_ + block_num_) > heap_start_) {
+            printf("metadata out of bound\n");
+        }
 
         section_e init_section_header = {0,0};
         region_e init_region_header = {0, 0, 0, 0};

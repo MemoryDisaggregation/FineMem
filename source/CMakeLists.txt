@@ -16,7 +16,6 @@ add_executable(user_code user_code.cc)
 # message("Build Type: ${CMAKE_BUILD_TYPE} ${CMAKE_CXX_FLAGS}")
 
 target_link_libraries(server
-    profiler
     mralloc
     ibverbs
     rdmacm

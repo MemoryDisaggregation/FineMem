@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
- * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-29 20:38:09
+ * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-12-01 16:04:07
  * @FilePath: /rmalloc_newbase/source/memory_node.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -37,7 +37,7 @@
 #define REMOTE_MEM_SIZE 4194304
 // #define REMOTE_MEM_SIZE 4096
 
-#define INIT_MEM_SIZE ((uint64_t)32*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)24*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 
@@ -127,7 +127,7 @@ bool MemoryNode::start(const std::string addr, const std::string port) {
       return false;
     }
 
-    if (rdma_listen(m_listen_id_, 2048)) {
+    if (rdma_listen(m_listen_id_, 1024)) {
       perror("rdma_listen fail");
       return false;
     }
@@ -233,14 +233,13 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
         fusee_addr = (uint64_t)mmap((void*)server_base_addr, fusee_size, PROT_READ | PROT_WRITE, 
             MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
         ibv_mr* fusee_mr = rdma_register_memory((void*)fusee_addr, fusee_size);
-        rpc_fusee_ = new RPC_Fusee(fusee_addr, fusee_addr + META_AREA_LEN, fusee_mr->rkey);
         init_addr_raw += fusee_size;
     }
     server_block_manager_ = new ServerBlockManager(REMOTE_MEM_SIZE);
     uint64_t init_addr_, init_size_;
     server_block_manager_->init_align_hint(init_addr_raw, init_size_raw, init_addr_, init_size_);
-    void* init_addr = mmap((void*)init_addr_ , init_size_, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
-    printf("init_addr: %p\n", init_addr);
+    void* init_addr = mmap((void*)init_addr_ , init_size_, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB, -1, 0);
+    printf("init_addr: %p, heap start: %lx\n", init_addr, init_addr_raw);
     if (init_addr == MAP_FAILED || (uint64_t)init_addr != init_addr_) {
         perror("mmap fail");
         return false;
@@ -248,7 +247,9 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
     // assert(size == init_size_ - SERVER_BASE_ADDR + init_addr_); 
     heap_total_size_ = init_size_raw; heap_start_addr_ = init_addr_raw;
     
-    global_mr_ = rdma_register_memory(init_addr, init_size_);
+    global_mr_ = rdma_register_memory((void*)server_base_addr, init_addr_ + init_size_ - server_base_addr);
+    if(fusee_enable)
+        rpc_fusee_ = new RPC_Fusee(server_base_addr, server_base_addr + META_AREA_LEN, global_mr_->rkey);
 
     set_global_rkey(global_mr_->rkey);
 
