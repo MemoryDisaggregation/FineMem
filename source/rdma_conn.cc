@@ -729,6 +729,46 @@ int RDMAConnection::remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t 
   return 0;
 }
 
+int RDMAConnection::remote_free_block(uint64_t addr) {
+    memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
+    memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));
+    m_cmd_resp_->notify = NOTIFY_IDLE;
+    FreeFastRequest *request = (FreeFastRequest *)m_cmd_msg_;
+    request->resp_addr = (uint64_t)m_cmd_resp_;
+    request->resp_rkey = m_resp_mr_->rkey;
+    request->id = conn_id_;
+    request->type = MSG_FREE_FAST;
+    request->addr = addr;
+    m_cmd_msg_->notify = NOTIFY_WORK;
+
+    /* send a request to sever */
+    int ret = rdma_remote_write((uint64_t)m_cmd_msg_, m_msg_mr_->lkey,
+                                sizeof(CmdMsgBlock), m_server_cmd_msg_,
+                                m_server_cmd_rkey_);
+    if (ret) {
+        printf("fail to send requests\n");
+        return ret;
+    }
+
+    /* wait for response */
+    auto start = TIME_NOW;
+    while (m_cmd_resp_->notify == NOTIFY_IDLE) {
+        if (TIME_DURATION_US(start, TIME_NOW) > RDMA_TIMEOUT_US) {
+        printf("wait for request completion timeout\n");
+        return -1;
+        }
+    }
+    FetchResponse *resp_msg = (FetchResponse *)m_cmd_resp_;
+    if (resp_msg->status != RES_OK) {
+        printf("fetch block block fail\n");
+        return -1;
+    }
+    // printf("receive response: addr: %ld, key: %d\n", resp_msg->addr,
+    //  resp_msg->rkey);
+    return 0;
+}
+
+
 int RDMAConnection::remote_fusee_alloc(uint64_t &addr, uint32_t &rkey){
   memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
   memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));

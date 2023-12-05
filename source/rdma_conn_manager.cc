@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-14 15:11:39
+ * @LastEditTime: 2023-12-05 17:14:37
  * @FilePath: /rmalloc_newbase/source/rdma_conn_manager.cc
  * @Description: 
  * 
@@ -111,6 +111,14 @@ int ConnectionManager::remote_fetch_block(uint64_t &addr, uint32_t &rkey) {
   RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
   assert(conn != nullptr);
   int ret = conn->remote_fetch_block(addr, rkey);
+  m_rpc_conn_queue_->enqueue(conn);
+  return ret;
+}
+
+int ConnectionManager::remote_free_block(uint64_t addr) {
+  RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+  assert(conn != nullptr);
+  int ret = conn->remote_free_block(addr);
   m_rpc_conn_queue_->enqueue(conn);
   return ret;
 }

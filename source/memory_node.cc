@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-01 16:04:07
+ * @LastEditTime: 2023-12-05 17:11:14
  * @FilePath: /rmalloc_newbase/source/memory_node.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -180,13 +180,14 @@ bool MemoryNode::new_cache_region(uint32_t block_class) {
 
 bool MemoryNode::fill_cache_block(uint32_t block_class){
     if(block_class == 0){
-        for(int i = 0; i<simple_cache_watermark; i++){
-            while(!server_block_manager_->fetch_region_block(current_region_, simple_cache_addr[i], simple_cache_rkey[i], false)) {
+        uint32_t length = ring_cache->get_length();
+        for(int i = 0; i<simple_cache_watermark - length; i++){
+            rdma_addr addr;
+            while(!server_block_manager_->fetch_region_block(current_region_, addr.addr, addr.rkey, false)) {
                 // fetch new region
                 new_cache_region(block_class);
             }
-            printf("fill cache:%lx %u\n", simple_cache_addr[i], simple_cache_rkey[i]);
-            if(global_rkey) simple_cache_rkey[i] = get_global_rkey();
+            ring_cache->add_cache(addr);
         }
     } else {
         for(int i = 0; i<simple_class_cache_watermark[block_class]; i++){
@@ -202,14 +203,11 @@ bool MemoryNode::fill_cache_block(uint32_t block_class){
 }
 
 bool MemoryNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
-    for(int i = 0;i < simple_cache_watermark; i++) {
-        if(simple_cache_addr[i] != 0 && simple_cache_rkey[i] != 0){
-            addr = simple_cache_addr[i];
-            rkey = simple_cache_rkey[i];
-            simple_cache_addr[i] = 0;
-            simple_cache_rkey[i] = 0;
-            return true;
-        }
+    rdma_addr result;
+    if(ring_cache->force_fetch_cache(result)){
+        addr = result.addr; 
+        rkey = result.rkey;
+        return true;
     }
     if(fill_cache_block(0)){
         return fetch_mem_block(addr, rkey);
@@ -217,6 +215,15 @@ bool MemoryNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
     return false;
 }
 
+bool MemoryNode::free_mem_block(uint64_t addr) {
+    rdma_addr new_addr;
+    memset((void*)addr, 0, server_block_manager_->get_block_size());
+    uint32_t block_id = (addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
+    bind_mw(block_mw[block_id], addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
+    new_addr.addr = addr; new_addr.rkey = block_mw[block_id]->rkey;
+    ring_cache->add_cache(new_addr);
+    return true;
+}
 
 /**
  * @description: init memory heap, malloc a huge memory region and register it, then init free queue manager
@@ -704,7 +711,17 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
             remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
                         sizeof(CmdMsgRespBlock), request->resp_addr,
                         request->resp_rkey);
-        } else if (request->type == MSG_MW_BIND) {
+        } else if (request->type == MSG_FREE_FAST) {
+            ResponseMsg *resp_msg = (ResponseMsg *)cmd_resp;
+            uint64_t addr = ((FreeFastRequest*)request)->addr;
+            if (free_mem_block(addr)) {
+                resp_msg->status = RES_OK;
+            } else {
+                resp_msg->status = RES_FAIL;
+            }
+            remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                        sizeof(CmdMsgRespBlock), request->resp_addr,
+                        request->resp_rkey);
             // Attension: no actual used at the critical path
             // TODO: bind memory window, generate new rkey
             // TODO: bath to rebind

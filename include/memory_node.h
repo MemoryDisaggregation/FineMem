@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-11-21 17:26:29
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-28 17:23:36
+ * @LastEditTime: 2023-12-05 17:02:08
  * @FilePath: /rmalloc_newbase/include/memory_node.h
  * @Description: 
  * 
@@ -82,7 +82,9 @@ public:
         rdma_cm_id *cm_id;
         struct ibv_cq *cq;
     };    
-    MemoryNode(bool one_sided_enabled): one_sided_enabled_(one_sided_enabled) {};
+    MemoryNode(bool one_sided_enabled): one_sided_enabled_(one_sided_enabled) {
+        ring_cache = new ring_buffer<rdma_addr>(1024, ring_cache_content, rdma_addr(-1, -1), &reader, &writer);
+    };
     ~MemoryNode(){};
 
     bool start(const std::string addr, const std::string port);
@@ -95,6 +97,7 @@ public:
 
     bool fetch_mem_block(uint64_t &addr, uint32_t &rkey);
     bool fetch_mem_class_block(uint64_t &addr, uint32_t &rkey);
+    bool free_mem_block(uint64_t addr);
     
     // deprecated functions
     // bool fetch_mem_local(uint64_t &addr, uint64_t size, uint32_t &lkey, uint32_t &rkey);
@@ -143,6 +146,9 @@ private:
     region_e current_class_region_[16];
 
     // << reserved block cache>>
+    ring_buffer<rdma_addr>* ring_cache;
+    rdma_addr ring_cache_content[1024];
+    std::atomic<uint32_t> reader, writer;
     uint64_t simple_cache_addr[32];
     uint32_t simple_cache_rkey[32];
     uint64_t simple_cache_watermark;

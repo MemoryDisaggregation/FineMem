@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:26
- * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-22 21:58:04
+ * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-12-05 17:11:41
  * @FilePath: /rmalloc_newbase/include/rdma_conn.h
  * @Description: RDMA Connection functions, with RDMA read/write and fetch block, used by both LocalHeap and RemoteHeap
  * 
@@ -52,6 +52,7 @@ public:
                         uint32_t rkey);
     int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size);
     int remote_fetch_block(uint64_t &addr, uint32_t &rkey);
+    int remote_free_block(uint64_t addr);
     int remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t &newkey);
     int remote_rebind(uint64_t addr, uint32_t block_class, uint32_t &newkey);
     int remote_class_bind(uint16_t region_offset, uint16_t block_class);

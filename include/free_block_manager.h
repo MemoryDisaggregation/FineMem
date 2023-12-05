@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-11 16:42:26
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-01 10:49:17
+ * @LastEditTime: 2023-12-05 16:49:37
  * @FilePath: /rmalloc_newbase/include/free_block_manager.h
  * @Description: Buddy tree for memory management 
  * 
@@ -192,8 +192,10 @@ public:
 
     bool init(uint64_t meta_addr, uint64_t addr, uint64_t size, uint32_t rkey);
 
+
+    inline bool check_section(section_e alloc_section, alloc_advise advise, uint32_t offset);
     uint64_t get_heap_start() {return heap_start_;};
-    bool update_section(region_e region, alloc_advise advise);
+    bool update_section(region_e region, alloc_advise advise, alloc_advise compare);
     bool find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
 
     bool fetch_large_region(section_e &alloc_section, uint32_t section_offset, uint64_t region_num, uint64_t &addr) ;
@@ -201,7 +203,7 @@ public:
     bool try_add_fast_region(uint32_t section_offset, uint32_t block_class, region_e &alloc_region);
     bool set_region_exclusive(region_e &alloc_region);
     bool set_region_empty(region_e &alloc_region);
-    
+    bool free_region_block(uint64_t addr, bool is_exclusive);
 
     inline uint32_t get_fast_region_index(uint32_t section_offset, uint32_t block_class) {return section_offset/4*block_class_num + block_class;};
     inline uint64_t get_section_region_addr(uint32_t section_offset, uint32_t region_offset) {return heap_start_ + section_offset*section_size_ + region_offset * region_size_ ;};

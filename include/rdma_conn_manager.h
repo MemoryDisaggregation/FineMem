@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-10-23 15:05:13
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-14 17:41:19
+ * @LastEditTime: 2023-12-05 17:11:51
  * @FilePath: /rmalloc_newbase/include/rdma_conn_manager.h
  * @Description: 
  * 
@@ -71,6 +71,7 @@ class ConnectionManager {
     int remote_memzero(uint64_t addr, uint64_t size);
     int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size);
     int remote_fetch_block(uint64_t &addr, uint32_t &rkey);
+    int remote_free_block(uint64_t addr);
     uint32_t get_global_rkey() {return global_rkey_;};
     RDMAConnection* fetch_connector() {
         return m_rpc_conn_queue_->dequeue();
