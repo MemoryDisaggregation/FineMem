@@ -96,16 +96,46 @@ class ConnectionManager {
     bool fetch_exclusive_region_rkey(region_e &alloc_region, uint32_t* rkey_list);
     bool free_region_block(uint64_t addr, bool is_exclusive) ;
 
-  // << one side alloc API >>
-//   int remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey);
+    inline uint32_t get_addr_region_index(uint64_t addr) {return (addr-heap_start_) / region_size_;};
+    inline uint32_t get_addr_region_offset(uint64_t addr) {return (addr-heap_start_) % region_size_ / block_size_;};
+    inline uint32_t get_fast_region_index(uint32_t section_offset, uint32_t block_class) {return section_offset/4*block_class_num + block_class;};
+    inline uint64_t get_section_region_addr(uint32_t section_offset, uint32_t region_offset) {return heap_start_ + section_offset*section_size_ + region_offset * region_size_ ;};
+    inline uint64_t get_region_addr(region_e region) {return heap_start_ + region.offset_ * region_size_;};
+    inline uint64_t get_region_block_addr(region_e region, uint32_t block_offset) {return heap_start_ + region.offset_ * region_size_ + block_offset * block_size_;} ;
+    inline uint32_t get_region_block_rkey(region_e region, uint32_t block_offset) {
+        uint32_t rkey;
+        remote_read(&rkey, sizeof(rkey), block_rkey_ + (region.offset_*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
+        return rkey;
+    };
+    inline uint32_t get_region_class_block_rkey(region_e region, uint32_t block_offset) {
+        uint32_t rkey;
+        remote_read(&rkey, sizeof(rkey), class_block_rkey_ + (region.offset_*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
+        return rkey;
+    };
 
  private:
-  
-  ConnQue *m_rpc_conn_queue_;
-  ConnQue *m_one_sided_conn_queue_;
+    
+    ConnQue *m_rpc_conn_queue_;
+    ConnQue *m_one_sided_conn_queue_;
 
-  one_side_info m_one_side_info_;
-  uint32_t global_rkey_;
+    one_side_info m_one_side_info_;
+    uint32_t global_rkey_;
+
+      // basic info
+    uint64_t block_size_;
+    uint64_t block_num_;
+    uint64_t region_size_;
+    uint64_t region_num_;
+    uint64_t section_size_;
+    uint64_t section_num_;
+
+    // info before heap segment
+    uint64_t section_header_;
+    uint64_t fast_region_;
+    uint64_t region_header_;
+    uint64_t block_rkey_;
+    uint64_t class_block_rkey_;
+    uint64_t heap_start_;
 
 };
 

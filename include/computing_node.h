@@ -92,18 +92,11 @@ public:
 
     bool fetch_mem_class_block(uint16_t block_class, uint64_t &addr, uint32_t &rkey);
 
-    // << one-sided block fetch >>
-    // bool update_mem_metadata();
-    // bool update_rkey_metadata();
-    bool fetch_mem_block_one_sided(uint64_t &addr, uint32_t &rkey);
-    // bool fetch_rkey_list_one_sided(uint64_t addr, uint32_t* rkey_list);
-
     // << RPC block fetch >>
     bool fetch_mem_block_remote(uint64_t &addr, uint32_t &rkey);
 
     // << local heap/cache fetch >>
     void fetch_cache(uint8_t nproc, uint64_t &addr, uint32_t &rkey);
-    bool fetch_mem_block_local(uint64_t &addr, uint32_t &rkey);
 
     // UNUSED
     bool mr_bind_remote(uint64_t size, uint64_t addr, uint32_t rkey, uint32_t &newkey);

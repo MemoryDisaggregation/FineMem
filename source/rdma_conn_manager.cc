@@ -36,6 +36,19 @@ int ConnectionManager::init(const std::string ip, const std::string port,
     m_one_side_info_ = conn->get_one_side_info();
     global_rkey_ = conn->get_global_rkey();
     m_rpc_conn_queue_->enqueue(conn);
+    block_size_ = m_one_side_info_.block_size_;
+    block_num_ = m_one_side_info_.block_num_;
+    region_size_ = block_size_ * block_per_region;
+    region_num_ = block_num_ / block_per_region;
+    section_size_ = region_size_ * region_per_section;
+    section_num_ = region_num_ / region_per_section;
+
+    section_header_ = m_one_side_info_.section_header_;
+    fast_region_ = (uint64_t)((section_e*)section_header_ + section_num_);
+    region_header_ = (uint64_t)((fast_class*)fast_region_ + block_class_num*section_num_);
+    block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
+    class_block_rkey_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
+    heap_start_ = m_one_side_info_.heap_start_;
   }
 
   for (uint32_t i = 0; i < one_sided_conn_num; i++) {

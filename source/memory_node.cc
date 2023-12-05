@@ -231,7 +231,7 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
         uint64_t fusee_addr, fusee_size; uint32_t fusee_rkey;
         fusee_size = round_up(META_AREA_LEN + HASH_AREA_LEN + GC_AREA_LEN, REMOTE_MEM_SIZE);
         fusee_addr = (uint64_t)mmap((void*)server_base_addr, fusee_size, PROT_READ | PROT_WRITE, 
-            MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
+            MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB, -1, 0);
         ibv_mr* fusee_mr = rdma_register_memory((void*)fusee_addr, fusee_size);
         init_addr_raw += fusee_size;
     }
@@ -728,6 +728,7 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
             uint32_t block_id = (reg_req->addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
             if(reg_req->block_class == 0) {
                 // bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq);
+                memset((void*)reg_req->addr, 0, server_block_manager_->get_block_size());
                 if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
                 // bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
                 // if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_)) {

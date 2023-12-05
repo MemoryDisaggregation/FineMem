@@ -159,7 +159,7 @@ bool RemoteHeap::init_memory_heap(uint64_t size) {
   free_queue_manager = new ServerBlockManagerv2(REMOTE_MEM_SIZE, base_block_size);
   uint64_t init_addr_, init_size_;
   free_queue_manager->init_size_align(SERVER_BASE_ADDR, size, init_addr_, init_size_);
-  void* init_addr = mmap((void*)init_addr_ , init_size_, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
+  void* init_addr = mmap((void*)init_addr_ , init_size_, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB, -1, 0);
   printf("init_addr: %p\n", init_addr);
   if (init_addr == MAP_FAILED || (uint64_t)init_addr != init_addr_) {
     perror("mmap fail");
@@ -640,7 +640,7 @@ bool RemoteHeap::unbind_mw_type2(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_q
   wr_.opcode = IBV_WR_LOCAL_INV;
   wr_.sg_list = NULL;
   wr_.send_flags = IBV_SEND_SIGNALED;
-  wr_.invalidate_rkey = mw->rkey;
+//   wr_.invalidate_rkey = mw->rkey;
   // printf("try to bind with rkey: %d, old_rkey is %d, old mw is %d\n", mw->rkey, mw->rkey, mw->rkey);
   if (ibv_post_send(qp, &wr_, &bad_wr_)) {
     perror("ibv_post_send mw_bind fail");

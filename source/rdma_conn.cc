@@ -222,6 +222,7 @@ struct ibv_mr *RDMAConnection::rdma_register_memory(void *ptr, uint64_t size) {
 int RDMAConnection::rdma_remote_read(uint64_t local_addr, uint32_t lkey,
                                      uint64_t length, uint64_t remote_addr,
                                      uint32_t rkey) {
+ 
   struct ibv_sge sge;
   sge.addr = (uintptr_t)local_addr;
   sge.length = length;
@@ -251,6 +252,7 @@ int RDMAConnection::rdma_remote_read(uint64_t local_addr, uint32_t lkey,
       printf("rdma_remote_read timeout\n");
       return -1;
     }
+
     int rc = ibv_poll_cq(m_cq_, 1, &wc);
     if (rc > 0) {
       if (IBV_WC_SUCCESS == wc.status) {
@@ -386,7 +388,6 @@ bool RDMAConnection::remote_CAS(uint64_t swap, uint64_t *compare, uint64_t remot
     int ret = -1;
     struct ibv_wc wc;
     while (true) {
-        // printf("busy waiting\n");
         
         if (TIME_DURATION_US(start, TIME_NOW) > RDMA_TIMEOUT_US) {
             printf("rdma_remote_write timeout\n");
@@ -773,11 +774,11 @@ inline bool RDMAConnection::check_section(section_e alloc_section, alloc_advise 
     case alloc_empty:
         return ((~alloc_section.alloc_map_ & ~alloc_section.class_map_) & 1<< offset) != 0;
     case alloc_no_class:
-        return ((alloc_section.alloc_map_ & ~alloc_section.class_map_) & 1<< offset) == 0;
+        return ((alloc_section.alloc_map_ & ~alloc_section.class_map_) & 1<< offset) != 0;
     case alloc_class:
-        return ((~alloc_section.alloc_map_ & alloc_section.class_map_) & 1<< offset) == 0;
+        return ((~alloc_section.alloc_map_ & alloc_section.class_map_) & 1<< offset) != 0;
     case alloc_exclusive:
-        return ((alloc_section.alloc_map_ & alloc_section.class_map_) & 1<< offset) == 0;
+        return ((alloc_section.alloc_map_ & alloc_section.class_map_) & 1<< offset) != 0;
     }
 }
 
@@ -1163,6 +1164,7 @@ bool RDMAConnection::fetch_region_block(region_e &alloc_region, uint64_t &addr, 
         } 
         new_region = alloc_region;
         if((index = find_free_index_from_bitmap32_tail(alloc_region.base_map_)) == -1) {
+            update_section(alloc_region, alloc_exclusive, alloc_no_class);
             return false;
         }
         new_region.base_map_ |= 1<<index;
@@ -1208,11 +1210,13 @@ bool RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
     region_e region;
     // printf("Remove me after no problem: the one-sided free not concern the section state\n");
     remote_read(&region, sizeof(region_e), region_metadata_addr(region_offset), global_rkey_);
+    // printf("plan to free: %p, region id:%u, bitmap: %x\n", addr, region.offset_ , region.base_map_);
+
     if(!region.exclusive_ && is_exclusive) {
         printf("exclusive error, the actual block is shared\n");
         return false;
     }
-    if(region.base_map_>>region_block_offset % 2 == 0) {
+    if((region.base_map_ & (1<<region_block_offset)) == 0) {
         printf("already freed\n");
         return false;
     }
@@ -1222,8 +1226,9 @@ bool RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
         region_e new_region;
         do{
             new_region = region;
-            new_region.base_map_ &= ~(uint64_t)1<<region_block_offset;
+            new_region.base_map_ &= ~(uint32_t)(1<<region_block_offset);
         } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region, region_metadata_addr(region_offset), global_rkey_));
+        // printf("free: %p, region id:%u, bitmap from %x to %x\n", addr, new_region.offset_ , region.base_map_, new_region.base_map_);
         if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > block_per_region/2 && free_bit_in_bitmap32(region.base_map_) <= block_per_region/2){
             update_section(new_region, alloc_no_class, alloc_exclusive);
         }
