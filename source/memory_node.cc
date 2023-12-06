@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-06 14:27:32
+ * @LastEditTime: 2023-12-06 14:52:46
  * @FilePath: /rmalloc_newbase/source/memory_node.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -270,6 +270,25 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
         return false;
     }
 
+    
+    bool ret;
+
+    ret = new_cache_section(0);
+
+    ret &= new_cache_region(0);
+
+    simple_cache_watermark = 32;
+
+    for(int i = 1; i < block_class_num; i++) {
+        ret &= new_cache_region(i);
+        ret &= simple_class_cache_watermark[i] = 1;
+    }
+
+    if(!ret) {
+        printf("init cache failed\n");
+        return false;
+    }
+
     return true;
 }
 
@@ -470,27 +489,6 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
         server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
     }
     printf("bind finished\n");
-
-    bool ret;
-
-    ret = new_cache_section(0);
-
-    ret &= new_cache_region(0);
-
-    simple_cache_watermark = 32;
-
-    ret &= fill_cache_block(0);
-
-    for(int i = 1; i < block_class_num; i++) {
-        ret &= new_cache_region(i);
-        ret &= simple_class_cache_watermark[i] = 1;
-        ret &= fill_cache_block(i);
-    }
-
-    if(!ret) {
-        printf("init cache failed\n");
-        return false;
-    }
 
     return true;
 }
