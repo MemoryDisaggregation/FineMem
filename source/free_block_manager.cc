@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-14 09:42:48
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-05 17:15:36
+ * @LastEditTime: 2023-12-06 09:55:44
  * @FilePath: /rmalloc_newbase/source/free_block_manager.cc
  * @Description: 
  * 
@@ -136,7 +136,7 @@ namespace mralloc {
     bool ServerBlockManager::find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
         section_e section;
         if(advise == alloc_class) {
-            for(int i = section_num_ - 1; i >= 0; i--) {
+            for(int i = 0; i < section_num_; i--) {
                 section = section_header_[i].load();
                 if((section.class_map_ | section.alloc_map_) != ~(uint32_t)0){
                     alloc_section = section;
@@ -145,7 +145,7 @@ namespace mralloc {
                 }
             }
         } else if(advise == alloc_no_class) {
-            for(int i = section_num_ - 1; i >= 0; i--) {
+            for(int i = 0; i < section_num_; i--) {
                 section = section_header_[i].load();
                 if((section.class_map_ | section.alloc_map_)  != ~(uint32_t)0){
                     alloc_section = section;
@@ -420,7 +420,7 @@ namespace mralloc {
                 return false;
             } 
             new_region = alloc_region;
-            if((index = find_free_index_from_bitmap32_lead(alloc_region.base_map_)) == -1) {
+            if((index = find_free_index_from_bitmap32_tail(alloc_region.base_map_)) == -1) {
                 printf("full, change region\n");
                 return false;
             }
