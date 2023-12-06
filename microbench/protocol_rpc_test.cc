@@ -47,7 +47,7 @@ void* worker(void* arg) {
         char buffer[2][16] = {"aaa", "bbb"};
         char read_buffer[4];
         for(int i = 0; i < iteration; i ++){
-            printf("try to access %p:%u\n", addr[i], rkey[i]);
+            // printf("try to access %p:%u\n", addr[i], rkey[i]);
             conn->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
             conn->remote_read(read_buffer, 4, addr[i], rkey[i]);
             assert(read_buffer[0] == buffer[i%2][0]);
@@ -68,7 +68,7 @@ void* worker(void* arg) {
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < iteration; i ++){
-            printf("try to free %p\n", addr[i]);
+            // printf("try to free %p\n", addr[i]);
             conn->remote_free_block(addr[i]);
         }
         gettimeofday(&end, NULL);
