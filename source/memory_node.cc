@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-05 17:11:14
+ * @LastEditTime: 2023-12-06 09:59:18
  * @FilePath: /rmalloc_newbase/source/memory_node.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -37,7 +37,7 @@
 #define REMOTE_MEM_SIZE 4194304
 // #define REMOTE_MEM_SIZE 4096
 
-#define INIT_MEM_SIZE ((uint64_t)24*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)8*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 
@@ -204,7 +204,7 @@ bool MemoryNode::fill_cache_block(uint32_t block_class){
 
 bool MemoryNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
     rdma_addr result;
-    if(ring_cache->force_fetch_cache(result)){
+    if(ring_cache->try_fetch_cache(result)){
         addr = result.addr; 
         rkey = result.rkey;
         return true;
@@ -219,6 +219,7 @@ bool MemoryNode::free_mem_block(uint64_t addr) {
     rdma_addr new_addr;
     memset((void*)addr, 0, server_block_manager_->get_block_size());
     uint32_t block_id = (addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
+    bind_mw(block_mw[block_id], addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
     bind_mw(block_mw[block_id], addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
     new_addr.addr = addr; new_addr.rkey = block_mw[block_id]->rkey;
     ring_cache->add_cache(new_addr);
@@ -266,27 +267,6 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
 
     if(!server_block_manager_->init((uint64_t)init_addr, init_addr_raw, init_size_raw, global_mr_->rkey)) {
         perror("init free queue manager fail"); 
-        return false;
-    }
-
-    bool ret;
-
-    ret = new_cache_section(0);
-
-    ret &= new_cache_region(0);
-
-    simple_cache_watermark = 8;
-
-    ret &= fill_cache_block(0);
-
-    for(int i = 1; i < block_class_num; i++) {
-        ret &= new_cache_region(i);
-        ret &= simple_class_cache_watermark[i] = 1;
-        ret &= fill_cache_block(i);
-    }
-
-    if(!ret) {
-        printf("init cache failed\n");
         return false;
     }
 
@@ -467,7 +447,7 @@ int MemoryNode::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
         return -1;
     }
     
-    if(!mw_binded) {
+    if(!mw_binded && connect_type == CONN_ONESIDE) {
         init_mw(cm_id->qp, cq);
         mw_binded = true;
     }
@@ -490,6 +470,27 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
         server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
     }
     printf("bind finished\n");
+
+    bool ret;
+
+    ret = new_cache_section(0);
+
+    ret &= new_cache_region(0);
+
+    simple_cache_watermark = 32;
+
+    ret &= fill_cache_block(0);
+
+    for(int i = 1; i < block_class_num; i++) {
+        ret &= new_cache_region(i);
+        ret &= simple_class_cache_watermark[i] = 1;
+        ret &= fill_cache_block(i);
+    }
+
+    if(!ret) {
+        printf("init cache failed\n");
+        return false;
+    }
 
     return true;
 }
