@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-11-21 17:26:29
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-05 17:02:08
+ * @LastEditTime: 2023-12-06 17:04:23
  * @FilePath: /rmalloc_newbase/include/memory_node.h
  * @Description: 
  * 
@@ -87,7 +87,7 @@ public:
     };
     ~MemoryNode(){};
 
-    bool start(const std::string addr, const std::string port);
+    bool start(const std::string addr, const std::string port, const std::string device);
     void stop();
     bool alive();
 

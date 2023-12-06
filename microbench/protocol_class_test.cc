@@ -50,11 +50,13 @@ void* worker(void* arg) {
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
+        printf("epoch %d malloc finish\n", j);
         
         // valid check
         char buffer[2][16] = {"aaa", "bbb"};
         char read_buffer[4];
         for(int i = 0; i < iteration; i ++){
+            printf("try to access %p:%u\n", addr[i], rkey[i]);
             conn->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
             conn->remote_read(read_buffer, 4, addr[i], rkey[i]);
             assert(read_buffer[0] == buffer[i%2][0]);
@@ -70,6 +72,7 @@ void* worker(void* arg) {
         time = time / iteration;
         malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
         malloc_count_ += 1;
+        printf("epoch %d check finish\n", j);
         
         // free
         pthread_barrier_wait(&start_barrier);
@@ -89,6 +92,7 @@ void* worker(void* arg) {
         time = time / iteration;
         free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
         free_count_ += 1;
+        printf("epoch %d free finish\n", j);
     }
     // printf("avg time:%lu, max_time:%lu\n", avg_time_, max_time_);
     for(int i=0;i<10;i++){

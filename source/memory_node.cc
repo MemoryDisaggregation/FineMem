@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-06 14:52:46
+ * @LastEditTime: 2023-12-06 17:03:54
  * @FilePath: /rmalloc_newbase/source/memory_node.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -37,7 +37,7 @@
 #define REMOTE_MEM_SIZE 4194304
 // #define REMOTE_MEM_SIZE 4096
 
-#define INIT_MEM_SIZE ((uint64_t)8*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)16*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 
@@ -62,7 +62,7 @@ void MemoryNode::print_alloc_info() {
  * @param {string} port   the port the server listened
  * @return {bool} true for success
  */
-bool MemoryNode::start(const std::string addr, const std::string port) {
+bool MemoryNode::start(const std::string addr, const std::string port, const std::string device) {
 
     m_stop_ = false;
 
@@ -83,8 +83,12 @@ bool MemoryNode::start(const std::string addr, const std::string port) {
       perror("get device list fail");
       return false;
     }
-
-    m_context_ = ibv_ctxs[1];
+    for(int i = 0; i< nr_devices_; i++) {
+        if(device.compare(ibv_ctxs[i]->device->name) == 0){
+            m_context_ = ibv_ctxs[i];
+            break;
+        }
+    }
     m_pd_ = ibv_alloc_pd(m_context_);
     if (!m_pd_) {
       perror("ibv_alloc_pd fail");
@@ -280,7 +284,7 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
     simple_cache_watermark = 32;
 
     for(int i = 1; i < block_class_num; i++) {
-        ret &= new_cache_region(i);
+        // ret &= new_cache_region(i);
         ret &= simple_class_cache_watermark[i] = 1;
     }
 
@@ -466,7 +470,7 @@ int MemoryNode::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
         return -1;
     }
     
-    if(!mw_binded && connect_type == CONN_ONESIDE) {
+    if(!mw_binded) {
         init_mw(cm_id->qp, cq);
         mw_binded = true;
     }

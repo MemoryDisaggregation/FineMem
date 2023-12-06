@@ -10,8 +10,8 @@
 #include "rdma_conn_manager.h"
 #include <sys/time.h>
 
-const int iteration = 32;
-const int epoch = 32;
+const int iteration = 64;
+const int epoch = 64;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -65,6 +65,7 @@ void* worker(void* arg) {
             assert(read_buffer[0] == buffer[i%2][0]);
         }        
         uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
+        time = time / iteration;
         uint64_t log10 = 0;
         uint64_t log_time = time;
         while(log_time/10 > 0){
@@ -72,9 +73,10 @@ void* worker(void* arg) {
             log10 += 1;           
         }
         malloc_record[log10] += 1;
-        time = time / iteration;
+        
         malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
         malloc_count_ += 1;
+        // printf("avg time:%lu\n", time);
         
         // free
         pthread_barrier_wait(&start_barrier);
@@ -85,13 +87,13 @@ void* worker(void* arg) {
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
         time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
+        time = time / iteration;
         log10 = 0; log_time = time;
         while(log_time/10 > 0){
             log_time = log_time / 10;
             log10 += 1;           
         }
         free_record[log10] += 1;
-        time = time / iteration;
         free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
         free_count_ += 1;
     }
