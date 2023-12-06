@@ -35,3 +35,12 @@ target_link_libraries(protocol_mmap_test
     rdmacm
     rt
 )
+
+add_executable(protocol_rpc_test protocol_rpc_test.cc)
+
+target_link_libraries(protocol_rpc_test
+    mralloc
+    ibverbs
+    rdmacm
+    rt
+)

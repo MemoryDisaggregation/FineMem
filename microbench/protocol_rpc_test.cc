@@ -1,7 +1,7 @@
 
 #include <pthread.h>
-#include <sys/mman.h>
 #include <sys/select.h>
+#include <cstdio>
 #include <fstream>
 #include "free_block_manager.h"
 #include "msg.h"
@@ -10,7 +10,7 @@
 #include <sys/time.h>
 
 const int iteration = 32;
-const int epoch = 32;
+const int epoch = 4;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -22,21 +22,23 @@ std::atomic<int> malloc_record_global[10];
 std::atomic<int> free_record_global[10];
 std::atomic<uint64_t> malloc_avg;
 std::atomic<uint64_t> free_avg;
+std::atomic<uint64_t> core_id;
 
 void* worker(void* arg) {
     uint64_t malloc_avg_time_ = 0, free_avg_time_ = 0;
     uint64_t malloc_count_ = 0, free_count_ = 0;
     struct timeval start, end;
+    mralloc::ConnectionManager* conn = (mralloc::ConnectionManager*)arg;
     int malloc_record[10] = {0};
     int free_record[10] = {0};
-    uint64_t addr[iteration];
-
+    uint64_t addr[iteration]; uint32_t rkey[iteration];
+    
     for(int j = 0; j < epoch; j ++) {
         // malloc
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < iteration; i ++){
-            addr[i] = (uint64_t)mmap(NULL, 1024*1024*4, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
+            conn->remote_fetch_block(addr[i], rkey[i]);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
@@ -45,12 +47,14 @@ void* worker(void* arg) {
         char buffer[2][16] = {"aaa", "bbb"};
         char read_buffer[4];
         for(int i = 0; i < iteration; i ++){
-            *(char*)addr = 'a';
+            printf("try to access %p:%u\n", addr[i], rkey[i]);
+            conn->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
+            conn->remote_read(read_buffer, 4, addr[i], rkey[i]);
+            assert(read_buffer[0] == buffer[i%2][0]);
         }        
-
         uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
-        uint64_t log_time = time;
         uint64_t log10 = 0;
+        uint64_t log_time = time;
         while(log_time/10 > 0){
             log_time = log_time / 10;
             log10 += 1;           
@@ -64,7 +68,8 @@ void* worker(void* arg) {
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < iteration; i ++){
-            munmap((void*)addr[i], 1024*1024*4);
+            printf("try to free %p\n", addr[i]);
+            conn->remote_free_block(addr[i]);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
@@ -90,12 +95,14 @@ void* worker(void* arg) {
 }
 
 int main(int argc, char* argv[]) {
-    if(argc < 2){
-        printf("Usage: %s <thread>\n", argv[0]);
+    if(argc < 4){
+        printf("Usage: %s <ip> <port> <thread>\n", argv[0]);
         return 0;
     }
 
-    int thread_num = atoi(argv[1]);
+    std::string ip = argv[1];
+    std::string port = argv[2];
+    int thread_num = atoi(argv[3]);
     std::ofstream result;
     result.open("result.csv");
     
@@ -109,8 +116,11 @@ int main(int argc, char* argv[]) {
     pthread_barrier_init(&start_barrier, NULL, thread_num);
     pthread_barrier_init(&end_barrier, NULL, thread_num);
     pthread_t running_thread[thread_num];
+    mralloc::ConnectionManager* conn[thread_num];
     for(int i = 0; i < thread_num; i++) {
-        pthread_create(&running_thread[i], NULL, worker, NULL);
+        conn[i] = new mralloc::ConnectionManager();
+        conn[i]->init(ip, port, 1, 1);
+        pthread_create(&running_thread[i], NULL, worker, conn[i]);
     }
     for(int i = 0; i < thread_num; i++) {
         pthread_join(running_thread[i], NULL);
