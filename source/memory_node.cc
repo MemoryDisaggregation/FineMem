@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-06 09:59:18
+ * @LastEditTime: 2023-12-06 14:27:32
  * @FilePath: /rmalloc_newbase/source/memory_node.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -521,7 +521,7 @@ bool MemoryNode::bind_mw(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, i
                                             .addr = addr, 
                                             .length = size,
                                             .mw_access_flags = IBV_ACCESS_REMOTE_READ | 
-                                                IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND | IBV_ACCESS_HUGETLB} ;
+                                                IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND} ;
     struct ibv_mw_bind bind_ = {.wr_id = 0, .send_flags = IBV_SEND_SIGNALED, .bind_info = bind_info_};
     if(ibv_bind_mw(qp, mw, &bind_)){
         perror("ibv_post_send mw_bind fail");
@@ -561,7 +561,7 @@ struct ibv_mr *MemoryNode::rdma_register_memory(void *ptr, uint64_t size) {
     struct ibv_mr *mr =
         ibv_reg_mr(m_pd_, ptr, size,
                     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
-                        IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND | IBV_ACCESS_HUGETLB );
+                        IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND);
     if (!mr) {
         perror("ibv_reg_mr fail");
         return nullptr;
