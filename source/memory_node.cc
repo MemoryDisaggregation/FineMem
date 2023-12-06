@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
- * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-06 17:03:54
+ * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-12-06 20:02:56
  * @FilePath: /rmalloc_newbase/source/memory_node.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -37,7 +37,7 @@
 #define REMOTE_MEM_SIZE 4194304
 // #define REMOTE_MEM_SIZE 4096
 
-#define INIT_MEM_SIZE ((uint64_t)16*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)32*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 
@@ -221,7 +221,7 @@ bool MemoryNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
 
 bool MemoryNode::free_mem_block(uint64_t addr) {
     rdma_addr new_addr;
-    memset((void*)addr, 0, server_block_manager_->get_block_size());
+    // memset((void*)addr, 0, server_block_manager_->get_block_size());
     uint32_t block_id = (addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
     bind_mw(block_mw[block_id], addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
     bind_mw(block_mw[block_id], addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
@@ -708,8 +708,8 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
             } else {
                 resp_msg->status = RES_FAIL;
             }
-            printf("fetch memory, addr: %lx, rkey: %d, start addr: %lx, global rkey: %u\n", resp_msg->addr,
-                    resp_msg->rkey, heap_start_addr_, global_mr_->rkey);
+            // printf("fetch memory, addr: %lx, rkey: %d, start addr: %lx, global rkey: %u\n", resp_msg->addr,
+                    // resp_msg->rkey, heap_start_addr_, global_mr_->rkey);
             /* write response */
             remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
                         sizeof(CmdMsgRespBlock), request->resp_addr,
@@ -748,7 +748,7 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
             uint32_t block_id = (reg_req->addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
             if(reg_req->block_class == 0) {
                 // bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq);
-                memset((void*)reg_req->addr, 0, server_block_manager_->get_block_size());
+                // memset((void*)reg_req->addr, 0, server_block_manager_->get_block_size());
                 if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
                 // bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
                 // if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_)) {

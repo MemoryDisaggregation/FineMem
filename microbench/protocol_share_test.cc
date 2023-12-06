@@ -19,8 +19,8 @@ std::ofstream malloc_result;
 std::ofstream free_result;
 pthread_mutex_t file_lock;
 
-std::atomic<int> malloc_record_global[10];
-std::atomic<int> free_record_global[10];
+std::atomic<int> malloc_record_global[1000];
+std::atomic<int> free_record_global[1000];
 std::atomic<uint64_t> malloc_avg;
 std::atomic<uint64_t> free_avg;
 
@@ -29,8 +29,8 @@ void* worker(void* arg) {
     uint64_t malloc_count_ = 0, free_count_ = 0;
     struct timeval start, end;
     mralloc::ConnectionManager* conn = (mralloc::ConnectionManager*)arg;
-    int malloc_record[10] = {0};
-    int free_record[10] = {0};
+    int malloc_record[1000] = {0};
+    int free_record[1000] = {0};
     uint64_t addr[iteration]; uint32_t rkey[iteration];
     uint32_t cache_section_index;
     mralloc::section_e cache_section;
@@ -66,14 +66,15 @@ void* worker(void* arg) {
         }        
         uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
         time = time / iteration;
-        uint64_t log10 = 0;
-        uint64_t log_time = time;
-        while(log_time/10 > 0){
-            log_time = log_time / 10;
-            log10 += 1;           
-        }
-        malloc_record[log10] += 1;
-        
+        // uint64_t log10 = 0;
+        // uint64_t log_time = time;
+        // while(log_time/10 > 0){
+        //     log_time = log_time / 10;
+        //     log10 += 1;           
+        // }
+        // malloc_record[log10] += 1;
+        if(time < 1000)
+            malloc_record[time] += 1;
         malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
         malloc_count_ += 1;
         // printf("avg time:%lu\n", time);
@@ -88,17 +89,19 @@ void* worker(void* arg) {
         pthread_barrier_wait(&end_barrier);
         time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
         time = time / iteration;
-        log10 = 0; log_time = time;
-        while(log_time/10 > 0){
-            log_time = log_time / 10;
-            log10 += 1;           
-        }
-        free_record[log10] += 1;
+        // log10 = 0; log_time = time;
+        // while(log_time/10 > 0){
+        //     log_time = log_time / 10;
+        //     log10 += 1;           
+        // }
+        // free_record[log10] += 1;
+        if(time < 1000)
+            malloc_record[time] += 1;
         free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
         free_count_ += 1;
     }
     // printf("avg time:%lu, max_time:%lu\n", avg_time_, max_time_);
-    for(int i=0;i<10;i++){
+    for(int i=0;i<1000;i++){
         malloc_record_global[i].fetch_add(malloc_record[i]);
         free_record_global[i].fetch_add(free_record[i]);
     }
@@ -119,7 +122,7 @@ int main(int argc, char* argv[]) {
     std::ofstream result;
     result.open("result.csv");
     
-    for(int i=0;i<10;i++){
+    for(int i=0;i<1000;i++){
         malloc_record_global[i].store(0);
         free_record_global[i].store(0);
     }
@@ -138,7 +141,7 @@ int main(int argc, char* argv[]) {
     for(int i = 0; i < thread_num; i++) {
         pthread_join(running_thread[i], NULL);
     }
-    for(int i=0;i<10;i++) {
+    for(int i=0;i<1000;i++) {
         result << "malloc " << i << " " <<malloc_record_global[i].load() << std::endl;
         result << "free " << i << " " <<free_record_global[i].load() << std::endl;
     }
