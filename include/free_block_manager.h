@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-11 16:42:26
- * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-05 16:49:37
+ * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-12-06 22:40:05
  * @FilePath: /rmalloc_newbase/include/free_block_manager.h
  * @Description: Buddy tree for memory management 
  * 
@@ -192,6 +192,15 @@ public:
 
     bool init(uint64_t meta_addr, uint64_t addr, uint64_t size, uint32_t rkey);
 
+    void print_section_info() {
+        uint64_t empty=0, exclusive=0, shared=0;
+        for(int i = 0; i< section_num_; i++) {
+            empty += free_bit_in_bitmap32(section_header_[i].load().alloc_map_ | section_header_[i].load().class_map_);
+            exclusive += free_bit_in_bitmap32(~section_header_[i].load().alloc_map_ | ~section_header_[i].load().class_map_);
+            shared += free_bit_in_bitmap32(~section_header_[i].load().alloc_map_ | section_header_[i].load().class_map_);
+        }
+        printf("summary: empty: %lu, exclusive: %lu, shared: %lu\n", empty, exclusive, shared);
+    }
 
     inline bool check_section(section_e alloc_section, alloc_advise advise, uint32_t offset);
     uint64_t get_heap_start() {return heap_start_;};

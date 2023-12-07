@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-11-21 17:26:29
  * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-06 19:35:50
+ * @LastEditTime: 2023-12-06 22:03:07
  * @FilePath: /rmalloc_newbase/include/memory_node.h
  * @Description: 
  * 
@@ -83,7 +83,7 @@ public:
         struct ibv_cq *cq;
     };    
     MemoryNode(bool one_sided_enabled): one_sided_enabled_(one_sided_enabled) {
-        ring_cache = new ring_buffer<rdma_addr>(2048, ring_cache_content, rdma_addr(-1, -1), &reader, &writer);
+        ring_cache = new ring_buffer<rdma_addr>(8192, ring_cache_content, rdma_addr(-1, -1), &reader, &writer);
         ring_cache -> clear();
     };
     ~MemoryNode(){};
@@ -148,7 +148,7 @@ private:
 
     // << reserved block cache>>
     ring_buffer<rdma_addr>* ring_cache;
-    rdma_addr ring_cache_content[2048];
+    rdma_addr ring_cache_content[8192];
     std::atomic<uint32_t> reader, writer;
     uint64_t simple_cache_addr[32];
     uint32_t simple_cache_rkey[32];

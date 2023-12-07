@@ -11,8 +11,8 @@
 #include "rdma_conn_manager.h"
 #include <sys/time.h>
 
-const int iteration = 128;
-const int epoch = 16;
+const int iteration = 16;
+const int epoch = 128;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
