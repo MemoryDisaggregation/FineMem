@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-06 20:02:56
+ * @LastEditTime: 2023-12-06 23:33:29
  * @FilePath: /rmalloc_newbase/source/memory_node.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -53,7 +53,7 @@ const uint64_t SERVER_BASE_ADDR = (uint64_t)0x10000000;
 // const uint64_t SERVER_BASE_ADDR = (uint64_t)0x10000000;
 
 void MemoryNode::print_alloc_info() {
-  server_block_manager_->print_state();
+  server_block_manager_->print_section_info();
 }
 
 /**
@@ -506,7 +506,7 @@ bool MemoryNode::init_class_mw(uint16_t region_offset, uint16_t block_class, ibv
         bind_mw(block_class_mw[block_offset + i*class_size], block_addr_, server_block_manager_->get_block_size()*class_size, qp, cq);
         bind_mw(block_class_mw[block_offset + i*class_size], block_addr_, server_block_manager_->get_block_size()*class_size, qp, cq);
         server_block_manager_->set_class_block_rkey(block_offset + i*class_size, block_class_mw[block_offset + i*class_size]->rkey);
-        printf("addr %lx bind class %d, with rkey %u\n", block_addr_, block_class, block_class_mw[block_offset + i*class_size]->rkey);
+        // printf("addr %lx bind class %d, with rkey %u\n", block_addr_, block_class, block_class_mw[block_offset + i*class_size]->rkey);
     }
     return true;
 }
@@ -794,6 +794,13 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
             printf("receive a memory unregister message, addr: %ld\n",
                 unreg_req->addr);
             // TODO: implemente memory unregister
+        } else if(request->type == MSG_PRINT_INFO){
+            ResponseMsg *resp_msg = (ResponseMsg *)cmd_resp;
+            print_alloc_info();
+            resp_msg->status = RES_OK;
+            remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                        sizeof(CmdMsgRespBlock), request->resp_addr,
+                        request->resp_rkey);
         } else {
             printf("wrong request type\n");
         }

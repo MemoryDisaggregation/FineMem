@@ -1,8 +1,8 @@
 /*
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-14 09:42:48
- * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-06 09:55:44
+ * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
+ * @LastEditTime: 2023-12-06 22:14:29
  * @FilePath: /rmalloc_newbase/source/free_block_manager.cc
  * @Description: 
  * 
@@ -98,8 +98,8 @@ namespace mralloc {
                 if(!check_section(section_old, compare, region_offset)){
                     return false;
                 }
-                section_new.alloc_map_ |= 1 << region_offset;
-                section_new.class_map_ |= 1 << region_offset;
+                section_new.alloc_map_ |= (uint32_t)1 << region_offset;
+                section_new.class_map_ |= (uint32_t)1 << region_offset;
             }while(!section_header_[section_offset].compare_exchange_strong(section_old, section_new));
             return true;
         } else if(advise == alloc_empty) {
@@ -117,7 +117,7 @@ namespace mralloc {
                     return false;
                 }
                 section_new.class_map_ &= ~((bitmap32)1 << region_offset);
-                section_new.alloc_map_ |= 1 << region_offset;
+                section_new.alloc_map_ |= (uint32_t)1 << region_offset;
             }while(!section_header_[section_offset].compare_exchange_strong(section_old, section_new));
             return true;
         } else if(advise == alloc_class) {
@@ -125,7 +125,7 @@ namespace mralloc {
                 if(!check_section(section_old, compare, region_offset)){
                     return false;
                 }
-                section_new.class_map_ |= 1 << region_offset;
+                section_new.class_map_ |= (uint32_t)1 << region_offset;
                 section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
             }while(!section_header_[section_offset].compare_exchange_strong(section_old, section_new));
             return true;
@@ -136,7 +136,7 @@ namespace mralloc {
     bool ServerBlockManager::find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
         section_e section;
         if(advise == alloc_class) {
-            for(int i = 0; i < section_num_; i--) {
+            for(int i = 0; i < section_num_; i++) {
                 section = section_header_[i].load();
                 if((section.class_map_ | section.alloc_map_) != ~(uint32_t)0){
                     alloc_section = section;
@@ -145,9 +145,9 @@ namespace mralloc {
                 }
             }
         } else if(advise == alloc_no_class) {
-            for(int i = 0; i < section_num_; i--) {
+            for(int i = 0; i < section_num_; i++) {
                 section = section_header_[i].load();
-                if((section.class_map_ | section.alloc_map_)  != ~(uint32_t)0){
+                if((section.class_map_ & section.alloc_map_)  != ~(uint32_t)0){
                     alloc_section = section;
                     section_offset = i;
                     return true;
@@ -186,7 +186,7 @@ namespace mralloc {
                     break;
                 }
                 new_section = alloc_section;
-                new_section.alloc_map_ |= (1<<index);
+                new_section.alloc_map_ |= ((uint32_t)1<<index);
             }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
             alloc_section = new_section;
             alloc_region = region_header_[section_offset*region_per_section+index].load();
@@ -204,8 +204,8 @@ namespace mralloc {
                     return false;
                 }
                 new_section = alloc_section;
-                new_section.alloc_map_ |= (1<<index);
-                new_section.class_map_ |= (1<<index);
+                new_section.alloc_map_ |= ((uint32_t)1<<index);
+                new_section.class_map_ |= ((uint32_t)1<<index);
             }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
             alloc_section = new_section;
             region_e region_old= region_header_[section_offset*region_per_section+index].load();
@@ -254,8 +254,8 @@ namespace mralloc {
                     return false;
                 }
                 new_section = alloc_section;
-                new_section.class_map_ |= (1<<index);
-                new_section.alloc_map_ |= (0<<index);
+                new_section.class_map_ |= ((uint32_t)1<<index);
+                new_section.alloc_map_ &= ~((uint32_t)1<<index);
             }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
             alloc_section = new_section;
             region_old= region_header_[section_offset*region_per_section+index].load();
@@ -278,8 +278,8 @@ namespace mralloc {
                     return false;
                 }
                 new_section = alloc_section;
-                new_section.class_map_ |= (1<<index);
-                new_section.alloc_map_ |= (1<<index);
+                new_section.class_map_ |= ((uint32_t)1<<index);
+                new_section.alloc_map_ |= ((uint32_t)1<<index);
             }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
             alloc_section = new_section;
             region_old= region_header_[section_offset*region_per_section+index].load();
@@ -330,7 +330,7 @@ namespace mralloc {
                     section_e section_new = alloc_section;
                     bitmap32 mask = 0;
                     for(int j = i-free_length+1; j <= i; j++) {
-                        mask |= 1 << j;
+                        mask |= (uint32_t)1 << j;
                     }
                     section_new.alloc_map_ |= mask;
                     section_new.class_map_ |= mask;
@@ -399,10 +399,10 @@ namespace mralloc {
             } 
             uint16_t mask = 0;
             uint32_t reader = new_region.base_map_;
-            uint32_t tail = 1<<(block_class+1);
+            uint32_t tail = (uint32_t)1<<(block_class+1);
             for(int i = 0; i < block_per_region/(block_class+1); i++ ) {
                 if(reader%tail == 0)
-                    mask |= 1<<i;
+                    mask |= (uint16_t)1<<i;
                 reader >>= block_class+1;
             }
             new_region.class_map_ = ~mask;
@@ -424,7 +424,7 @@ namespace mralloc {
                 printf("full, change region\n");
                 return false;
             }
-            new_region.base_map_ |= 1<<index;
+            new_region.base_map_ |= (uint32_t)1<<index;
         } while (!region_header_[new_region.offset_].compare_exchange_strong(alloc_region, new_region));
         alloc_region = new_region;
         addr = get_region_block_addr(alloc_region, index);
@@ -446,12 +446,12 @@ namespace mralloc {
             if((index = find_free_index_from_bitmap16_tail(alloc_region.class_map_)) == -1) {
                 return false;
             }
-            uint16_t mask = 0;
+            uint32_t mask = 0;
             for(int i = 0;i < block_class + 1;i++) {
-                mask |= 1<<(index*(block_class + 1)+i);
+                mask |= (uint32_t)1<<(index*(block_class + 1)+i);
             }
             new_region.base_map_ |= mask;
-            new_region.class_map_ |= 1<<index;
+            new_region.class_map_ |= (uint16_t)1<<index;
         }while(!region_header_[new_region.offset_].compare_exchange_strong(alloc_region, new_region));
         alloc_region = new_region;
         addr = get_region_block_addr(alloc_region, index*(block_class + 1));
@@ -468,7 +468,7 @@ namespace mralloc {
             printf("exclusive error, the actual block is shared\n");
             return false;
         }
-        if((region.base_map_ & (1<<region_block_offset)) == 0) {
+        if((region.base_map_ & ((uint32_t)1<<region_block_offset)) == 0) {
             printf("already freed\n");
             return false;
         }
@@ -492,7 +492,7 @@ namespace mralloc {
                 new_region = region;
                 uint32_t mask = 0; 
                 for(int i = 0;i < block_class + 1;i++) {
-                    mask |= 1<<(region_block_offset+i);
+                    mask |= (uint32_t)1<<(region_block_offset+i);
                 }
                 new_region.base_map_ &= ~mask;
                 new_region.class_map_ &= ~(uint16_t)(1<<region_block_offset/(block_class+1));
