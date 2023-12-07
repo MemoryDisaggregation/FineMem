@@ -8,8 +8,8 @@
 #include "rdma_conn_manager.h"
 #include <sys/time.h>
 
-const int iteration = 32;
-const int epoch = 4;
+const int iteration = 128;
+const int epoch = 16;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -36,7 +36,7 @@ void* worker(void* arg) {
     mralloc::section_e cache_section;
     mralloc::region_e cache_region;
     uint32_t cache_rkey[mralloc::block_per_region];
-    conn->find_section(cache_section, cache_section_index, mralloc::alloc_exclusive);
+    conn->find_section(cache_section, cache_section_index, mralloc::alloc_empty);
     conn->fetch_region(cache_section, cache_section_index, 0, false, cache_region);
     conn->fetch_exclusive_region_rkey(cache_region, cache_rkey);
     for(int j = 0; j < epoch; j ++) {
@@ -46,9 +46,9 @@ void* worker(void* arg) {
         for(int i = 0; i < iteration; i ++){
             int index = 0 ;
             while((index = mralloc::find_free_index_from_bitmap32_tail(cache_region.base_map_)) == -1 ){
-                printf("cannot happen?\n");
+                // printf("cannot happen?\n");
                 while(!conn->fetch_region(cache_section, cache_section_index, 0, false, cache_region)){
-                    conn->find_section(cache_section, cache_section_index, mralloc::alloc_exclusive);
+                    conn->find_section(cache_section, cache_section_index, mralloc::alloc_empty);
                 }
             }
             cache_region.base_map_ |= 1<<index;
@@ -57,11 +57,14 @@ void* worker(void* arg) {
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
+        printf("epoch %d malloc finish\n", j);
+        conn->remote_print_alloc_info();
         
         // valid check
         char buffer[2][16] = {"aaa", "bbb"};
         char read_buffer[4];
         for(int i = 0; i < iteration; i ++){
+            // printf("try to access %p:%u\n", addr[i], rkey[i]);
             conn->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
             conn->remote_read(read_buffer, 4, addr[i], rkey[i]);
             assert(read_buffer[0] == buffer[i%2][0]);
@@ -79,6 +82,7 @@ void* worker(void* arg) {
             malloc_record[time] += 1;
         malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
         malloc_count_ += 1;
+        printf("epoch %d check finish\n", j);
         
         // free
         pthread_barrier_wait(&start_barrier);
@@ -98,11 +102,13 @@ void* worker(void* arg) {
         //     log10 += 1;           
         // }
         // free_record[log10] += 1;
-        if(time < 1000)
-            malloc_record[time] += 1;
         time = time / iteration;
+        if(time < 1000)
+            free_record[time] += 1;
         free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
         free_count_ += 1;
+        printf("epoch %d free finish\n", j);
+        conn->remote_print_alloc_info();
     }
     // printf("avg time:%lu, max_time:%lu\n", avg_time_, max_time_);
     for(int i=0;i<1000;i++){
@@ -145,9 +151,15 @@ int main(int argc, char* argv[]) {
     for(int i = 0; i < thread_num; i++) {
         pthread_join(running_thread[i], NULL);
     }
+    result << "malloc " << std::endl;
     for(int i=0;i<1000;i++) {
-        result << "malloc " << i << " " <<malloc_record_global[i].load() << std::endl;
-        result << "free " << i << " " <<free_record_global[i].load() << std::endl;
+        if(malloc_record_global[i].load() != 0)
+            result << i << " " <<malloc_record_global[i].load() << std::endl;
+    }
+    result << "free " << std::endl;
+    for(int i=0;i<1000;i++) {
+        if(free_record_global[i].load() != 0)
+            result << i << " " <<free_record_global[i].load() << std::endl;
     }
     result.close();
     printf("total malloc avg: %luus\n", malloc_avg.load()/thread_num);

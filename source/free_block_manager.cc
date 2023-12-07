@@ -498,17 +498,17 @@ namespace mralloc {
                 new_region.class_map_ &= ~(uint16_t)(1<<region_block_offset/(block_class+1));
             } while(!region_header_[region_offset].compare_exchange_strong(region, new_region));
             if(free_bit_in_bitmap16(new_region.class_map_) == block_per_region/(block_class+1)) {
-                printf("[Attention] try to add fast region %lx\n", addr);
+                // printf("[Attention] try to add fast region %lx\n", addr);
                 if(!try_add_fast_region(region_offset/region_per_section, block_class, new_region)) {
-                    printf("[Attention] try to clean region %lx\n", addr);
+                    // printf("[Attention] try to clean region %lx\n", addr);
                     set_region_empty(new_region);
                 }
             } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > block_per_region/(block_class+1)/2 && free_bit_in_bitmap16(region.class_map_) <= block_per_region/(block_class+1)/2){
-                printf("[Attention] try to add fast region %lx\n", addr);
+                // printf("[Attention] try to add fast region %lx\n", addr);
                 try_add_fast_region(region_offset/region_per_section, block_class, new_region);
             }
             region = new_region;
-            printf("free a class %u block %lx, newkey is %u\n", new_region.block_class_, addr, new_rkey);
+            // printf("free a class %u block %lx, newkey is %u\n", new_region.block_class_, addr, new_rkey);
             return true;
         }
         return false;

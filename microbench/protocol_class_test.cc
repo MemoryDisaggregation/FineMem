@@ -8,8 +8,8 @@
 #include "rdma_conn_manager.h"
 #include <sys/time.h>
 
-const int iteration = 32;
-const int epoch = 4;
+const int iteration = 16;
+const int epoch = 16;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -35,15 +35,15 @@ void* worker(void* arg) {
     mralloc::section_e cache_section;
     mralloc::region_e cache_region;
     conn->find_section(cache_section, cache_section_index, mralloc::alloc_class);
-    conn->fetch_region(cache_section, cache_section_index, 1, true, cache_region);
+    conn->fetch_region(cache_section, cache_section_index, 7, true, cache_region);
     for(int j = 0; j < epoch; j ++) {
         // malloc
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < iteration; i ++){
             int index = 0 ;
-            while(!conn->fetch_region_class_block(cache_region, 1, addr[i], rkey[i], false)){
-                while(!conn->fetch_region(cache_section, cache_section_index, 1, true, cache_region)){
+            while(!conn->fetch_region_class_block(cache_region, 7, addr[i], rkey[i], false)){
+                while(!conn->fetch_region(cache_section, cache_section_index, 7, true, cache_region)){
                     conn->find_section(cache_section, cache_section_index, mralloc::alloc_class);
                 }
             }
@@ -56,7 +56,7 @@ void* worker(void* arg) {
         char buffer[2][16] = {"aaa", "bbb"};
         char read_buffer[4];
         for(int i = 0; i < iteration; i ++){
-            printf("try to access %p:%u\n", addr[i], rkey[i]);
+            // printf("try to access %p:%u\n", addr[i], rkey[i]);
             conn->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
             conn->remote_read(read_buffer, 4, addr[i], rkey[i]);
             assert(read_buffer[0] == buffer[i%2][0]);
@@ -92,7 +92,7 @@ void* worker(void* arg) {
         // free_record[log10] += 1;
         time = time / iteration;
         if(time < 1000)
-            malloc_record[time] += 1;
+            free_record[time] += 1;
         free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
         free_count_ += 1;
         printf("epoch %d free finish\n", j);
@@ -138,9 +138,15 @@ int main(int argc, char* argv[]) {
     for(int i = 0; i < thread_num; i++) {
         pthread_join(running_thread[i], NULL);
     }
+    result << "malloc " << std::endl;
     for(int i=0;i<1000;i++) {
-        result << "malloc " << i << " " <<malloc_record_global[i].load() << std::endl;
-        result << "free " << i << " " <<free_record_global[i].load() << std::endl;
+        if(malloc_record_global[i].load() != 0)
+            result << i << " " <<malloc_record_global[i].load() << std::endl;
+    }
+    result << "free " << std::endl;
+    for(int i=0;i<1000;i++) {
+        if(free_record_global[i].load() != 0)
+            result << i << " " <<free_record_global[i].load() << std::endl;
     }
     result.close();
     printf("total malloc avg: %luus\n", malloc_avg.load()/thread_num);

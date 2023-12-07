@@ -246,6 +246,15 @@ int ConnectionManager::remote_memzero(uint64_t addr, uint64_t size) {
     return ret;
 }
 
+int ConnectionManager::remote_print_alloc_info() {
+    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+    assert(conn != nullptr);
+    int ret = conn->remote_print_alloc_info();
+    m_rpc_conn_queue_->enqueue(conn);
+    return ret;
+}
+
+
 bool ConnectionManager::free_region_block(uint64_t addr, bool is_exclusive) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);

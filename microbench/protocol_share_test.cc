@@ -2,6 +2,7 @@
 #include <pthread.h>
 #include <sys/select.h>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <unordered_map>
 #include "free_block_manager.h"
@@ -10,8 +11,8 @@
 #include "rdma_conn_manager.h"
 #include <sys/time.h>
 
-const int iteration = 32;
-const int epoch = 4;
+const int iteration = 128;
+const int epoch = 16;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -54,7 +55,8 @@ void* worker(void* arg) {
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
-        
+        printf("epoch %d malloc finish\n", j);
+        conn->remote_print_alloc_info();
         // valid check
         char buffer[2][16] = {"aaa", "bbb"};
         char read_buffer[4];
@@ -78,11 +80,13 @@ void* worker(void* arg) {
         malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
         malloc_count_ += 1;
         // printf("avg time:%lu\n", time);
+        printf("epoch %d check finish\n", j);
         
         // free
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < iteration; i ++){
+            // if(rand()%100 > 4)
             conn->free_region_block(addr[i], false);
         }
         gettimeofday(&end, NULL);
@@ -96,9 +100,11 @@ void* worker(void* arg) {
         // }
         // free_record[log10] += 1;
         if(time < 1000)
-            malloc_record[time] += 1;
+            free_record[time] += 1;
         free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
         free_count_ += 1;
+        printf("epoch %d free finish\n", j);
+        conn->remote_print_alloc_info();
     }
     // printf("avg time:%lu, max_time:%lu\n", avg_time_, max_time_);
     for(int i=0;i<1000;i++){
@@ -141,9 +147,15 @@ int main(int argc, char* argv[]) {
     for(int i = 0; i < thread_num; i++) {
         pthread_join(running_thread[i], NULL);
     }
+    result << "malloc " << std::endl;
     for(int i=0;i<1000;i++) {
-        result << "malloc " << i << " " <<malloc_record_global[i].load() << std::endl;
-        result << "free " << i << " " <<free_record_global[i].load() << std::endl;
+        if(malloc_record_global[i].load() != 0)
+            result << i << " " <<malloc_record_global[i].load() << std::endl;
+    }
+    result << "free " << std::endl;
+    for(int i=0;i<1000;i++) {
+        if(free_record_global[i].load() != 0)
+            result << i << " " <<free_record_global[i].load() << std::endl;
     }
     result.close();
     printf("total malloc avg: %luus\n", malloc_avg.load()/thread_num);
