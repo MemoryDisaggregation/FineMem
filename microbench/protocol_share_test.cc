@@ -11,8 +11,8 @@
 #include "rdma_conn_manager.h"
 #include <sys/time.h>
 
-const int iteration = 16;
-const int epoch = 128;
+const int iteration = 128;
+const int epoch = 16;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -24,8 +24,10 @@ std::atomic<int> malloc_record_global[1000];
 std::atomic<int> free_record_global[1000];
 std::atomic<uint64_t> malloc_avg;
 std::atomic<uint64_t> free_avg;
+std::atomic<uint64_t> id;
 
 void* worker(void* arg) {
+    uint64_t thread_id = id.fetch_add(1);
     uint64_t malloc_avg_time_ = 0, free_avg_time_ = 0;
     uint64_t malloc_count_ = 0, free_count_ = 0;
     struct timeval start, end;
@@ -47,7 +49,7 @@ void* worker(void* arg) {
             while(!conn->fetch_region_block(cache_region, addr[i], rkey[i], false)){
                 // printf("change region\n");
                 while(!conn->fetch_region(cache_section, cache_section_index, 0, true, cache_region)){
-                    printf("change section\n");
+                    // printf("change section\n");
                     conn->find_section(cache_section, cache_section_index, mralloc::alloc_no_class);
                 }
             }
@@ -56,7 +58,8 @@ void* worker(void* arg) {
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
         printf("epoch %d malloc finish\n", j);
-        conn->remote_print_alloc_info();
+        if (thread_id == 1)
+            conn->remote_print_alloc_info();
         // valid check
         char buffer[2][16] = {"aaa", "bbb"};
         char read_buffer[4];
@@ -86,8 +89,8 @@ void* worker(void* arg) {
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < iteration; i ++){
-            // if(rand()%100 > 4)
-            conn->free_region_block(addr[i], false);
+            if(rand()%100 > 2)
+                conn->free_region_block(addr[i], false);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
@@ -104,7 +107,8 @@ void* worker(void* arg) {
         free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
         free_count_ += 1;
         printf("epoch %d free finish\n", j);
-        conn->remote_print_alloc_info();
+        // if (thread_id == 1)
+        //     conn->remote_print_alloc_info();
     }
     // printf("avg time:%lu, max_time:%lu\n", avg_time_, max_time_);
     for(int i=0;i<1000;i++){
@@ -132,6 +136,7 @@ int main(int argc, char* argv[]) {
         malloc_record_global[i].store(0);
         free_record_global[i].store(0);
     }
+    id.store(0);
     malloc_avg.store(0);
     free_avg.store(0);
     pthread_mutex_init(&file_lock, NULL);

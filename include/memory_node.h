@@ -83,7 +83,7 @@ public:
         struct ibv_cq *cq;
     };    
     MemoryNode(bool one_sided_enabled): one_sided_enabled_(one_sided_enabled) {
-        ring_cache = new ring_buffer<rdma_addr>(8192, ring_cache_content, rdma_addr(-1, -1), &reader, &writer);
+        ring_cache = new ring_buffer_atomic<rdma_addr>(8192, ring_cache_content, rdma_addr(-1, -1), &reader, &writer);
         ring_cache -> clear();
     };
     ~MemoryNode(){};
@@ -147,7 +147,7 @@ private:
     region_e current_class_region_[16];
 
     // << reserved block cache>>
-    ring_buffer<rdma_addr>* ring_cache;
+    ring_buffer_atomic<rdma_addr>* ring_cache;
     rdma_addr ring_cache_content[8192];
     std::atomic<uint32_t> reader, writer;
     uint64_t simple_cache_addr[32];

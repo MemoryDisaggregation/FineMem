@@ -1326,7 +1326,7 @@ bool RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
             update_section(new_region, alloc_no_class, alloc_exclusive);
         } 
         // else if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) == block_per_region){
-        //     update_section(new_region, alloc_no_class, alloc_no_class);
+        //     update_section(new_region, alloc_empty, alloc_no_class);
         // } 
         else if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > block_per_region-5) {
             update_section(new_region, alloc_no_class, alloc_exclusive);

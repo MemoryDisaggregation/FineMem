@@ -2,6 +2,7 @@
 #include <pthread.h>
 #include <sys/mman.h>
 #include <sys/select.h>
+#include <cstdlib>
 #include <fstream>
 #include "free_block_manager.h"
 #include "msg.h"
@@ -37,6 +38,7 @@ void* worker(void* arg) {
         gettimeofday(&start, NULL);
         for(int i = 0; i < iteration; i ++){
             addr[i] = (uint64_t)mmap(NULL, 1024*1024*4, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
+            // addr[i] = (uint64_t)malloc(1024*1024*4);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
@@ -69,6 +71,7 @@ void* worker(void* arg) {
         gettimeofday(&start, NULL);
         for(int i = 0; i < iteration; i ++){
             munmap((void*)addr[i], 1024*1024*4);
+            // free((void*)(addr[i]));
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);

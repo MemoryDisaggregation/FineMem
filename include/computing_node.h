@@ -50,10 +50,10 @@ public:
 
     ComputingNode(bool heap_enabled, bool cache_enabled, bool one_side_enabled): heap_enabled_(heap_enabled), cpu_cache_enabled_(cache_enabled), one_side_enabled_(one_side_enabled) {
         if(cpu_cache_enabled_)  assert(heap_enabled_);
-        ring_cache = new ring_buffer<rdma_addr>(ring_buffer_size, ring_cache_content, rdma_addr(-1, -1), &reader, &writer);
+        ring_cache = new ring_buffer_atomic<rdma_addr>(ring_buffer_size, ring_cache_content, rdma_addr(-1, -1), &reader, &writer);
         ring_cache->clear();
         for(int i = 0; i<class_num; i++) {
-            ring_class_cache[i] = new ring_buffer<rdma_addr>(class_ring_buffer_size, ring_class_cache_content[i], rdma_addr(-1, -1), &class_reader[i], &class_writer[i]);
+            ring_class_cache[i] = new ring_buffer_atomic<rdma_addr>(class_ring_buffer_size, ring_class_cache_content[i], rdma_addr(-1, -1), &class_reader[i], &class_writer[i]);
             ring_class_cache[i]->clear();
         }
     }
@@ -82,8 +82,9 @@ public:
     void decrease_watermark(uint64_t &upper_bound);
 
     inline uint64_t get_region_block_addr(region_e region, uint32_t block_offset) {return heap_start_ + region.offset_ * region_size_ + block_offset * block_size_;} ;
-    bool new_cache_section(uint32_t block_class);
+    bool new_cache_section(uint32_t block_class, alloc_advise advise);
     bool new_cache_region(uint32_t block_class);
+    bool new_backup_region();
     bool fill_cache_block(uint32_t block_class);
 
     bool fetch_mem_block_nocached(uint64_t &addr, uint32_t &rkey);
@@ -145,12 +146,12 @@ private:
     uint32_t current_section_index_;
     region_with_rkey current_region_;
     std::unordered_map<uint16_t, region_with_rkey> exclusive_region_;
-    region_e backup_region_;
+    region_with_rkey backup_region_;
     region_e current_class_region_[16];
 
     // << reserved block cache>>
-    ring_buffer<rdma_addr>* ring_cache;
-    ring_buffer<rdma_addr>* ring_class_cache[16];
+    ring_buffer_atomic<rdma_addr>* ring_cache;
+    ring_buffer_atomic<rdma_addr>* ring_class_cache[16];
     rdma_addr ring_cache_content[ring_buffer_size];
     rdma_addr ring_class_cache_content[16][class_ring_buffer_size];
     // rdma_mem_t ring_cache[ring_buffer_size];

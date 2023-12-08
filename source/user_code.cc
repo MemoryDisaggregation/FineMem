@@ -30,7 +30,7 @@ const uint64_t iter_num = 64;
 
 const uint64_t epoch_num = 3;
 
-const int thread_num = 16;
+const int thread_num = 32;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -90,11 +90,11 @@ void* fetch_mem(void* arg) {
         avg_time_alloc = (avg_time_alloc*count_ + time)/(count_ + 1);
         char buffer[2][16] = {"aaa", "bbb"};
         char read_buffer[4];
-        for(int i = 0; i < 16; i ++){
+        for(int i = 0; i < iter_num; i ++){
             // heap->fetch_mem_fast_remote(addr, rkey);
+            printf("%lx,  %u\n", addr[i], rkey[i]);
             m_rdma_conn_->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
             m_rdma_conn_->remote_read(read_buffer, 4, addr[i], rkey[i]);
-            // printf("%lx,  %u\n", addr[i], rkey[i]);
             assert(read_buffer[0] == buffer[i%2][0]);
         }        
         pthread_barrier_wait(&start_barrier);
@@ -111,7 +111,7 @@ void* fetch_mem(void* arg) {
         time = time / iter_num;
         avg_time_free = (avg_time_free*count_ + time)/(count_ + 1);
         count_ += 1;
-        // std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     printf("avg alloc time:%lu, max alloc time:%lu\n", avg_time_alloc, max_time_alloc);
     printf("avg free time:%lu, max free time:%lu\n", avg_time_free, max_time_free);

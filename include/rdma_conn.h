@@ -104,6 +104,7 @@ public:
     
     bool init_region_class(region_e &alloc_region, uint32_t block_class, bool is_exclusive);
     bool fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive) ;
+    bool fetch_region_block_batch(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive) ;
     bool fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive) ;
     bool free_region_block(uint64_t addr, bool is_exclusive) ;
 
