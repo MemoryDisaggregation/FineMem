@@ -88,9 +88,18 @@ void* worker(void* arg) {
         // free
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
+        int result;
         for(int i = 0; i < iteration; i ++){
             if(rand()%100 > 2)
-                conn->free_region_block(addr[i], false);
+                result = conn->free_region_block(addr[i], false);
+            if(result == -2 && conn->get_addr_region_index(addr[i]) == cache_region.offset_) {
+                if(conn->set_region_empty(cache_region)) {
+                    while(!conn->fetch_region(cache_section, cache_section_index, 0, true, cache_region)){
+                        // printf("change section\n");
+                        conn->find_section(cache_section, cache_section_index, mralloc::alloc_no_class);
+                    }
+                }
+            }
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);

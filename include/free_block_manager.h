@@ -212,7 +212,7 @@ public:
     bool try_add_fast_region(uint32_t section_offset, uint32_t block_class, region_e &alloc_region);
     bool set_region_exclusive(region_e &alloc_region);
     bool set_region_empty(region_e &alloc_region);
-    bool free_region_block(uint64_t addr, bool is_exclusive);
+    int free_region_block(uint64_t addr, bool is_exclusive);
 
     inline uint32_t get_fast_region_index(uint32_t section_offset, uint32_t block_class) {return section_offset/4*block_class_num + block_class;};
     inline uint64_t get_section_region_addr(uint32_t section_offset, uint32_t region_offset) {return heap_start_ + section_offset*section_size_ + region_offset * region_size_ ;};

@@ -459,18 +459,18 @@ namespace mralloc {
         return true;
     }
 
-    bool ServerBlockManager::free_region_block(uint64_t addr, bool is_exclusive) {
+    int ServerBlockManager::free_region_block(uint64_t addr, bool is_exclusive) {
         uint32_t region_offset = (addr - heap_start_) / region_size_;
         uint32_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
         region_e region = region_header_[region_offset].load();
 
         if(!region.exclusive_ && is_exclusive) {
             printf("exclusive error, the actual block is shared\n");
-            return false;
+            return -1;
         }
         if((region.base_map_ & ((uint32_t)1<<region_block_offset)) == 0) {
             printf("already freed\n");
-            return false;
+            return -1;
         }
         uint32_t new_rkey;
         if(region.block_class_ == 0) {
@@ -484,7 +484,7 @@ namespace mralloc {
                 update_section(new_region, alloc_no_class, alloc_exclusive);
             }
             region = new_region;
-            return true;
+            return 0;
         } else {
             region_e new_region;
             uint16_t block_class = region.block_class_;
@@ -509,9 +509,9 @@ namespace mralloc {
             }
             region = new_region;
             // printf("free a class %u block %lx, newkey is %u\n", new_region.block_class_, addr, new_rkey);
-            return true;
+            return block_class;
         }
-        return false;
+        return -1;
     }
 
     bool ClientBlockManager::init(uint64_t addr, uint64_t size, uint32_t rkey){

@@ -12,7 +12,7 @@
 #include <infiniband/verbs.h>
 #include <sched.h>
 #include <atomic>
-#include <queue>
+#include <set>
 #include <unordered_map>
 #include <sys/sysinfo.h>
 #include <arpa/inet.h>
@@ -38,7 +38,7 @@
 namespace mralloc {
 
 const uint32_t ring_buffer_size = 4096;
-const uint32_t class_ring_buffer_size = 128;
+const uint32_t class_ring_buffer_size = 2048;
 
 
 class ComputingNode {
@@ -50,10 +50,10 @@ public:
 
     ComputingNode(bool heap_enabled, bool cache_enabled, bool one_side_enabled): heap_enabled_(heap_enabled), cpu_cache_enabled_(cache_enabled), one_side_enabled_(one_side_enabled) {
         if(cpu_cache_enabled_)  assert(heap_enabled_);
-        ring_cache = new ring_buffer_atomic<rdma_addr>(ring_buffer_size, ring_cache_content, rdma_addr(-1, -1), &reader, &writer);
+        ring_cache = new ring_buffer<mr_rdma_addr>(ring_buffer_size, ring_cache_content, mr_rdma_addr(-1, -1), &reader, &writer);
         ring_cache->clear();
         for(int i = 0; i<class_num; i++) {
-            ring_class_cache[i] = new ring_buffer_atomic<rdma_addr>(class_ring_buffer_size, ring_class_cache_content[i], rdma_addr(-1, -1), &class_reader[i], &class_writer[i]);
+            ring_class_cache[i] = new ring_buffer<mr_rdma_addr>(class_ring_buffer_size, ring_class_cache_content[i], mr_rdma_addr(-1, -1), &class_reader[i], &class_writer[i]);
             ring_class_cache[i]->clear();
         }
     }
@@ -77,14 +77,15 @@ public:
         printf("ring length:%u\n", ring_cache->get_length());
         return ;
     }
-
-    void increase_watermark(uint64_t &upper_bound);
-    void decrease_watermark(uint64_t &upper_bound);
+    void increase_class_watermark(int &upper_bound);
+    void increase_watermark(int &upper_bound);
+    void decrease_watermark(int &upper_bound);
 
     inline uint64_t get_region_block_addr(region_e region, uint32_t block_offset) {return heap_start_ + region.offset_ * region_size_ + block_offset * block_size_;} ;
     bool new_cache_section(uint32_t block_class, alloc_advise advise);
     bool new_cache_region(uint32_t block_class);
     bool new_backup_region();
+    bool new_backup_section();
     bool fill_cache_block(uint32_t block_class);
 
     bool fetch_mem_block_nocached(uint64_t &addr, uint32_t &rkey);
@@ -144,26 +145,31 @@ private:
     one_side_info m_one_side_info_;
     section_e current_section_;
     uint32_t current_section_index_;
-    region_with_rkey current_region_;
-    std::unordered_map<uint16_t, region_with_rkey> exclusive_region_;
-    region_with_rkey backup_region_;
+    region_with_rkey* current_region_;
+    region_with_rkey* exclusive_region_;
+    std::set<region_with_rkey*> free_region_;
+    section_e backup_section_;
+    uint32_t backup_section_index_;
+    region_e backup_region_;
+    int backup_counter = 0;
+    int backup_cycle = 2;
     region_e current_class_region_[16];
 
     // << reserved block cache>>
-    ring_buffer_atomic<rdma_addr>* ring_cache;
-    ring_buffer_atomic<rdma_addr>* ring_class_cache[16];
-    rdma_addr ring_cache_content[ring_buffer_size];
-    rdma_addr ring_class_cache_content[16][class_ring_buffer_size];
+    ring_buffer<mr_rdma_addr>* ring_cache;
+    ring_buffer<mr_rdma_addr>* ring_class_cache[16];
+    mr_rdma_addr ring_cache_content[ring_buffer_size];
+    mr_rdma_addr ring_class_cache_content[16][class_ring_buffer_size];
     // rdma_mem_t ring_cache[ring_buffer_size];
-    std::atomic<uint32_t> reader, writer;
+    uint32_t reader, writer;
     float cache_watermark_low;
     float cache_watermark_high;
-    uint64_t cache_upper_bound;
+    int cache_upper_bound;
     // rdma_mem_t ring_class_cache[16][class_ring_buffer_size];
-    uint64_t class_cache_upper_bound[16];
-    std::atomic<uint32_t> class_reader[16], class_writer[16];
-    uint64_t cpu_cache_watermark[nprocs];
-    uint64_t cpu_class_watermark[class_num];
+    int class_cache_upper_bound[16];
+    uint32_t class_reader[16], class_writer[16];
+    int cpu_cache_watermark[nprocs];
+    int cpu_class_watermark[class_num];
 
     // << function enabled >>
     bool heap_enabled_;

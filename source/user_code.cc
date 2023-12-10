@@ -26,9 +26,9 @@
 
 const uint64_t cache_size = 1024*4*1024;
 
-const uint64_t iter_num = 64;
+const uint64_t iter_num = 32;
 
-const uint64_t epoch_num = 3;
+const uint64_t epoch_num = 8;
 
 const int thread_num = 32;
 
@@ -40,25 +40,26 @@ pthread_mutex_t file_lock;
 std::atomic<int> record_global[10];
 std::atomic<uint64_t> avg;
 std::atomic<uint64_t> core_id;
+std::atomic<uint64_t> id;
 
 mralloc::ConnectionManager* m_rdma_conn_;
 
 void* fetch_mem(void* arg) {
 
-    // cpu_set_t cpuset;
-    // CPU_ZERO(&cpuset);
-    // int id = core_id.fetch_add(1);
-    // CPU_SET(id, &cpuset);
-    // pthread_t this_tid = pthread_self();
-    // uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
-    // // assert(ret == 0);
-    // ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
-    // for (int i = 0; i < sysconf(_SC_NPROCESSORS_CONF); i ++) {
-    //     if (CPU_ISSET(i, &cpuset)) {
-    //         printf("client %d main process running on core: %d\n",id , i);
-    //     }
-    // }
-
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    int id_ = core_id.fetch_add(1);
+    CPU_SET(id_, &cpuset);
+    pthread_t this_tid = pthread_self();
+    uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    // assert(ret == 0);
+    ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    for (int i = 0; i < sysconf(_SC_NPROCESSORS_CONF); i ++) {
+        if (CPU_ISSET(i, &cpuset)) {
+            printf("client %d main process running on core: %d\n",id_ , i);
+        }
+    }
+    uint64_t thread_id = id.fetch_add(1);
     uint64_t avg_time_alloc = 0, avg_time_free = 0;
     uint64_t count_ = 0;
     uint64_t cdf_counter[10];
@@ -74,8 +75,8 @@ void* fetch_mem(void* arg) {
         // alloc phase
         for(int i = 0; i < iter_num; i ++){
             bool result;
-            // printf("try to fetch %d\n", i%15+1);
-            // result = cpu_cache_.fetch_class_cache(i%15+1, addr[i], rkey[i]); 
+            // printf("try to fetch %d\n", thread_id);
+            // result = cpu_cache_.fetch_class_cache(1, addr[i], rkey[i]); 
             result = cpu_cache_.fetch_cache(addr[i], rkey[i]); 
             if (result == false) {
                 printf("impossible!\n");
@@ -84,6 +85,8 @@ void* fetch_mem(void* arg) {
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
+        m_rdma_conn_->remote_print_alloc_info();
+
         uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
         if(time > max_time_alloc) max_time_alloc = time;
         time = time / iter_num;
@@ -101,7 +104,7 @@ void* fetch_mem(void* arg) {
         gettimeofday(&start, NULL);
         for(int i = 0; i < iter_num; i ++){
             cpu_cache_.add_free_cache(addr[i]); 
-            // cpu_cache_.add_class_free_cache(i%15+1, addr[i]); 
+            // cpu_cache_.add_class_free_cache(1, addr[i]); 
             // printf("free %lx,  %u\n", addr[i], rkey[i]);
         }
         gettimeofday(&end, NULL);
@@ -111,7 +114,8 @@ void* fetch_mem(void* arg) {
         time = time / iter_num;
         avg_time_free = (avg_time_free*count_ + time)/(count_ + 1);
         count_ += 1;
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        m_rdma_conn_->remote_print_alloc_info();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
     printf("avg alloc time:%lu, max alloc time:%lu\n", avg_time_alloc, max_time_alloc);
     printf("avg free time:%lu, max free time:%lu\n", avg_time_free, max_time_free);
@@ -136,6 +140,7 @@ int main(int argc, char** argv){
         record_global[i].store(0);
     avg.store(0);
     core_id.store(0);
+    id.store(0);
     pthread_mutex_init(&file_lock, NULL);
     pthread_barrier_init(&start_barrier, NULL, thread_num);
     pthread_barrier_init(&end_barrier, NULL, thread_num);

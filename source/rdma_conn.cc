@@ -2,6 +2,7 @@
 #include <bits/stdint-uintn.h>
 #include <infiniband/verbs.h>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <type_traits>
 #include "free_block_manager.h"
@@ -165,7 +166,7 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
     block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
     class_block_rkey_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
     heap_start_ = server_pdata.heap_start_;
-
+    
     assert(server_pdata.size == sizeof(CmdMsgBlock));
 
     // printf("private data, addr: %ld: rkey:%d, size: %d\n",
@@ -952,6 +953,24 @@ bool RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_of
     return false;
 }
 
+inline void raise_bit(uint32_t &alloc_map, uint32_t & class_map, uint32_t index){
+    if((alloc_map >> index) % 2 == 0) {
+        alloc_map |= (uint32_t)1<<index;
+    } else {
+        alloc_map &= ~((uint32_t)1<<index);
+        class_map |= (uint32_t)1<<index;
+    }
+}
+
+inline void down_bit(uint32_t &alloc_map, uint32_t & class_map, uint32_t index){
+        if((alloc_map >> index) % 2 == 1) {
+        alloc_map &= ~((uint32_t)1<<index);
+    } else {
+        class_map &= ~((uint32_t)1<<index);
+        alloc_map |= (uint32_t)1<<index;
+    }
+}
+
 bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_offset, uint32_t block_class, bool shared, region_e &alloc_region) {
     if(block_class == 0 && shared == true) {
         // force use unclassed one to alloc single block
@@ -960,21 +979,22 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         int index;
         remote_read(&alloc_section, sizeof(section_e), section_metadata_addr(section_offset), global_rkey_);
         do {
-            free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
+            free_map = alloc_section.class_map_ & alloc_section.alloc_map_;
             if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
-                free_map = alloc_section.class_map_;
-                if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
+                // free_map = alloc_section.class_map_ & alloc_section.alloc_map_;
+                // if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
                     // printf("section has no free space!\n");
                     return false;
-                }
+                // }
             }
             // if first alloc, do state update
             new_section = alloc_section;
-            if(((alloc_section.alloc_map_>>index) & 1) != 0) {
-                // new_section.class_map_ |= ((uint32_t)1<<index);
-                break;
-            }
-            new_section.alloc_map_ |= ((uint32_t)1<<index);
+            raise_bit(new_section.alloc_map_, new_section.class_map_, index);
+            // if(((alloc_section.alloc_map_>>index) & 1) != 0) {
+            //     new_section.class_map_ |= ((uint32_t)1<<index);
+            //     // break;
+            // }
+            // new_section.alloc_map_ |= ((uint32_t)1<<index);
         }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_));
         alloc_section = new_section;
         remote_read(&alloc_region, sizeof(region_e), region_metadata_addr(section_offset*region_per_section+index), global_rkey_);
@@ -1018,19 +1038,36 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         remote_read(&class_region, sizeof(fast_class_e), fast_region_metadata_addr(fast_index), global_rkey_);
         for(int i = 0; i < 4;i++){
             if((index = class_region.offset[i]) != 0){
-                remote_read(&region_old, sizeof(region_e), region_metadata_addr(index), global_rkey_);
-                if(region_old.exclusive_ == 0 && region_old.block_class_ == block_class && region_old.class_map_ != bitmap16_filled) {
-                    alloc_region = region_old;
-                    return true;
-                } else {
-                    fast_class_e new_class_region;
-                    new_class_region = class_region;
-                    new_class_region.offset[i] = 0;
-                    if(remote_CAS(*(uint64_t*)&new_class_region, (uint64_t*)&class_region, fast_region_metadata_addr(fast_index), global_rkey_)){
+                fast_class_e new_class_region;
+                new_class_region = class_region;
+                new_class_region.offset[i] = 0;    
+                if(remote_CAS(*(uint64_t*)&new_class_region, (uint64_t*)&class_region, fast_region_metadata_addr(fast_index), global_rkey_)){
+                    remote_read(&region_old, sizeof(region_e), region_metadata_addr(index), global_rkey_);
+                    if(region_old.exclusive_ == 0 && region_old.block_class_ == block_class && region_old.class_map_ != bitmap16_filled) {
+                        alloc_region = region_old;
                         class_region = new_class_region;
-                        // printf("try to delete fast region\n");
+                        return true;
                     }
                 }
+                // remote_read(&region_old, sizeof(region_e), region_metadata_addr(index), global_rkey_);
+                // if(region_old.exclusive_ == 0 && region_old.block_class_ == block_class && region_old.class_map_ != bitmap16_filled) {
+                //     fast_class_e new_class_region;
+                //     new_class_region = class_region;
+                //     new_class_region.offset[i] = 0;    
+                //     if(remote_CAS(*(uint64_t*)&new_class_region, (uint64_t*)&class_region, fast_region_metadata_addr(fast_index), global_rkey_)){
+                //         alloc_region = region_old;
+                //         class_region = new_class_region;
+                //         return true;
+                //     }
+                // } else {
+                //     fast_class_e new_class_region;
+                //     new_class_region = class_region;
+                //     new_class_region.offset[i] = 0;
+                //     if(remote_CAS(*(uint64_t*)&new_class_region, (uint64_t*)&class_region, fast_region_metadata_addr(fast_index), global_rkey_)){
+                //         class_region = new_class_region;
+                //         // printf("try to delete fast region\n");
+                //     }
+                // }
             }
         }
         uint32_t free_map;
@@ -1046,7 +1083,7 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
             }
             new_section = alloc_section;
             new_section.class_map_ |= ((uint32_t)1<<index);
-            new_section.alloc_map_ &= ~((uint32_t)1<<index);
+            new_section.alloc_map_ |= ((uint32_t)1<<index);
         }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_));
         alloc_section = new_section;
         remote_read(&region_old, sizeof(region_e), region_metadata_addr(section_offset*region_per_section+index), global_rkey_);
@@ -1186,10 +1223,10 @@ bool RDMAConnection::set_region_empty(region_e &alloc_region) {
             return false;
         }
     } else if(alloc_region.block_class_ == 0) {
-        if(alloc_region.exclusive_ != 1) {
-            if(!set_region_exclusive(alloc_region))
-                return false;
-        }
+        // if(alloc_region.exclusive_ != 1) {
+        //     if(!set_region_exclusive(alloc_region))
+        //         return false;
+        // }
         region_e new_region;
         do {
             new_region = alloc_region;
@@ -1201,14 +1238,14 @@ bool RDMAConnection::set_region_empty(region_e &alloc_region) {
             new_region.block_class_ = 0;
         } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(new_region.offset_), global_rkey_));
         alloc_region = new_region;
-        if(!update_section(alloc_region, alloc_empty, alloc_exclusive)){
+        if(!update_section(alloc_region, alloc_empty, alloc_no_class)){
             return false;
         }
     } else {
         region_e new_region;
         do {
             new_region = alloc_region;
-            if(new_region.base_map_ != 0) {
+            if(free_bit_in_bitmap16(new_region.class_map_) != block_per_region/(new_region.block_class_+1)) {
                 printf("wait for free\n");
                 return false;
             }
@@ -1220,6 +1257,7 @@ bool RDMAConnection::set_region_empty(region_e &alloc_region) {
             return false;
         }
     }
+    printf("set empty success\n");
     return true;
 }
 
@@ -1271,6 +1309,41 @@ bool RDMAConnection::fetch_region_block(region_e &alloc_region, uint64_t &addr, 
     return true;
 }
 
+int RDMAConnection::fetch_region_batch(region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive) {
+    int index; region_e new_region;
+    uint64_t free_item = 0;
+    do{
+        if(alloc_region.exclusive_ != is_exclusive || alloc_region.block_class_ != 0) {
+            printf("state wrong, addr = %lx, exclusive = %d, class = %u\n", get_region_addr(alloc_region), alloc_region.exclusive_, alloc_region.block_class_);
+            return 0;
+        } 
+        new_region = alloc_region;
+        if((free_item = free_bit_in_bitmap32(alloc_region.base_map_)) == 0) {
+            // printf("no free space in this region\n");
+            // update_section(alloc_region, alloc_exclusive, alloc_no_class);
+            return 0;
+        }
+        // printf("have free space\n");
+        free_item = num < free_item ? num : free_item;
+        for(int i = 0; i < free_item; i ++) {
+            index = find_free_index_from_bitmap32_tail(new_region.base_map_);    
+            new_region.base_map_ |= (uint32_t)1<<index;
+            addr[i].addr = index;
+        }
+    } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(new_region.offset_), global_rkey_));
+    alloc_region = new_region;
+    uint32_t rkey_list[block_per_region];
+    fetch_exclusive_region_rkey(alloc_region, rkey_list);
+    for(int i = 0; i < free_item; i++){
+        addr[i].rkey = rkey_list[addr[i].addr];
+        addr[i].addr = get_region_block_addr(alloc_region, addr[i].addr);    
+    }
+    if(alloc_region.base_map_ == bitmap32_filled) {
+        update_section(alloc_region, alloc_exclusive, alloc_no_class);
+    }
+    return free_item;
+}
+
 bool RDMAConnection::fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive) {
     int index; region_e new_region;
     do {
@@ -1297,7 +1370,40 @@ bool RDMAConnection::fetch_region_class_block(region_e &alloc_region, uint32_t b
     return true;
 }
 
-bool RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
+int RDMAConnection::fetch_region_class_batch(region_e &alloc_region, uint32_t block_class, mr_rdma_addr* addr, uint64_t num, bool is_exclusive) {
+    int index; region_e new_region;
+    uint64_t free_item = 0;
+    do{
+        if(alloc_region.exclusive_ != is_exclusive || alloc_region.block_class_ != block_class) {
+            return 0;
+        } 
+        new_region = alloc_region;
+        if((free_item = free_bit_in_bitmap16(alloc_region.class_map_)) == 0) {
+            return 0;
+        }
+        free_item = num < free_item ? num : free_item;
+        for(int i = 0; i < free_item; i ++) {
+            index = find_free_index_from_bitmap16_tail(new_region.class_map_);    
+            uint32_t mask = 0;
+            for(int i = 0;i < block_class + 1;i++) {
+                mask |= (uint32_t)1<<(index*(block_class + 1)+i);
+            }
+            new_region.base_map_ |= mask;
+            new_region.class_map_ |= (uint16_t)1<<index;
+            addr[i].addr = index*(block_class + 1);
+        }
+    } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(new_region.offset_), global_rkey_));
+    alloc_region = new_region;
+    uint32_t rkey_list[block_per_region];
+    fetch_class_region_rkey(alloc_region, rkey_list);
+    for(int i = 0; i < free_item; i++){
+        addr[i].rkey = rkey_list[addr[i].addr];
+        addr[i].addr = get_region_block_addr(alloc_region, addr[i].addr);    
+    }
+    return free_item;
+}
+
+int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
     uint32_t region_offset = (addr - heap_start_) / region_size_;
     uint32_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
     region_e region;
@@ -1307,35 +1413,41 @@ bool RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
 
     if(!region.exclusive_ && is_exclusive) {
         printf("exclusive error, the actual block is shared\n");
-        return false;
-    }
-    if((region.base_map_ & ((uint32_t)1<<region_block_offset)) == 0) {
-        printf("already freed\n");
-        return false;
+        return -1;
     }
     uint32_t new_rkey;
-    remote_rebind(addr, region.block_class_, new_rkey);
     if(region.block_class_ == 0) {
+        if((region.base_map_ & ((uint32_t)1<<region_block_offset)) == 0) {
+            printf("already freed\n");
+            return -1;
+        } 
+        remote_rebind(addr, region.block_class_, new_rkey);
         region_e new_region;
         do{
             new_region = region;
             new_region.base_map_ &= ~(uint32_t)(1<<region_block_offset);
         } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region, region_metadata_addr(region_offset), global_rkey_));
         // printf("free: %p, region id:%u, bitmap from %x to %x\n", addr, new_region.offset_ , region.base_map_, new_region.base_map_);
-        if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > block_per_region/2 && free_bit_in_bitmap32(region.base_map_) <= block_per_region/2){
-            update_section(new_region, alloc_no_class, alloc_exclusive);
+        if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > block_per_region/3 && free_bit_in_bitmap32(region.base_map_) <= block_per_region/3){
+            update_section(new_region, alloc_class, alloc_exclusive);
         } 
-        // else if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) == block_per_region){
-        //     update_section(new_region, alloc_empty, alloc_no_class);
-        // } 
-        else if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > block_per_region-5) {
-            update_section(new_region, alloc_no_class, alloc_exclusive);
+        else if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > 2*block_per_region/3 && free_bit_in_bitmap32(region.base_map_) <= 2*block_per_region/3){
+            update_section(new_region, alloc_no_class, alloc_class); 
+        } 
+        else if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) == block_per_region){
+            update_section(new_region, alloc_empty, alloc_no_class); 
+            return -2;
         }
         region = new_region;
-        return true;
+        return 0;
     } else {
         region_e new_region;
         uint16_t block_class = region.block_class_;
+        if( (region.class_map_ & ((uint16_t)1<<region_block_offset/(block_class+1))) == 0) {
+            printf("already freed\n");
+            return -1;
+        }
+        remote_rebind(addr, region.block_class_, new_rkey);
         do{
             new_region = region;
             uint32_t mask = 0; 
@@ -1345,21 +1457,25 @@ bool RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
             new_region.base_map_ &= ~mask;
             new_region.class_map_ &= ~(uint16_t)(1<<region_block_offset/(block_class+1));
         } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region, region_metadata_addr(region_offset), global_rkey_));
-        if(free_bit_in_bitmap16(new_region.class_map_) == block_per_region/(block_class+1)) {
+        // if(free_bit_in_bitmap16(new_region.class_map_) == block_per_region/(block_class+1)) {
+        //     // printf("[Attention] try to add fast region %lx\n", addr);
+        //     // if(!try_add_fast_region(region_offset/region_per_section, block_class, new_region)) {
+        //         // printf("[Attention] try to clean region %lx\n", addr);
+        //     set_region_empty(new_region);
+        //     return -2-block_class;
+        //     // }
+        // } else 
+        if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > block_per_region/(block_class+1)/3 && free_bit_in_bitmap16(region.class_map_) <= block_per_region/(block_class+1)/3){
             // printf("[Attention] try to add fast region %lx\n", addr);
-            if(!try_add_fast_region(region_offset/region_per_section, block_class, new_region)) {
-                // printf("[Attention] try to clean region %lx\n", addr);
-                set_region_empty(new_region);
-            }
-        } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > block_per_region/(block_class+1)/2 && free_bit_in_bitmap16(region.class_map_) <= block_per_region/(block_class+1)/2){
-            // printf("[Attention] try to add fast region %lx\n", addr);
+            try_add_fast_region(region_offset/region_per_section, block_class, new_region);
+        } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > 2*block_per_region/(block_class+1)/3 && free_bit_in_bitmap16(region.class_map_) <= 2*block_per_region/(block_class+1)/3) {
             try_add_fast_region(region_offset/region_per_section, block_class, new_region);
         }
         region = new_region;
         // printf("free a class %u block %lx, newkey is %u\n", new_region.block_class_, addr, new_rkey);
-        return true;
+        return block_class;
     }
-    return false;
+    return -1;
 }
 
 

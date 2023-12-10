@@ -186,7 +186,7 @@ bool MemoryNode::fill_cache_block(uint32_t block_class){
     if(block_class == 0){
         uint32_t length = ring_cache->get_length();
         for(int i = 0; i<simple_cache_watermark - length; i++){
-            rdma_addr addr;
+            mr_rdma_addr addr;
             while(!server_block_manager_->fetch_region_block(current_region_, addr.addr, addr.rkey, false)) {
                 // fetch new region
                 new_cache_region(block_class);
@@ -207,7 +207,7 @@ bool MemoryNode::fill_cache_block(uint32_t block_class){
 }
 
 bool MemoryNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
-    rdma_addr result;
+    mr_rdma_addr result;
     if(ring_cache->try_fetch_cache(result)){
         addr = result.addr; 
         rkey = result.rkey;
@@ -220,7 +220,7 @@ bool MemoryNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
 }
 
 bool MemoryNode::free_mem_block(uint64_t addr) {
-    rdma_addr new_addr;
+    mr_rdma_addr new_addr;
     // memset((void*)addr, 0, server_block_manager_->get_block_size());
     uint32_t block_id = (addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
     bind_mw(block_mw[block_id], addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
@@ -481,9 +481,9 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
 
     uint64_t block_num_ = server_block_manager_->get_block_num() ;
 
-    block_mw = (ibv_mw**)malloc(block_num_ * sizeof(uint64_t));
+    block_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
 
-    block_class_mw = (ibv_mw**)malloc(block_num_ * sizeof(uint64_t));
+    block_class_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
 
     for(int i = 0; i < block_num_; i++){
         uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
@@ -749,9 +749,9 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
             if(reg_req->block_class == 0) {
                 // bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq);
                 // memset((void*)reg_req->addr, 0, server_block_manager_->get_block_size());
-                if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
-                // bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
-                // if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_)) {
+                // if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
+                bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
+                if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_)) {
                     resp_msg->status = RES_FAIL;
                 } else {
                     server_block_manager_->set_block_rkey(block_id, block_mw[block_id]->rkey);
