@@ -25,6 +25,7 @@
 #include <string>
 #include "msg.h"
 #include "free_block_manager.h"
+#include "cpu_cache.h"
 
 namespace mralloc {
 
@@ -87,6 +88,11 @@ public:
         return true;
     }
 
+    bool fetch_class_region_rkey(region_e &alloc_region, uint32_t* rkey_list) {
+        remote_read(rkey_list, sizeof(uint32_t)*block_per_region, class_block_rkey_ + alloc_region.offset_*block_per_region*sizeof(uint32_t), global_rkey_);
+        return true;
+    }
+
     inline uint32_t get_fast_region_index(uint32_t section_offset, uint32_t block_class) {return section_offset/4*block_class_num + block_class;};
     inline uint64_t get_section_region_addr(uint32_t section_offset, uint32_t region_offset) {return heap_start_ + section_offset*section_size_ + region_offset * region_size_ ;};
     inline uint64_t get_region_addr(region_e region) {return heap_start_ + region.offset_ * region_size_;};
@@ -104,8 +110,10 @@ public:
     
     bool init_region_class(region_e &alloc_region, uint32_t block_class, bool is_exclusive);
     bool fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive) ;
+    int fetch_region_batch(region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive) ;
     bool fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive) ;
-    bool free_region_block(uint64_t addr, bool is_exclusive) ;
+    int fetch_region_class_batch(region_e &alloc_region, uint32_t block_class, mr_rdma_addr* addr, uint64_t num, bool is_exclusive) ;
+    int free_region_block(uint64_t addr, bool is_exclusive) ;
 
     private:
 

@@ -115,6 +115,14 @@ int ConnectionManager::remote_fetch_block(uint64_t &addr, uint32_t &rkey) {
   return ret;
 }
 
+int ConnectionManager::fetch_region_batch(region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive) {
+    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+    assert(conn != nullptr);
+    int ret = conn->fetch_region_batch(alloc_region, addr, num, is_exclusive);
+    m_rpc_conn_queue_->enqueue(conn);
+    return ret;
+}
+
 int ConnectionManager::remote_free_block(uint64_t addr) {
   RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
   assert(conn != nullptr);
@@ -214,6 +222,14 @@ bool ConnectionManager::fetch_region_class_block(region_e &alloc_region, uint32_
     return ret;      
 }
 
+int ConnectionManager::fetch_region_class_batch(region_e &alloc_region, uint32_t block_class, mr_rdma_addr* addr, uint64_t num, bool is_exclusive) {
+    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+    assert(conn != nullptr);
+    int ret = conn->fetch_region_class_batch(alloc_region, block_class, addr, num, is_exclusive);
+    m_rpc_conn_queue_->enqueue(conn);
+    return ret;      
+}
+
 bool ConnectionManager::fetch_exclusive_region_rkey(region_e &alloc_region, uint32_t* rkey_list) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
@@ -255,10 +271,10 @@ int ConnectionManager::remote_print_alloc_info() {
 }
 
 
-bool ConnectionManager::free_region_block(uint64_t addr, bool is_exclusive) {
+int ConnectionManager::free_region_block(uint64_t addr, bool is_exclusive) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    bool ret = conn->free_region_block(addr, is_exclusive);
+    int ret = conn->free_region_block(addr, is_exclusive);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }

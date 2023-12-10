@@ -93,10 +93,12 @@ class ConnectionManager {
 
     bool init_region_class(region_e &alloc_region, uint32_t block_class, bool is_exclusive);
     bool fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive) ;
+    int fetch_region_batch(region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive);
     bool fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive) ;
+    int fetch_region_class_batch(region_e &alloc_region, uint32_t block_class, mr_rdma_addr* addr, uint64_t num, bool is_exclusive);
 
     bool fetch_exclusive_region_rkey(region_e &alloc_region, uint32_t* rkey_list);
-    bool free_region_block(uint64_t addr, bool is_exclusive) ;
+    int free_region_block(uint64_t addr, bool is_exclusive) ;
 
     inline uint32_t get_addr_region_index(uint64_t addr) {return (addr-heap_start_) / region_size_;};
     inline uint32_t get_addr_region_offset(uint64_t addr) {return (addr-heap_start_) % region_size_ / block_size_;};

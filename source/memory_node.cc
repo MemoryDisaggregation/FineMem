@@ -186,7 +186,7 @@ bool MemoryNode::fill_cache_block(uint32_t block_class){
     if(block_class == 0){
         uint32_t length = ring_cache->get_length();
         for(int i = 0; i<simple_cache_watermark - length; i++){
-            rdma_addr addr;
+            mr_rdma_addr addr;
             while(!server_block_manager_->fetch_region_block(current_region_, addr.addr, addr.rkey, false)) {
                 // fetch new region
                 new_cache_region(block_class);
@@ -207,7 +207,7 @@ bool MemoryNode::fill_cache_block(uint32_t block_class){
 }
 
 bool MemoryNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
-    rdma_addr result;
+    mr_rdma_addr result;
     if(ring_cache->try_fetch_cache(result)){
         addr = result.addr; 
         rkey = result.rkey;
@@ -220,7 +220,7 @@ bool MemoryNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
 }
 
 bool MemoryNode::free_mem_block(uint64_t addr) {
-    rdma_addr new_addr;
+    mr_rdma_addr new_addr;
     // memset((void*)addr, 0, server_block_manager_->get_block_size());
     uint32_t block_id = (addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
     bind_mw(block_mw[block_id], addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);

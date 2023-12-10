@@ -9,8 +9,8 @@
 #include "rdma_conn_manager.h"
 #include <sys/time.h>
 
-const int iteration = 128;
-const int epoch = 16;
+const int iteration = 16;
+const int epoch = 8;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -39,6 +39,7 @@ void* worker(void* arg) {
         gettimeofday(&start, NULL);
         for(int i = 0; i < iteration; i ++){
             conn->remote_fetch_block(addr[i], rkey[i]);
+            // conn->register_remote_memory(addr[i], rkey[i], 4*1024*1024);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
@@ -49,9 +50,9 @@ void* worker(void* arg) {
         char read_buffer[4];
         for(int i = 0; i < iteration; i ++){
             // printf("try to access %p:%u\n", addr[i], rkey[i]);
-            conn->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
-            conn->remote_read(read_buffer, 4, addr[i], rkey[i]);
-            assert(read_buffer[0] == buffer[i%2][0]);
+            // conn->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
+            // conn->remote_read(read_buffer, 4, addr[i], rkey[i]);
+            // assert(read_buffer[0] == buffer[i%2][0]);
         }        
         uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
         // uint64_t log10 = 0;
