@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-08-11 16:42:26
  * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-06 22:40:05
+ * @LastEditTime: 2023-12-09 11:10:26
  * @FilePath: /rmalloc_newbase/include/free_block_manager.h
  * @Description: Buddy tree for memory management 
  * 

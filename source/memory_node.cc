@@ -2,7 +2,7 @@
  * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
  * @Date: 2023-07-24 10:13:27
  * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-06 23:33:29
+ * @LastEditTime: 2023-12-10 10:54:44
  * @FilePath: /rmalloc_newbase/source/memory_node.cc
  * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
  * 
@@ -481,9 +481,9 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
 
     uint64_t block_num_ = server_block_manager_->get_block_num() ;
 
-    block_mw = (ibv_mw**)malloc(block_num_ * sizeof(uint64_t));
+    block_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
 
-    block_class_mw = (ibv_mw**)malloc(block_num_ * sizeof(uint64_t));
+    block_class_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
 
     for(int i = 0; i < block_num_; i++){
         uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
@@ -523,7 +523,7 @@ bool MemoryNode::bind_mw(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, i
                                             .addr = addr, 
                                             .length = size,
                                             .mw_access_flags = IBV_ACCESS_REMOTE_READ | 
-                                                IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND} ;
+                                                IBV_ACCESS_REMOTE_WRITE } ;
     struct ibv_mw_bind bind_ = {.wr_id = 0, .send_flags = IBV_SEND_SIGNALED, .bind_info = bind_info_};
     if(ibv_bind_mw(qp, mw, &bind_)){
         perror("ibv_post_send mw_bind fail");
@@ -575,16 +575,18 @@ int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
                                                uint64_t size) {
     /* align mem */
     uint64_t total_size = size + MEM_ALIGN_SIZE;
-    uint64_t mem = (uint64_t)malloc(total_size);
+    // uint64_t mem = (uint64_t)malloc(total_size);
+    uint64_t mem = (uint64_t)mmap(NULL, total_size, PROT_READ | PROT_WRITE, 
+            MAP_PRIVATE | MAP_ANONYMOUS |  MAP_HUGETLB, -1, 0);
     addr = mem;
     if (addr % MEM_ALIGN_SIZE != 0)
         addr = addr + (MEM_ALIGN_SIZE - addr % MEM_ALIGN_SIZE);
-    struct ibv_mr *mr = rdma_register_memory((void *)addr, size);
-    if (!mr) {
-        perror("ibv_reg_mr fail");
-        return -1;
-    }
-    rkey = mr->rkey;
+    // struct ibv_mr *mr = rdma_register_memory((void *)addr, size);
+    // if (!mr) {
+    //     perror("ibv_reg_mr fail");
+    //     return -1;
+    // }
+    // rkey = mr->rkey;
     // printf("allocate and register memory %ld %d\n", addr, rkey);
     // TODO: save this memory info for later delete
     return 0;
@@ -749,9 +751,9 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
             if(reg_req->block_class == 0) {
                 // bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq);
                 // memset((void*)reg_req->addr, 0, server_block_manager_->get_block_size());
-                if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
-                // bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
-                // if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_)) {
+                // if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
+                bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
+                if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_)) {
                     resp_msg->status = RES_FAIL;
                 } else {
                     server_block_manager_->set_block_rkey(block_id, block_mw[block_id]->rkey);
