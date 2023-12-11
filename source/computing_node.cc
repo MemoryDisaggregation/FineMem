@@ -91,7 +91,7 @@ bool ComputingNode::start(const std::string addr, const std::string port){
         ret &= new_backup_region();
         cache_watermark_high = 0.9;
         cache_watermark_low = 0.1;
-        cache_upper_bound = 81;
+        cache_upper_bound = 1000;
         ret &= fill_cache_block(0);
         for(int i = 1; i < block_class_num; i++) {
             ret &= new_cache_region(i);
