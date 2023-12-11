@@ -28,18 +28,54 @@ namespace mralloc {
 const uint64_t BLOCK_SIZE = 1024*1024*4;
 
 void * run_cache_filler(void* arg) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(1, &cpuset);
+    pthread_t this_tid = pthread_self();
+    uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    // assert(ret == 0);
+    ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    for (int i = 0; i < sysconf(_SC_NPROCESSORS_CONF); i ++) {
+        if (CPU_ISSET(i, &cpuset)) {
+            printf("filler running on core: %d\n" , i);
+        }
+    }
   ComputingNode *heap = (ComputingNode*)arg;
   heap->cache_filler();
   return NULL;
 } 
 
 void * run_pre_fetcher(void* arg) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(2, &cpuset);
+    pthread_t this_tid = pthread_self();
+    uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    // assert(ret == 0);
+    ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    for (int i = 0; i < sysconf(_SC_NPROCESSORS_CONF); i ++) {
+        if (CPU_ISSET(i, &cpuset)) {
+            printf("fetcher running on core: %d\n" , i);
+        }
+    }
   ComputingNode *heap = (ComputingNode*)arg;
   heap->pre_fetcher();
   return NULL;
 } 
 
 void* run_recycler(void* arg) {
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(3, &cpuset);
+    pthread_t this_tid = pthread_self();
+    uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    // assert(ret == 0);
+    ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    for (int i = 0; i < sysconf(_SC_NPROCESSORS_CONF); i ++) {
+        if (CPU_ISSET(i, &cpuset)) {
+            printf("recycler running on core: %d\n" , i);
+        }
+    }
     ComputingNode *heap = (ComputingNode*)arg;
     heap->recycler();
     return NULL;
@@ -91,7 +127,7 @@ bool ComputingNode::start(const std::string addr, const std::string port){
         ret &= new_backup_region();
         cache_watermark_high = 0.9;
         cache_watermark_low = 0.1;
-        cache_upper_bound = 81;
+        cache_upper_bound = 145;
         ret &= fill_cache_block(0);
         for(int i = 1; i < block_class_num; i++) {
             ret &= new_cache_region(i);
@@ -160,7 +196,7 @@ void ComputingNode::decrease_watermark(int &upper_bound) {
     if(upper_bound > 2*block_per_region) {
         upper_bound -= block_per_region;
     } else if (upper_bound > block_per_region){
-        upper_bound -= 1;
+        upper_bound -= 8;
     }
 }
 
@@ -376,7 +412,7 @@ bool ComputingNode::new_cache_section(uint32_t block_class, alloc_advise advise)
         printf("cannot find avaliable section\n");
         return false;
     }
-    printf("get new cache section:%d\n", current_section_index_);
+    // printf("get new cache section:%d\n", current_section_index_);
 
     return true;
 }
@@ -386,7 +422,7 @@ bool ComputingNode::new_backup_section(){
         printf("cannot find avaliable section\n");
         return false;
     }
-    printf("get new backup section:%d\n", backup_section_index_);
+    // printf("get new backup section:%d\n", backup_section_index_);
     return true;
 }
 
@@ -395,7 +431,7 @@ bool ComputingNode::new_cache_region(uint32_t block_class) {
         // exclusive, and fetch rkey must
         region_e new_region;
         while(!m_rdma_conn_->fetch_region(current_section_, current_section_index_, block_class, false, new_region) ) {
-            printf("fetch_new section\n");
+            // printf("fetch_new section\n");
             if(!new_cache_section(block_class, alloc_empty)){
                 return false;
             }
@@ -416,7 +452,7 @@ bool ComputingNode::new_cache_region(uint32_t block_class) {
 bool ComputingNode::new_backup_region() {
         // exclusive, and fetch rkey must
     while(!m_rdma_conn_->fetch_region(backup_section_, backup_section_index_, 0, true, backup_region_) ) {
-        printf("fetch_new backup section\n");
+        // printf("fetch_new backup section\n");
         if(!new_backup_section()){
             return false;
         }
@@ -445,18 +481,17 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
                     // m_rdma_conn_->fetch_exclusive_region_rkey(current_region_->region, current_region_->rkey);
                     return fill_cache_block(block_class);
                 }
+                if(backup_counter >= backup_cycle) {
+                    backup_counter = 0;
+                    if(new_cache_region(block_class)) {
+                        return fill_cache_block(block_class);
+                    } 
+                }
                 // printf("no backup region, just fetch new region\n");
                 int block_num = cache_upper_bound - ring_cache->get_length(), get_num;
                 mr_rdma_addr addr[block_per_region];
                 while(block_num > 0){
                     while((get_num = m_rdma_conn_->fetch_region_batch(backup_region_, addr, block_num, false)) == 0){
-                        if(backup_counter == backup_cycle) {
-                            backup_counter = 0;
-                            if(new_cache_region(block_class)) {
-                                return fill_cache_block(block_class);
-                                // continue;
-                            } else return false;
-                        }
                         new_backup_region();
                     }
                     // printf("block_num = %d, get_num = %d\n", block_num, get_num);
@@ -468,10 +503,6 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
                     ring_cache->add_batch(addr, get_num);
                 };
                 return true;
-                // if(new_cache_region(block_class)) {
-                //     return fill_cache_block(block_class);
-                //     // continue;
-                // } else return false;
             }
         }
     } else {
@@ -570,7 +601,7 @@ bool ComputingNode::free_mem_block(uint64_t addr){
                 m_rdma_conn_->set_region_empty(region->region);
                 region->region.exclusive_ = 0;
             }
-            else if(free_bit_in_bitmap32(region->region.base_map_) == block_per_region/2){
+            else if(free_bit_in_bitmap32(region->region.base_map_) < 2*block_per_region/3){
                 if(current_region_->region.base_map_ == bitmap32_filled){
                     auto result = free_region_.find(region);
                     if (result != free_region_.end()){
@@ -580,6 +611,7 @@ bool ComputingNode::free_mem_block(uint64_t addr){
                 }
                 else {
                     free_region_.insert(region);
+                    // printf("insert region %p\n", region);
                 }
             }
             // mr_rdma_addr value(addr, region->rkey[region_block_offset]);

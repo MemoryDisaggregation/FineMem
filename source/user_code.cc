@@ -26,11 +26,11 @@
 
 const uint64_t cache_size = 1024*4*1024;
 
-const uint64_t iter_num = 32;
+const uint64_t iter_num = 128;
 
 const uint64_t epoch_num = 8;
 
-const int thread_num = 32;
+const int thread_num = 64;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -48,7 +48,7 @@ void* fetch_mem(void* arg) {
 
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    int id_ = core_id.fetch_add(1);
+    int id_ = core_id.fetch_add(1)+4;
     CPU_SET(id_, &cpuset);
     pthread_t this_tid = pthread_self();
     uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
@@ -90,12 +90,14 @@ void* fetch_mem(void* arg) {
         uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
         if(time > max_time_alloc) max_time_alloc = time;
         time = time / iter_num;
+        printf("alloc time %d \n", time);
+
         avg_time_alloc = (avg_time_alloc*count_ + time)/(count_ + 1);
         char buffer[2][16] = {"aaa", "bbb"};
         char read_buffer[4];
         for(int i = 0; i < iter_num; i ++){
             // heap->fetch_mem_fast_remote(addr, rkey);
-            printf("%lx,  %u\n", addr[i], rkey[i]);
+            // printf("%lx,  %u\n", addr[i], rkey[i]);
             m_rdma_conn_->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
             m_rdma_conn_->remote_read(read_buffer, 4, addr[i], rkey[i]);
             assert(read_buffer[0] == buffer[i%2][0]);
@@ -103,7 +105,8 @@ void* fetch_mem(void* arg) {
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < iter_num; i ++){
-            cpu_cache_.add_free_cache(addr[i]); 
+            if(rand()%100 > 2)
+                cpu_cache_.add_free_cache(addr[i]); 
             // cpu_cache_.add_class_free_cache(1, addr[i]); 
             // printf("free %lx,  %u\n", addr[i], rkey[i]);
         }
@@ -114,8 +117,8 @@ void* fetch_mem(void* arg) {
         time = time / iter_num;
         avg_time_free = (avg_time_free*count_ + time)/(count_ + 1);
         count_ += 1;
-        m_rdma_conn_->remote_print_alloc_info();
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        m_rdma_conn_->remote_print_alloc_info();
     }
     printf("avg alloc time:%lu, max alloc time:%lu\n", avg_time_alloc, max_time_alloc);
     printf("avg free time:%lu, max free time:%lu\n", avg_time_free, max_time_free);
@@ -130,7 +133,7 @@ int main(int argc, char** argv){
     // mralloc::cpu_cache cpu_cache_ = mralloc::cpu_cache(cache_size);
     m_rdma_conn_ = new mralloc::ConnectionManager();
     // if (m_rdma_conn_ == nullptr) return -1;
-    if (m_rdma_conn_ == nullptr || m_rdma_conn_->init("10.0.0.63", "1145", 2, 20) == -1 ){
+    if (m_rdma_conn_ == nullptr || m_rdma_conn_->init("130.127.134.55", "1145", 2, 32) == -1 ){
         printf("rdma connection create failed!\n");
     }
 

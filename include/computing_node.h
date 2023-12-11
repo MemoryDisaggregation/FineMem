@@ -152,7 +152,7 @@ private:
     uint32_t backup_section_index_;
     region_e backup_region_;
     int backup_counter = 0;
-    int backup_cycle = 2;
+    int backup_cycle = 3;
     region_e current_class_region_[16];
 
     // << reserved block cache>>

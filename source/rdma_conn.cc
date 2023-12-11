@@ -919,35 +919,68 @@ bool RDMAConnection::update_section(region_e region, alloc_advise advise, alloc_
 }
 
 bool RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
-    section_e section;
+    section_e section[8];
     if(advise == alloc_class) {
         // for(int i = section_num_ - 1; i >= 0; i--) {
-        for(int i = 0; i < section_num_; i++) {
-            remote_read(&section, sizeof(section_e), section_metadata_addr(i), global_rkey_);
-            if((section.class_map_ | section.alloc_map_) != ~(uint32_t)0){
-                alloc_section = section;
-                section_offset = i;
-                return true;
+        int remain = section_num_, fetch = remain > 8 ? 8:remain, index = 0;
+        while(remain > 0) {
+            remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
+            for(int j = 0; j < fetch; j ++) {
+                if(free_bit_in_bitmap32(section[j].class_map_ | section[j].alloc_map_) > region_per_section/3){
+                    alloc_section = section[j];
+                    section_offset = index + j;
+                    return true;
+                }
             }
+            for(int j = 0; j < fetch; j ++) {
+                if((section[j].class_map_ | section[j].alloc_map_) != ~(uint32_t)0){
+                    alloc_section = section[j];
+                    section_offset = index + j;
+                    return true;
+                }
+            }
+            index += 8; remain -= 8; fetch = remain > 8 ? 8:remain;
         }
     } else if(advise == alloc_no_class) {
         // for(int i = section_num_ - 1; i >= 0; i--) {
-        for(int i = 0; i < section_num_; i++) {
-            remote_read(&section, sizeof(section_e), section_metadata_addr(i), global_rkey_);
-            if((section.class_map_ & section.alloc_map_)  != ~(uint32_t)0){
-                alloc_section = section;
-                section_offset = i;
-                return true;
+        int remain = section_num_, fetch = remain > 8 ? 8:remain, index = 0;
+        while(remain > 0) {
+            remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
+            for(int j = 0; j < fetch; j ++) {
+                if(free_bit_in_bitmap32(section[j].class_map_ & section[j].alloc_map_) > region_per_section/3){
+                    alloc_section = section[j];
+                    section_offset = index + j;
+                    return true;
+                }
             }
+            for(int j = 0; j < fetch; j ++) {
+                if((section[j].class_map_ & section[j].alloc_map_) != ~(uint32_t)0){
+                    alloc_section = section[j];
+                    section_offset = index + j;
+                    return true;
+                }
+            }
+            index += 8; remain -= 8; fetch = remain > 8 ? 8:remain;
         }
     } else if (advise == alloc_empty) {
-        for(int i = 0; i < section_num_; i++) {
-            remote_read(&section, sizeof(section_e), section_metadata_addr(i), global_rkey_);
-            if((section.class_map_ | section.alloc_map_ ) != ~(uint32_t)0){
-                alloc_section = section;
-                section_offset = i;
-                return true;
+        int remain = section_num_, fetch = remain > 8 ? 8:remain, index = 0;
+        while(remain > 0) {
+            remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
+            for(int j = 0; j < fetch; j ++) {
+                if(free_bit_in_bitmap32(section[j].class_map_ | section[j].alloc_map_) > region_per_section/3){
+                    alloc_section = section[j];
+                    section_offset = index + j;
+                    return true;
+                }
             }
+            for(int j = 0; j < fetch; j ++) {
+                if((section[j].class_map_ | section[j].alloc_map_) != ~(uint32_t)0){
+                    alloc_section = section[j];
+                    section_offset = index + j;
+                    return true;
+                }
+            }
+            index += 8; remain -= 8; fetch = remain > 8 ? 8:remain;
         }
     } else { return false; }
     return false;
@@ -1257,7 +1290,7 @@ bool RDMAConnection::set_region_empty(region_e &alloc_region) {
             return false;
         }
     }
-    printf("set empty success\n");
+    // printf("set empty success\n");
     return true;
 }
 

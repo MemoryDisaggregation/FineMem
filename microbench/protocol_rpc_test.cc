@@ -38,8 +38,8 @@ void* worker(void* arg) {
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < iteration; i ++){
-            conn->remote_fetch_block(addr[i], rkey[i]);
-            // conn->register_remote_memory(addr[i], rkey[i], 4*1024*1024);
+            // conn->remote_fetch_block(addr[i], rkey[i]);
+            conn->register_remote_memory(addr[i], rkey[i], 4*1024*1024);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
@@ -74,7 +74,7 @@ void* worker(void* arg) {
         gettimeofday(&start, NULL);
         for(int i = 0; i < iteration; i ++){
             // printf("try to free %p\n", addr[i]);
-            conn->remote_free_block(addr[i]);
+            // conn->remote_free_block(addr[i]);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);

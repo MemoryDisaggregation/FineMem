@@ -12,7 +12,7 @@
 #include <sys/time.h>
 
 const int iteration = 128;
-const int epoch = 16;
+const int epoch = 8;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -90,13 +90,14 @@ void* worker(void* arg) {
         gettimeofday(&start, NULL);
         int result;
         for(int i = 0; i < iteration; i ++){
-            if(rand()%100 > 2)
+            if(rand()%100 > 2){
                 result = conn->free_region_block(addr[i], false);
-            if(result == -2 && conn->get_addr_region_index(addr[i]) == cache_region.offset_) {
-                if(conn->set_region_empty(cache_region)) {
-                    while(!conn->fetch_region(cache_section, cache_section_index, 0, true, cache_region)){
-                        // printf("change section\n");
-                        conn->find_section(cache_section, cache_section_index, mralloc::alloc_no_class);
+                if(result == -2 && conn->get_addr_region_index(addr[i]) == cache_region.offset_) {
+                    if(conn->set_region_empty(cache_region)) {
+                        while(!conn->fetch_region(cache_section, cache_section_index, 0, true, cache_region)){
+                            // printf("change section\n");
+                            conn->find_section(cache_section, cache_section_index, mralloc::alloc_no_class);
+                        }
                     }
                 }
             }
@@ -116,8 +117,9 @@ void* worker(void* arg) {
         free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
         free_count_ += 1;
         printf("epoch %d free finish\n", j);
-        // if (thread_id == 1)
-        //     conn->remote_print_alloc_info();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        if (thread_id == 1)
+            conn->remote_print_alloc_info();
     }
     // printf("avg time:%lu, max_time:%lu\n", avg_time_, max_time_);
     for(int i=0;i<1000;i++){
