@@ -37,7 +37,7 @@
 #define REMOTE_MEM_SIZE 4194304
 // #define REMOTE_MEM_SIZE 4096
 
-#define INIT_MEM_SIZE ((uint64_t)32*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)128*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 
@@ -488,7 +488,7 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
     for(int i = 0; i < block_num_; i++){
         uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
         block_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
-        bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
+        // bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
         bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
         server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
     }
@@ -503,7 +503,7 @@ bool MemoryNode::init_class_mw(uint16_t region_offset, uint16_t block_class, ibv
     for(int i = 0; i < block_per_region/class_size; i++){
         uint64_t block_addr_ = server_block_manager_->get_block_addr(block_offset + i*class_size);
         if(block_class_mw[block_offset + i*class_size] == NULL) block_class_mw[block_offset + i*class_size] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
-        bind_mw(block_class_mw[block_offset + i*class_size], block_addr_, server_block_manager_->get_block_size()*class_size, qp, cq);
+        // bind_mw(block_class_mw[block_offset + i*class_size], block_addr_, server_block_manager_->get_block_size()*class_size, qp, cq);
         bind_mw(block_class_mw[block_offset + i*class_size], block_addr_, server_block_manager_->get_block_size()*class_size, qp, cq);
         server_block_manager_->set_class_block_rkey(block_offset + i*class_size, block_class_mw[block_offset + i*class_size]->rkey);
         // printf("addr %lx bind class %d, with rkey %u\n", block_addr_, block_class, block_class_mw[block_offset + i*class_size]->rkey);
@@ -752,7 +752,7 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
                 // bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq);
                 // memset((void*)reg_req->addr, 0, server_block_manager_->get_block_size());
                 // if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
-                bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
+                // bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
                 if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_)) {
                     resp_msg->status = RES_FAIL;
                 } else {
@@ -761,7 +761,7 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
                 }
                 resp_msg->rkey = block_mw[block_id]->rkey;
             } else {
-                bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
+                // bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
                 if (!bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_)) {
                 // bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq);
                 // if (!bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
