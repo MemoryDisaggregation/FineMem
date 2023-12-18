@@ -575,12 +575,16 @@ int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
                                                uint64_t size) {
     /* align mem */
     uint64_t total_size = size + MEM_ALIGN_SIZE;
-    // uint64_t mem = (uint64_t)malloc(total_size);
-    uint64_t mem = (uint64_t)mmap(NULL, total_size, PROT_READ | PROT_WRITE, 
-            MAP_PRIVATE | MAP_ANONYMOUS |  MAP_HUGETLB, -1, 0);
+    uint64_t mem = (uint64_t)malloc(total_size);
+    // uint64_t mem = (uint64_t)mmap(NULL, total_size, PROT_READ | PROT_WRITE, 
+    //         MAP_PRIVATE | MAP_ANONYMOUS |  MAP_HUGETLB, -1, 0);
     addr = mem;
     if (addr % MEM_ALIGN_SIZE != 0)
         addr = addr + (MEM_ALIGN_SIZE - addr % MEM_ALIGN_SIZE);
+    ibv_mw* mw = mw_queue_->dequeue();
+    mw_recorder[addr] = mw;
+    bind_mw(mw, addr, size, one_side_qp_, one_side_cq_);
+    rkey = mw->rkey;
     // struct ibv_mr *mr = rdma_register_memory((void *)addr, size);
     // if (!mr) {
     //     perror("ibv_reg_mr fail");
@@ -589,6 +593,14 @@ int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
     // rkey = mr->rkey;
     // printf("allocate and register memory %ld %d\n", addr, rkey);
     // TODO: save this memory info for later delete
+    return 0;
+}
+
+int MemoryNode::deallocate_and_unregister_memory(uint64_t addr) {
+    free((void*)addr);
+    ibv_mw* mw = mw_recorder[addr];
+    bind_mw(mw, addr, 0, one_side_qp_, one_side_cq_);
+    mw_queue_->enqueue(mw);
     return 0;
 }
 
@@ -793,8 +805,16 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
         } else if (request->type == MSG_UNREGISTER) {
             /* handle memory unregister requests */
             UnregisterRequest *unreg_req = (UnregisterRequest *)request;
-            printf("receive a memory unregister message, addr: %ld\n",
-                unreg_req->addr);
+            UnregisterResponse *resp_msg = (UnregisterResponse *)cmd_resp;
+            if (deallocate_and_unregister_memory(unreg_req->addr)) {
+                resp_msg->status = RES_FAIL;
+            } else {
+                resp_msg->status = RES_OK;
+            }
+            /* write response */
+            remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
+                        sizeof(CmdMsgRespBlock), unreg_req->resp_addr,
+                        unreg_req->resp_rkey);
             // TODO: implemente memory unregister
         } else if(request->type == MSG_PRINT_INFO){
             ResponseMsg *resp_msg = (ResponseMsg *)cmd_resp;

@@ -45,6 +45,7 @@ public:
     int init(const std::string ip, const std::string port, uint8_t access_type);
     one_side_info get_one_side_info() {return m_one_side_info_;};
     int register_remote_memory(uint64_t &addr, uint32_t &rkey, uint64_t size);
+    int unregister_remote_memory(uint64_t addr);
     int remote_read(void *ptr, uint64_t size, uint64_t remote_addr,
                     uint32_t rkey);
     int remote_write(void *ptr, uint64_t size, uint64_t remote_addr,
@@ -121,7 +122,7 @@ public:
     int fetch_region_class_batch(region_e &alloc_region, uint32_t block_class, mr_rdma_addr* addr, uint64_t num, bool is_exclusive) ;
     int free_region_block(uint64_t addr, bool is_exclusive) ;
 
-    bool fetch_block(uint64_t block_hint, uint64_t &addr, uint32_t &rkey) ;
+    bool fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
     bool free_block(uint64_t addr) ;
 
     private:

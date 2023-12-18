@@ -72,6 +72,14 @@ int ConnectionManager::register_remote_memory(uint64_t &addr, uint32_t &rkey,
   return ret;
 }
 
+int ConnectionManager::unregister_remote_memory(uint64_t addr) {
+    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+    assert(conn != nullptr);
+    int ret = conn->unregister_remote_memory(addr);
+    m_rpc_conn_queue_->enqueue(conn);
+    return ret;
+}
+
 int ConnectionManager::remote_read(void *ptr, uint32_t size,
                                    uint64_t remote_addr, uint32_t rkey) {
   RDMAConnection *conn = m_one_sided_conn_queue_->dequeue();
@@ -214,7 +222,7 @@ bool ConnectionManager::fetch_region_block(region_e &alloc_region, uint64_t &add
     return ret;  
 }
 
-bool ConnectionManager::fetch_block(uint64_t block_hint, uint64_t &addr, uint32_t &rkey) {
+bool ConnectionManager::fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
     bool ret = conn->fetch_block(block_hint, addr, rkey);

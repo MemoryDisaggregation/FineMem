@@ -138,6 +138,8 @@ private:
     int allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
                                     uint64_t size);
 
+    int deallocate_and_unregister_memory(uint64_t addr);
+
     void worker(WorkerInfo *work_info, uint32_t num);
 
     // << allocation metadata >>
@@ -173,6 +175,7 @@ private:
     uint32_t m_worker_num_;
     std::thread **m_worker_threads_;
     MWPool* mw_queue_;
+    std::unordered_map<uint64_t, ibv_mw*> mw_recorder;
     ibv_mw **m_mw_handler;
     RPC_Fusee* rpc_fusee_;
     uint64_t heap_total_size_;

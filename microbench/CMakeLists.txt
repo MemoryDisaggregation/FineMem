@@ -44,3 +44,21 @@ target_link_libraries(protocol_rpc_test
     rdmacm
     rt
 )
+
+add_executable(protocol_cxl_shm_test protocol_cxl_shm_test.cc)
+
+target_link_libraries(protocol_cxl_shm_test
+    mralloc
+    ibverbs
+    rdmacm
+    rt
+)
+
+add_executable(microbench_common microbench_common.cc)
+
+target_link_libraries(microbench_common
+    mralloc
+    ibverbs
+    rdmacm
+    rt
+)

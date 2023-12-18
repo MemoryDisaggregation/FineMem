@@ -35,25 +35,19 @@ void* worker(void* arg) {
     int malloc_record[1000] = {0};
     int free_record[1000] = {0};
     uint64_t addr[iteration]; uint32_t rkey[iteration];
-    uint32_t cache_section_index;
-    mralloc::section_e cache_section;
-    mralloc::region_e cache_region;
-    conn->find_section(cache_section, cache_section_index, mralloc::alloc_no_class);
-    conn->fetch_region(cache_section, cache_section_index, 0, true, cache_region);
+    uint64_t current_index = 0;
+    int rand_iter = iteration;
     for(int j = 0; j < epoch; j ++) {
         // malloc
+        // rand_iter = iteration - rand() % 64;
+        rand_iter = iteration;
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
-        for(int i = 0; i < iteration; i ++){
-            if(addr[i] != 0 && rkey[i] != 0) {
+        for(int i = 0; i < rand_iter; i ++){
+            if(addr[i] != 0 && rkey[i] != 0) 
                 continue;
-            }
-            while(!conn->fetch_region_block(cache_region, addr[i], rkey[i], false)){
-                // printf("change region\n");
-                while(!conn->fetch_region(cache_section, cache_section_index, 0, true, cache_region)){
-                    // printf("change section\n");
-                    conn->find_section(cache_section, cache_section_index, mralloc::alloc_no_class);
-                }
+            if(!conn->fetch_block(current_index, addr[i], rkey[i])){
+                printf("alloc false\n");
             }
             // printf("alloc: %p, region id: %u, bitmap: %x\n", addr[i], cache_region.offset_, cache_region.base_map_);
         }
@@ -65,14 +59,14 @@ void* worker(void* arg) {
         // valid check
         char buffer[2][16] = {"aaa", "bbb"};
         char read_buffer[4];
-        for(int i = 0; i < iteration; i ++){
+        for(int i = 0; i < rand_iter; i ++){
             conn->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
             conn->remote_read(read_buffer, 4, addr[i], rkey[i]);
             // printf("access addr %p\n", addr[i]);
             assert(read_buffer[0] == buffer[i%2][0]);
         }        
         uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
-        time = time / iteration;
+        time = time / rand_iter;
         // uint64_t log10 = 0;
         // uint64_t log_time = time;
         // while(log_time/10 > 0){
@@ -91,24 +85,18 @@ void* worker(void* arg) {
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         int result;
-        for(int i = 0; i < iteration; i ++){
+        for(int i = 0; i < rand_iter; i ++){
             if(rand()%100 > 20){
-                result = conn->free_region_block(addr[i], false);
-                addr[i] = 0; rkey[i] = 0;
-                if(result == -2 && conn->get_addr_region_index(addr[i]) == cache_region.offset_) {
-                    if(conn->set_region_empty(cache_region)) {
-                        while(!conn->fetch_region(cache_section, cache_section_index, 0, true, cache_region)){
-                            // printf("change section\n");
-                            conn->find_section(cache_section, cache_section_index, mralloc::alloc_no_class);
-                        }
-                    }
-                }
+                if(!conn->free_block(addr[i]))
+                    printf("free error!\n");
+                addr[i] = 0;
+                rkey[i] = 0;
             }
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
         time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
-        time = time / iteration;
+        time = time / rand_iter;
         // log10 = 0; log_time = time;
         // while(log_time/10 > 0){
         //     log_time = log_time / 10;

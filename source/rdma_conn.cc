@@ -469,6 +469,45 @@ int RDMAConnection::register_remote_memory(uint64_t &addr, uint32_t &rkey,
   return 0;
 }
 
+int RDMAConnection::unregister_remote_memory(uint64_t addr) {
+    memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
+    memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));
+    m_cmd_resp_->notify = NOTIFY_IDLE;
+    UnregisterRequest *request = (UnregisterRequest *)m_cmd_msg_;
+    request->resp_addr = (uint64_t)m_cmd_resp_;
+    request->resp_rkey = m_resp_mr_->rkey;
+    request->id = conn_id_;
+    request->type = MSG_UNREGISTER;
+    request->addr = addr;
+    m_cmd_msg_->notify = NOTIFY_WORK;
+
+    /* send a request to sever */
+    int ret = rdma_remote_write((uint64_t)m_cmd_msg_, m_msg_mr_->lkey,
+                                sizeof(CmdMsgBlock), m_server_cmd_msg_,
+                                m_server_cmd_rkey_);
+    if (ret) {
+        printf("fail to send requests\n");
+        return ret;
+    }
+
+    /* wait for response */
+    auto start = TIME_NOW;
+    while (m_cmd_resp_->notify == NOTIFY_IDLE) {
+        if (TIME_DURATION_US(start, TIME_NOW) > RDMA_TIMEOUT_US) {
+        printf("wait for request completion timeout\n");
+        return -1;
+        }
+    }
+    UnregisterResponse *resp_msg = (UnregisterResponse *)m_cmd_resp_;
+    if (resp_msg->status != RES_OK) {
+        printf("register remote memory fail\n");
+        return -1;
+    }
+    // printf("receive response: addr: %ld, key: %d\n", resp_msg->addr,
+    //  resp_msg->rkey);
+    return 0;
+}
+
 int RDMAConnection::remote_fetch_block(uint64_t &addr, uint32_t &rkey){
   memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
   memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));
@@ -1512,16 +1551,18 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
     return -1;
 }
 
-bool RDMAConnection::fetch_block(uint64_t block_hint, uint64_t &addr, uint32_t &rkey) {
+bool RDMAConnection::fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) {
     uint64_t old_header = 0, new_header = 1, hint = block_hint;
     while(!remote_CAS(*(uint64_t*)&new_header, (uint64_t*)&old_header, block_header_ + hint * sizeof(uint64_t), global_rkey_)){
         hint = (hint + 1) % block_num_;
+        old_header = 0; new_header = 1;
         if(hint == block_hint) {
             return 0;
         }
     };
     addr = get_block_addr(hint);
     rkey = get_block_rkey(hint);
+    block_hint = (hint + 1) % block_num_;
     return true;
 }
 
