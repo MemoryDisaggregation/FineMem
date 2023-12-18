@@ -8,8 +8,6 @@ cd MLNX_OFED_LINUX-5.8-3.0.7.0-ubuntu22.04-x86_64
 
 sudo ./mlnxofedinstall --force
 
-sudo /etc/init.d/openibd restart
-
 sudo rm -rf MLNX_OFED_LINUX-5.8-3.0.7.0-ubuntu22.04-x86_64*
 
 sudo sed -i "s/GRUB_CMDLINE_LINUX_DEFAULT=\"/GRUB_CMDLINE_LINUX_DEFAULT=\"iommu=pt/" /etc/default/grub
@@ -17,3 +15,5 @@ sudo sed -i "s/GRUB_CMDLINE_LINUX_DEFAULT=\"/GRUB_CMDLINE_LINUX_DEFAULT=\"iommu=
 sudo grub-mkconfig -o /boot/grub/grub.cfg
 
 sudo reboot
+
+sudo /etc/init.d/openibd restart
