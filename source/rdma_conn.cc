@@ -1494,7 +1494,7 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
             printf("already freed\n");
             return -1;
         } 
-        remote_rebind(addr, region.block_class_, new_rkey);
+        // remote_rebind(addr, region.block_class_, new_rkey);
         region_e new_region;
         do{
             new_region = region;
@@ -1520,7 +1520,7 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
             printf("already freed\n");
             return -1;
         }
-        remote_rebind(addr, region.block_class_, new_rkey);
+        // remote_rebind(addr, region.block_class_, new_rkey);
         do{
             new_region = region;
             uint32_t mask = 0; 
