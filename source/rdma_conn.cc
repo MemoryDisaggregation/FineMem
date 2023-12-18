@@ -165,6 +165,7 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
     region_header_ = (uint64_t)((fast_class*)fast_region_ + block_class_num*section_num_);
     block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
     class_block_rkey_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
+    block_header_ = (uint64_t)((uint32_t*)class_block_rkey_ + block_num_);
     heap_start_ = server_pdata.heap_start_;
     
     assert(server_pdata.size == sizeof(CmdMsgBlock));
@@ -1511,5 +1512,26 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
     return -1;
 }
 
+bool RDMAConnection::fetch_block(uint64_t block_hint, uint64_t &addr, uint32_t &rkey) {
+    uint64_t old_header = 0, new_header = 1, hint = block_hint;
+    while(!remote_CAS(*(uint64_t*)&new_header, (uint64_t*)&old_header, block_header_ + hint * sizeof(uint64_t), global_rkey_)){
+        hint = (hint + 1) % block_num_;
+        if(hint == block_hint) {
+            return 0;
+        }
+    };
+    addr = get_block_addr(hint);
+    rkey = get_block_rkey(hint);
+    return true;
+}
+
+bool RDMAConnection::free_block(uint64_t addr) {
+    uint64_t old_header = 1, new_header = 0;
+    uint64_t index = (addr - heap_start_) / block_size_;
+    if(!remote_CAS(*(uint64_t*)&new_header, (uint64_t*)&old_header, block_header_ + index * sizeof(uint64_t), global_rkey_)){
+        return false;
+    };
+    return true;
+}
 
 }  // namespace kv

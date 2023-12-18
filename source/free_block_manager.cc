@@ -30,10 +30,11 @@ namespace mralloc {
         region_header_ = (region*)(fast_region_ + block_class_num*section_num_);
         block_rkey_ = (uint32_t*)(region_header_ + region_num_);
         class_block_rkey_ = (uint32_t*)(block_rkey_ + block_num_);
+        block_header_ = (uint64_t*)(class_block_rkey_ + block_num_);
         
         heap_start_ = addr;
         heap_size_ = size;
-        assert(heap_start_ > (uint64_t)(block_rkey_ + block_num_));
+        assert(heap_start_ > (uint64_t)(block_header_ + block_num_));
 
         if((uint64_t)(class_block_rkey_ + block_num_) > heap_start_) {
             printf("metadata out of bound\n");
@@ -60,6 +61,8 @@ namespace mralloc {
 
         for(int i = 0; i < block_num_; i++) {
             block_rkey_[i] = 0;
+            class_block_rkey_[i] = 0;
+            block_header_[i] = 0;
         }
 
         // // init: try to allocate each size on each section

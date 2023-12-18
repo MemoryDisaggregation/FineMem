@@ -304,6 +304,7 @@ private:
     region* region_header_;
     uint32_t* block_rkey_;
     uint32_t* class_block_rkey_;
+    uint64_t* block_header_;
 
     // info of heap segment
     uint64_t heap_start_;

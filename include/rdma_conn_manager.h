@@ -97,6 +97,9 @@ class ConnectionManager {
     bool fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive) ;
     int fetch_region_class_batch(region_e &alloc_region, uint32_t block_class, mr_rdma_addr* addr, uint64_t num, bool is_exclusive);
 
+    bool fetch_block(uint64_t block_hint, uint64_t &addr, uint32_t &rkey) ;
+    bool free_block(uint64_t addr) ;
+
     bool fetch_exclusive_region_rkey(region_e &alloc_region, uint32_t* rkey_list);
     int free_region_block(uint64_t addr, bool is_exclusive) ;
 
