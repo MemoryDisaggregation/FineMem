@@ -95,13 +95,8 @@ void* worker(void* arg) {
             if(rand()%100 > 20){
                 result = conn->free_region_block(addr[i], false);
                 addr[i] = 0; rkey[i] = 0;
-                if(result == -2 && conn->get_addr_region_index(addr[i]) == cache_region.offset_) {
-                    if(conn->set_region_empty(cache_region)) {
-                        while(!conn->fetch_region(cache_section, cache_section_index, 0, true, cache_region)){
-                            // printf("change section\n");
-                            conn->find_section(cache_section, cache_section_index, mralloc::alloc_no_class);
-                        }
-                    }
+                if(result == -2 && conn->get_addr_region_index(addr[i]) != cache_region.offset_) {
+                    conn->set_region_empty(cache_region);
                 }
             }
         }
