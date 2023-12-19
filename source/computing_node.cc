@@ -120,6 +120,8 @@ bool ComputingNode::start(const std::string addr, const std::string port){
         class_block_rkey_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
         heap_start_ = m_one_side_info_.heap_start_;
         exclusive_region_ = (region_with_rkey*)malloc(sizeof(region_with_rkey) * region_num_);
+        for(int i = 0; i < region_num_; i++)
+            exclusive_region_[i].region.offset_ = i;
 
         ret = new_cache_section(0, alloc_empty);
         ret &= new_backup_section();
@@ -498,8 +500,10 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
                         new_backup_region();
                     }
                     // printf("block_num = %d, get_num = %d\n", block_num, get_num);
+                    // uint64_t offset = backup_region_.offset_;
+                    // uint64_t region_start = heap_start_ + offset * region_size_;
                     // for(int i = 0; i < get_num; i++) {
-                    //     printf("shared addr: %p, rkey: %u\n", addr[i].addr, addr[i].rkey);
+                    //     exclusive_region_[offset].rkey[(addr[i].addr-region_start)/block_size_] = addr[i].rkey;
                     // }
                     block_num -= get_num;
                     fill_counter += get_num;
@@ -575,17 +579,19 @@ bool ComputingNode::free_mem_block(uint64_t addr){
             result.rkey = exclusive_region_[region_offset].rkey[region_block_offset];
             ring_cache->add_cache(result);
             return true;
-        } else if (region_offset == backup_region_.offset_) {
+        } else {
             mr_rdma_addr result; 
             result.addr = addr; 
-            result.rkey = m_rdma_conn_->get_region_block_rkey(backup_region_, region_block_offset);
+            result.rkey = m_rdma_conn_->get_region_block_rkey(exclusive_region_[region_offset].region, region_block_offset);
+            // result.rkey = exclusive_region_[region_offset].rkey[region_block_offset];
             ring_cache->add_cache(result);
             return true;
         }
     }
     if(region_offset == current_region_->region.offset_) {
         region = current_region_;  
-        if(!m_rdma_conn_->remote_rebind(addr, region->region.block_class_, region->rkey[region_block_offset])){
+        // if(!m_rdma_conn_->remote_rebind(addr, region->region.block_class_, region->rkey[region_block_offset])){
+        if(true){
             region->region.base_map_ &= ~(uint32_t)(1<<region_block_offset);
             return true;
         }  
@@ -598,9 +604,9 @@ bool ComputingNode::free_mem_block(uint64_t addr){
             printf("Free the remote metadata failed\n");
             return false;
         }
-        // if(free_class == -2 && region_offset == backup_region_.offset_){
-        //     new_backup_region();
-        // } else 
+        if(free_class == -2 && region_offset == backup_region_.offset_){
+            new_backup_region();
+        } else 
         if(region_offset == backup_region_.offset_) {
             backup_region_.base_map_ &= ~(uint32_t)(1<<region_block_offset);  
         }
@@ -610,7 +616,8 @@ bool ComputingNode::free_mem_block(uint64_t addr){
     } else {
     // m_rdma_conn_->remote_memzero(addr, (region->region.block_class_+1)*block_size_);
         region = &exclusive_region_[region_offset];
-        if(!m_rdma_conn_->remote_rebind(addr, region->region.block_class_, region->rkey[region_block_offset])){
+        // if(!m_rdma_conn_->remote_rebind(addr, region->region.block_class_, region->rkey[region_block_offset])){
+        if(true){
             region->region.base_map_ &= ~(uint32_t)(1<<region_block_offset);
             if(free_bit_in_bitmap32(region->region.base_map_) == block_per_region) {
                 m_mutex_.lock();
