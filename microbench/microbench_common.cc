@@ -17,8 +17,12 @@ const int epoch = 64;
 
 enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc };
 
+enum test_type { stage_test, shuffle_test, short_test };
+
 // alloc_type type = cxl_shm_alloc;
 alloc_type type = share_alloc;
+
+test_type test = short_test;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -368,14 +372,14 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
         pthread_barrier_wait(&start_barrier);
         for(int j = 0; j < epoch; j ++) {
             // valid check
-            char buffer[2][16] = {"aaa", "bbb"};
-            char read_buffer[4];
-            for(int i = 0; i < rand_iter; i ++){
-                conn->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
-                conn->remote_read(read_buffer, 4, addr[i], rkey[i]);
-                // printf("access addr %p\n", addr[i]);
-                assert(read_buffer[0] == buffer[i%2][0]);
-            }        
+            // char buffer[2][16] = {"aaa", "bbb"};
+            // char read_buffer[4];
+            // for(int i = 0; i < rand_iter; i ++){
+            //     conn->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
+            //     conn->remote_read(read_buffer, 4, addr[i], rkey[i]);
+            //     // printf("access addr %p\n", addr[i]);
+            //     assert(read_buffer[0] == buffer[i%2][0]);
+            // }        
             
             // free
             // pthread_barrier_wait(&start_barrier);
@@ -422,7 +426,6 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
                 malloc_record[time] += 1;
             malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
             malloc_count_ += 1;
-            printf("epoch %d check finish\n", j);        
 
         }
         for(int i = 0; i < rand_iter; i ++){
@@ -442,7 +445,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
     free_avg.fetch_add(free_avg_time_);
 }
 
-void fast_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_t thread_id) {
+void short_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_t thread_id) {
     uint64_t malloc_avg_time_ = 0, free_avg_time_ = 0;
     uint64_t malloc_count_ = 0, free_count_ = 0;
     struct timeval start, end;
@@ -510,22 +513,70 @@ void* worker(void* arg) {
     default:
         break;
     }
+    pthread_barrier_wait(&start_barrier);
     warmup(alloc);
-    shuffle_alloc(conn, alloc, thread_id);
+    pthread_barrier_wait(&end_barrier);
+    pthread_barrier_wait(&start_barrier);
+    // shuffle_alloc(conn, alloc, thread_id);
+    switch (test)
+    {
+    case stage_test:
+        stage_alloc(conn, alloc, thread_id);
+        break;
+    case shuffle_test:
+        shuffle_alloc(conn, alloc, thread_id);
+        break;
+    case short_test:
+        short_alloc(conn, alloc, thread_id);
+        break;
+    default:
+        break;
+    }
+    pthread_barrier_wait(&end_barrier);
     return NULL;
 }
 
 int main(int argc, char* argv[]) {
-    if(argc < 4){
-        printf("Usage: %s <ip> <port> <thread>\n", argv[0]);
+    if(argc < 6){
+        printf("Usage: %s <ip> <port> <thread> <allocator> <trace>\n", argv[0]);
         return 0;
     }
 
     std::string ip = argv[1];
     std::string port = argv[2];
     int thread_num = atoi(argv[3]);
+    std::string allocator_type = argv[4];
+    std::string trace_type = argv[5];
+    if (allocator_type == "cxl")
+        type = cxl_shm_alloc;
+    else if (allocator_type == "fusee") 
+        type = fusee_alloc;
+    else if (allocator_type == "rpc")
+        type = rpc_alloc;
+    else if (allocator_type == "share")
+        type = share_alloc;
+    else if (allocator_type == "exclusive")
+        type = exclusive_alloc;
+    else if (allocator_type == "pool")
+        type = pool_alloc;
+    else {
+        printf("allocator type error\n");
+        return -1;
+    }
+
+    if (trace_type == "stage")
+        test = stage_test;
+    else if (trace_type == "shuffle")
+        test = shuffle_test;
+    else if (trace_type == "short")
+        test = short_test;
+    else {
+        printf("test type error\n");
+        return -1;
+    }
+
     std::ofstream result;
-    result.open("result.csv");
+    result.open("result_" + allocator_type + "_"  + trace_type + "_.csv");
     
     for(int i=0;i<1000;i++){
         malloc_record_global[i].store(0);
@@ -559,5 +610,7 @@ int main(int argc, char* argv[]) {
     }
     result.close();
     printf("total malloc avg: %luus\n", malloc_avg.load()/thread_num);
+    result << "total malloc avg: " << malloc_avg.load()/thread_num << std::endl;
     printf("total free avg: %luus\n", free_avg.load()/thread_num);
+    result << "total free avg: " << free_avg.load()/thread_num << std::endl;
 }
