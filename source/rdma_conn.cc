@@ -1458,8 +1458,8 @@ int RDMAConnection::fetch_region_class_batch(region_e &alloc_region, uint32_t bl
         for(int i = 0; i < free_item; i ++) {
             index = find_free_index_from_bitmap16_tail(new_region.class_map_);    
             uint32_t mask = 0;
-            for(int i = 0;i < block_class + 1;i++) {
-                mask |= (uint32_t)1<<(index*(block_class + 1)+i);
+            for(int j = 0;j < block_class + 1;j++) {
+                mask |= (uint32_t)1<<(index*(block_class + 1)+j);
             }
             new_region.base_map_ |= mask;
             new_region.class_map_ |= (uint16_t)1<<index;

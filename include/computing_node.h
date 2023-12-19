@@ -50,10 +50,10 @@ public:
 
     ComputingNode(bool heap_enabled, bool cache_enabled, bool one_side_enabled): heap_enabled_(heap_enabled), cpu_cache_enabled_(cache_enabled), one_side_enabled_(one_side_enabled) {
         if(cpu_cache_enabled_)  assert(heap_enabled_);
-        ring_cache = new ring_buffer<mr_rdma_addr>(ring_buffer_size, ring_cache_content, mr_rdma_addr(-1, -1), &reader, &writer);
+        ring_cache = new ring_buffer_atomic<mr_rdma_addr>(ring_buffer_size, ring_cache_content, mr_rdma_addr(-1, -1), &reader, &writer);
         ring_cache->clear();
         for(int i = 0; i<class_num; i++) {
-            ring_class_cache[i] = new ring_buffer<mr_rdma_addr>(class_ring_buffer_size, ring_class_cache_content[i], mr_rdma_addr(-1, -1), &class_reader[i], &class_writer[i]);
+            ring_class_cache[i] = new ring_buffer_atomic<mr_rdma_addr>(class_ring_buffer_size, ring_class_cache_content[i], mr_rdma_addr(-1, -1), &class_reader[i], &class_writer[i]);
             ring_class_cache[i]->clear();
         }
     }
@@ -156,18 +156,18 @@ private:
     region_e current_class_region_[16];
 
     // << reserved block cache>>
-    ring_buffer<mr_rdma_addr>* ring_cache;
-    ring_buffer<mr_rdma_addr>* ring_class_cache[16];
+    ring_buffer_atomic<mr_rdma_addr>* ring_cache;
+    ring_buffer_atomic<mr_rdma_addr>* ring_class_cache[16];
     mr_rdma_addr ring_cache_content[ring_buffer_size];
     mr_rdma_addr ring_class_cache_content[16][class_ring_buffer_size];
     // rdma_mem_t ring_cache[ring_buffer_size];
-    uint32_t reader, writer;
+    std::atomic<uint32_t> reader, writer;
     float cache_watermark_low;
     float cache_watermark_high;
     int cache_upper_bound;
     // rdma_mem_t ring_class_cache[16][class_ring_buffer_size];
     int class_cache_upper_bound[16];
-    uint32_t class_reader[16], class_writer[16];
+    std::atomic<uint32_t> class_reader[16], class_writer[16];
     int cpu_cache_watermark[nprocs];
     int cpu_class_watermark[class_num];
 

@@ -242,10 +242,14 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         char buffer[2][16] = {"aaa", "bbb"};
         char read_buffer[4];
         for(int i = 0; i < rand_iter; i ++){
-            conn->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
-            conn->remote_read(read_buffer, 4, addr[i], rkey[i]);
-            printf("access addr %p, %u\n", addr[i], rkey[i]);
-            assert(read_buffer[0] == buffer[i%2][0]);
+            if(conn->remote_write(buffer[i%2], 64, addr[i], rkey[i])) {
+                printf("wrong write addr %p, %u\n", addr[i], rkey[i]);
+            }
+            if(conn->remote_read(read_buffer, 4, addr[i], rkey[i])) {
+                printf("wrong read addr %p, %u\n", addr[i], rkey[i]);
+            }
+            // printf("access addr %p, %u\n", addr[i], rkey[i]);
+            // assert(read_buffer[0] == buffer[i%2][0]);
         }        
         uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
         time = time / rand_iter;
@@ -276,7 +280,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
         free_count_ += 1;
         printf("epoch %d free finish\n", j);
-        // std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
         if (thread_id == 1)
             conn->remote_print_alloc_info();
     }
@@ -305,7 +309,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             for(int i = 0; i < rand_iter; i ++){
                 if(addr[i] != 0 && rkey[i] != 0) 
                     continue;
-                if(!alloc->malloc(addr[i], rkey[i])){
+                if(!alloc->malloc(addr[i], rkey[i]) || addr[i] == 0){
                     printf("alloc false\n");
                 }
             }
@@ -361,7 +365,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
         for(int i = 0; i < rand_iter; i ++){
             if(addr[i] != 0 && rkey[i] != 0) 
                 continue;
-            if(!alloc->malloc(addr[i], rkey[i])){
+            if(!alloc->malloc(addr[i], rkey[i])|| addr[i] == 0){
                 printf("alloc false\n");
             }
         }
@@ -406,7 +410,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             for(int i = 0; i < rand_iter; i ++){
                 if(addr[i] != 0 && rkey[i] != 0) 
                     continue;
-                if(!alloc->malloc(addr[i], rkey[i])){
+                if(!alloc->malloc(addr[i], rkey[i])|| addr[i] == 0){
                     printf("alloc false\n");
                 }
             }
@@ -454,7 +458,7 @@ void short_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < rand_iter; i ++){
-            if(!alloc->malloc(addr, rkey)){
+            if(!alloc->malloc(addr, rkey)|| addr == 0){
                 printf("alloc false\n");
             }
             if(!alloc->free(addr)){

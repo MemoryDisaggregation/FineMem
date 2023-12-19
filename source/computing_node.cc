@@ -184,6 +184,9 @@ void ComputingNode::increase_class_watermark(int &upper_bound) {
 }
 
 void ComputingNode::increase_watermark(int &upper_bound) {
+    if (upper_bound == ring_buffer_size - 16) {
+        return;
+    }
     if(upper_bound < block_per_region) {
         upper_bound *= 2;
     }
@@ -460,7 +463,8 @@ bool ComputingNode::new_backup_region() {
         }
     }
     backup_counter += 1;
-    // m_rdma_conn_->fetch_exclusive_region_rkey(current_region_.region, backup_region_.rkey);   
+    exclusive_region_[backup_region_.offset_].region = backup_region_;
+    m_rdma_conn_->fetch_exclusive_region_rkey(backup_region_, exclusive_region_[backup_region_.offset_].rkey);   
     return true;
 }
 
@@ -500,11 +504,11 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
                         new_backup_region();
                     }
                     // printf("block_num = %d, get_num = %d\n", block_num, get_num);
-                    // uint64_t offset = backup_region_.offset_;
-                    // uint64_t region_start = heap_start_ + offset * region_size_;
-                    // for(int i = 0; i < get_num; i++) {
-                    //     exclusive_region_[offset].rkey[(addr[i].addr-region_start)/block_size_] = addr[i].rkey;
-                    // }
+                    uint64_t offset = backup_region_.offset_;
+                    uint64_t region_start = heap_start_ + offset * region_size_;
+                    for(int j = 0; j < get_num; j++) {
+                        exclusive_region_[offset].rkey[(addr[j].addr-region_start)/block_size_] = addr[j].rkey;
+                    }
                     block_num -= get_num;
                     fill_counter += get_num;
                     ring_cache->add_batch(addr, get_num);
@@ -577,13 +581,15 @@ bool ComputingNode::free_mem_block(uint64_t addr){
             mr_rdma_addr result; 
             result.addr = addr; 
             result.rkey = exclusive_region_[region_offset].rkey[region_block_offset];
+            // printf("exclusive GC %p, %u\n", result.addr, result.rkey);
             ring_cache->add_cache(result);
             return true;
         } else {
             mr_rdma_addr result; 
             result.addr = addr; 
-            result.rkey = m_rdma_conn_->get_region_block_rkey(exclusive_region_[region_offset].region, region_block_offset);
-            // result.rkey = exclusive_region_[region_offset].rkey[region_block_offset];
+            // result.rkey = m_rdma_conn_->get_region_block_rkey(exclusive_region_[region_offset].region, region_block_offset);
+            result.rkey = exclusive_region_[region_offset].rkey[region_block_offset];
+            // printf("share GC %p, %u\n", result.addr, result.rkey);
             ring_cache->add_cache(result);
             return true;
         }
