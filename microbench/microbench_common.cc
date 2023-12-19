@@ -264,7 +264,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         gettimeofday(&start, NULL);
         int result;
         for(int i = 0; i < rand_iter; i ++){
-            if(rand()%100 > 20){
+            if(rand()%100 > 20 && addr[i] != 0){
                 if(!alloc->free(addr[i]))
                     printf("free error!\n");
                 addr[i] = 0;
@@ -341,7 +341,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             gettimeofday(&start, NULL);
             int result;
             for(int i = 0; i < rand_iter; i ++){
-                if(rand()%100 > 20){
+                if(rand()%100 > 20 && addr[i] != 0){
                     if(!alloc->free(addr[i]))
                         printf("free error!\n");
                     addr[i] = 0;
@@ -385,7 +385,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             // pthread_barrier_wait(&start_barrier);
             gettimeofday(&start, NULL);
             for(int i = 0; i < rand_iter; i ++){
-                if(rand()%100 > 20){
+                if(rand()%100 > 20 && addr[i] != 0){
                     if(!alloc->free(addr[i]))
                         printf("free error!\n");
                     addr[i] = 0;
@@ -429,7 +429,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
 
         }
         for(int i = 0; i < rand_iter; i ++){
-            if(rand()%100 > 20){
+            if(rand()%100 > 20 && addr[i] != 0){
                 if(!alloc->free(addr[i]))
                     printf("free error!\n");
                     addr[i] = 0;
@@ -608,9 +608,9 @@ int main(int argc, char* argv[]) {
         if(free_record_global[i].load() != 0)
             result << i << " " <<free_record_global[i].load() << std::endl;
     }
-    result.close();
     printf("total malloc avg: %luus\n", malloc_avg.load()/thread_num);
     result << "total malloc avg: " << malloc_avg.load()/thread_num << std::endl;
     printf("total free avg: %luus\n", free_avg.load()/thread_num);
     result << "total free avg: " << free_avg.load()/thread_num << std::endl;
+    result.close();
 }
