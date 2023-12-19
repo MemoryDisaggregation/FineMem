@@ -403,13 +403,13 @@ bool RDMAConnection::remote_CAS(uint64_t swap, uint64_t *compare, uint64_t remot
             ret = 0;
             break;
         } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
-            perror("cmd_send IBV_WC_WR_FLUSH_ERR");
+            perror("CAS IBV_WC_WR_FLUSH_ERR");
             break;
         } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
-            perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
+            perror("CAS IBV_WC_RNR_RETRY_EXC_ERR");
             break;
         } else {
-            perror("cmd_send ibv_poll_cq status error");
+            perror("CAS ibv_poll_cq status error");
             printf("%d\n", wc.status);
             break;
         }
@@ -709,13 +709,13 @@ int RDMAConnection::remote_memzero(uint64_t addr, uint64_t size) {
             ret = 0;
             break;
         } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
-            perror("cmd_send IBV_WC_WR_FLUSH_ERR");
+            perror("memzero IBV_WC_WR_FLUSH_ERR");
             break;
         } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
-            perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
+            perror("memzero IBV_WC_RNR_RETRY_EXC_ERR");
             break;
         } else {
-            perror("cmd_send ibv_poll_cq status error");
+            perror("memzero ibv_poll_cq status error");
             printf("%d\n", wc.status);
             break;
         }
@@ -1552,12 +1552,12 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
 }
 
 bool RDMAConnection::fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) {
-    uint64_t old_header = 0, new_header = 1, hint = block_hint;
+    uint64_t old_header = 0, new_header = 1, hint = block_hint % block_num_;
     while(!remote_CAS(*(uint64_t*)&new_header, (uint64_t*)&old_header, block_header_ + hint * sizeof(uint64_t), global_rkey_)){
         hint = (hint + 1) % block_num_;
         old_header = 0; new_header = 1;
         if(hint == block_hint) {
-            return 0;
+            return false;
         }
     };
     addr = get_block_addr(hint);

@@ -17,7 +17,7 @@
 
 namespace mralloc {
 
-const uint32_t nprocs = 144;
+const uint32_t nprocs = 64;
 const uint32_t max_alloc_item = 256;
 const uint32_t max_free_item = 256;
 
@@ -72,7 +72,9 @@ public:
         uint32_t reader = *reader_;
         while(get_length() == 0 ) ;
         *reader_ = (reader + 1) % max_length_;
-        // while(!(buffer_[reader] != zero_));
+        while(!(buffer_[reader] != zero_)){
+            reader = *reader_;
+        }
         value = buffer_[reader];
         buffer_[reader] = zero_;
         return true;
@@ -84,6 +86,9 @@ public:
             return false;
         } 
         *reader_ = (reader + 1) % max_length_;
+        while(!(buffer_[reader] != zero_)){
+            reader = *reader_;
+        }
         value = buffer_[reader];
         buffer_[reader] = zero_;
         return true;
@@ -97,6 +102,7 @@ public:
         } 
         *reader_ = (reader + num) % max_length_;
         for(int i = 0; i< num;i++) {
+            while(!(buffer_[(reader + i) % max_length_] != zero_));
             value[i] = buffer_[(reader + i) % max_length_];
             buffer_[(reader + i) % max_length_] = zero_;
         }
@@ -111,6 +117,7 @@ public:
         } 
         *reader_ = (reader + length) % max_length_;
         for(int i = 0; i< length;i++) {
+            while(!(buffer_[(reader + i) % max_length_] != zero_));
             value[i] = buffer_[(reader + i) % max_length_];
             buffer_[(reader + i) % max_length_] = zero_;
         }

@@ -30,7 +30,7 @@ const uint64_t iter_num = 128;
 
 const uint64_t epoch_num = 8;
 
-const int thread_num = 64;
+const int thread_num = 8;
 
 pthread_barrier_t start_barrier;
 pthread_barrier_t end_barrier;
@@ -133,7 +133,7 @@ int main(int argc, char** argv){
     // mralloc::cpu_cache cpu_cache_ = mralloc::cpu_cache(cache_size);
     m_rdma_conn_ = new mralloc::ConnectionManager();
     // if (m_rdma_conn_ == nullptr) return -1;
-    if (m_rdma_conn_ == nullptr || m_rdma_conn_->init("130.127.134.55", "1145", 2, 32) == -1 ){
+    if (m_rdma_conn_ == nullptr || m_rdma_conn_->init("10.10.1.1", "1145", 2, 32) == -1 ){
         printf("rdma connection create failed!\n");
     }
 
