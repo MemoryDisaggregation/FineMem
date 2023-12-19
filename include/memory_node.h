@@ -175,7 +175,7 @@ private:
     uint32_t m_worker_num_;
     std::thread **m_worker_threads_;
     MWPool* mw_queue_;
-    std::unordered_map<uint64_t, ibv_mw*> mw_recorder;
+    std::unordered_map<uint64_t, ibv_mr*> mr_recorder;
     ibv_mw **m_mw_handler;
     RPC_Fusee* rpc_fusee_;
     uint64_t heap_total_size_;

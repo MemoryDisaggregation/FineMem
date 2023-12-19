@@ -180,7 +180,7 @@ namespace mralloc {
                 if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
                     free_map = alloc_section.class_map_;
                     if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
-                        printf("section has no free space!\n");
+                        // printf("section has no free space!\n");
                         return false;
                     }
                 }
@@ -203,7 +203,7 @@ namespace mralloc {
                 free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
                 // search exclusive block, from the tail
                 if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
-                    printf("section has no free space!\n");
+                    // printf("section has no free space!\n");
                     return false;
                 }
                 new_section = alloc_section;
@@ -253,7 +253,7 @@ namespace mralloc {
                 free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
                 // search class block, from the tail
                 if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
-                    printf("section has no free space!\n");
+                    // printf("section has no free space!\n");
                     return false;
                 }
                 new_section = alloc_section;
@@ -277,7 +277,7 @@ namespace mralloc {
                 free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
                 // search class block, from the tail
                 if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
-                    printf("section has no free space!\n");
+                    // printf("section has no free space!\n");
                     return false;
                 }
                 new_section = alloc_section;
@@ -424,7 +424,7 @@ namespace mralloc {
             } 
             new_region = alloc_region;
             if((index = find_free_index_from_bitmap32_tail(alloc_region.base_map_)) == -1) {
-                printf("full, change region\n");
+                // printf("full, change region\n");
                 return false;
             }
             new_region.base_map_ |= (uint32_t)1<<index;

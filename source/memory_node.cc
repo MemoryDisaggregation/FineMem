@@ -37,7 +37,7 @@
 #define REMOTE_MEM_SIZE 4194304
 // #define REMOTE_MEM_SIZE 4096
 
-#define INIT_MEM_SIZE ((uint64_t)128*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)40*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 
@@ -102,7 +102,7 @@ bool MemoryNode::start(const std::string addr, const std::string port, const std
     } else {
         printf("support %d memory window total\n", device_attr.max_mw);
     }
-    // mw_queue_ = new MWPool(m_pd_);
+    mw_queue_ = new MWPool(m_pd_);
     // if (!mw_queue_) {
     //   perror("memeory window init fail");
     //   return false;
@@ -223,8 +223,8 @@ bool MemoryNode::free_mem_block(uint64_t addr) {
     mr_rdma_addr new_addr;
     // memset((void*)addr, 0, server_block_manager_->get_block_size());
     uint32_t block_id = (addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
-    bind_mw(block_mw[block_id], addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
-    bind_mw(block_mw[block_id], addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
+    // bind_mw(block_mw[block_id], addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
+    // bind_mw(block_mw[block_id], addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
     new_addr.addr = addr; new_addr.rkey = block_mw[block_id]->rkey;
     ring_cache->add_cache(new_addr);
     return true;
@@ -574,33 +574,35 @@ struct ibv_mr *MemoryNode::rdma_register_memory(void *ptr, uint64_t size) {
 int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
                                                uint64_t size) {
     /* align mem */
-    uint64_t total_size = size + MEM_ALIGN_SIZE;
-    uint64_t mem = (uint64_t)malloc(total_size);
+    // uint64_t total_size = size + MEM_ALIGN_SIZE;
+    uint64_t mem = (uint64_t)malloc(size);
     // uint64_t mem = (uint64_t)mmap(NULL, total_size, PROT_READ | PROT_WRITE, 
     //         MAP_PRIVATE | MAP_ANONYMOUS |  MAP_HUGETLB, -1, 0);
     addr = mem;
-    if (addr % MEM_ALIGN_SIZE != 0)
-        addr = addr + (MEM_ALIGN_SIZE - addr % MEM_ALIGN_SIZE);
-    ibv_mw* mw = mw_queue_->dequeue();
-    mw_recorder[addr] = mw;
-    bind_mw(mw, addr, size, one_side_qp_, one_side_cq_);
-    rkey = mw->rkey;
-    // struct ibv_mr *mr = rdma_register_memory((void *)addr, size);
-    // if (!mr) {
-    //     perror("ibv_reg_mr fail");
-    //     return -1;
-    // }
-    // rkey = mr->rkey;
+    // if (addr % MEM_ALIGN_SIZE != 0)
+    //     addr = addr + (MEM_ALIGN_SIZE - addr % MEM_ALIGN_SIZE);
+    // ibv_mw* mw = mw_queue_->dequeue();
+    // mw_recorder[addr] = mw;
+    // bind_mw(mw, addr, size, one_side_qp_, one_side_cq_);
+    // rkey = mw->rkey;
+    struct ibv_mr *mr = rdma_register_memory((void *)addr, size);
+    if (!mr) {
+        perror("ibv_reg_mr fail");
+        return -1;
+    }
+    mr_recorder[addr] = mr;
+    rkey = mr->rkey;
     // printf("allocate and register memory %ld %d\n", addr, rkey);
     // TODO: save this memory info for later delete
     return 0;
 }
 
 int MemoryNode::deallocate_and_unregister_memory(uint64_t addr) {
+    // ibv_mw* mw = mw_recorder[addr];
+    // bind_mw(mw, addr, 0, one_side_qp_, one_side_cq_);
+    // mw_queue_->enqueue(mw);
+    ibv_dereg_mr(mr_recorder[addr]);
     free((void*)addr);
-    ibv_mw* mw = mw_recorder[addr];
-    bind_mw(mw, addr, 0, one_side_qp_, one_side_cq_);
-    mw_queue_->enqueue(mw);
     return 0;
 }
 
