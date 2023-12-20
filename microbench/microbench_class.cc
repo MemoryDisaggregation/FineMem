@@ -139,11 +139,11 @@ public:
     ~exclusive_allocator() {};
     bool malloc(uint16_t block_class, uint64_t &addr, uint32_t &rkey) override {
         int index = 0 ;
-        while((index = mralloc::find_free_index_from_bitmap32_tail(cache_region.region.base_map_)) == -1 ){
+        while((index = mralloc::find_free_index_from_bitmap16_tail(cache_region.region.class_map_)) == -1 ){
             bool cache_useful = false;
             region_record[cache_region.region.offset_].region = cache_region.region;
             for(auto iter = region_record.begin(); iter != region_record.end(); iter ++) {
-                if((index = mralloc::find_free_index_from_bitmap32_tail(iter->second.region.base_map_)) != -1){
+                if((index = mralloc::find_free_index_from_bitmap32_tail(iter->second.region.class_map_)) != -1){
                     cache_region = iter->second;
                     cache_useful = true;
                     break;
@@ -155,11 +155,11 @@ public:
                         return false;
                     }
                 }
-                conn_->fetch_exclusive_region_rkey(cache_region.region, cache_region.rkey);
+                conn_->fetch_class_region_rkey(cache_region.region, cache_region.rkey);
                 region_record[cache_region.region.offset_] = cache_region;
             }
         }
-        cache_region.region.base_map_ |= 1<<index;
+        cache_region.region.class_map_ |= 1<<(index/(block_class+1));
         addr = conn_->get_region_block_addr(cache_region.region, index);
         rkey = cache_region.rkey[index];
         return true;
@@ -168,10 +168,10 @@ public:
         uint16_t index = conn_->get_addr_region_index(addr);
         uint32_t offset = conn_->get_addr_region_offset(addr);
         if(index == cache_region.region.offset_) {
-            cache_region.region.base_map_ &= ~(uint32_t)(1<<offset);
+            cache_region.region.class_map_ &= ~(uint16_t)(1<<(offset/(block_class+1)));
             // conn_->remote_rebind(addr, 0, cache_region.rkey[offset]);
         } else {
-            region_record[index].region.base_map_ &= ~(uint32_t)(1<<offset);
+            region_record[index].region.class_map_ &= ~(uint16_t)(1<<(offset/(block_class+1)));
             // conn_->remote_rebind(addr, 0, region_record[index].rkey[offset]);
         }
         return true;
