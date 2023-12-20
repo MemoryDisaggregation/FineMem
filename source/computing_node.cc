@@ -166,7 +166,7 @@ bool ComputingNode::start(const std::string addr, const std::string port){
         }
         pthread_t running_thread;
         pthread_create(&cache_fill_thread_, NULL, run_cache_filler, this);
-        pthread_create(&recycle_thread_, NULL, run_recycler, this);   
+        // pthread_create(&recycle_thread_, NULL, run_recycler, this);   
         
     }
     if(heap_enabled_ && one_side_enabled_) 
@@ -209,12 +209,26 @@ void ComputingNode::decrease_watermark(int &upper_bound) {
 void ComputingNode::pre_fetcher() {
     uint64_t update_time = time_stamp_;
     uint32_t length;
+    uint64_t addr, batch_addr[max_free_item];
     bool block_breakdown = false, class_breakdown = false;
     cache_upper_bound = block_per_region;
     for(int i = 1; i < class_num; i++) {
         class_cache_upper_bound[i] = 1;
     }
     while(running) {
+        for(int i = 0; i < nprocs; i++){
+            if((length = cpu_cache_->fetch_free_cache(i, batch_addr)) != 0) {
+                for(int j = 0; j < length; j++)
+                    free_mem_block(batch_addr[j]);
+                // printf("add free cache addr:%lx, current:%u\n", addr, ring_cache->get_length());
+            }
+        }
+        for(int i = 0; i < class_num; i++){
+            if(cpu_cache_->fetch_class_free_cache(i, addr)) {
+                free_mem_block(addr);
+                // printf("add free class %d cache addr:%lx, current:%u\n", i, addr, ring_class_cache[i]->get_length());
+            }
+        }
         if(ring_cache->get_length() == 0) {
             block_breakdown = true;
             increase_watermark(cache_upper_bound);
