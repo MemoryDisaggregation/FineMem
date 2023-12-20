@@ -135,7 +135,7 @@ private:
 
     // info before heap segment
     uint64_t section_header_;
-    uint64_t fast_region_;
+    uint64_t section_class_header_;
     uint64_t region_header_;
     uint64_t block_rkey_;
     uint64_t class_block_rkey_;

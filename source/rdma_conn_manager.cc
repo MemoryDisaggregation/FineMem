@@ -44,8 +44,8 @@ int ConnectionManager::init(const std::string ip, const std::string port,
     section_num_ = region_num_ / region_per_section;
 
     section_header_ = m_one_side_info_.section_header_;
-    fast_region_ = (uint64_t)((section_e*)section_header_ + section_num_);
-    region_header_ = (uint64_t)((fast_class*)fast_region_ + block_class_num*section_num_);
+    section_class_header_ = (uint64_t)((section_e*)section_header_ + section_num_);
+    region_header_ = (uint64_t)((section_class_e*)section_class_header_ + block_class_num*section_num_);
     block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
     class_block_rkey_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
     heap_start_ = m_one_side_info_.heap_start_;
@@ -185,10 +185,10 @@ bool ConnectionManager::fetch_region(section_e &alloc_section, uint32_t section_
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }
-bool ConnectionManager::try_add_fast_region(uint32_t section_offset, uint32_t block_class, region_e &alloc_region) {
+bool ConnectionManager::try_add_section_class(uint32_t section_offset, uint32_t block_class, region_e &alloc_region) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    bool ret = conn->try_add_fast_region(section_offset, block_class, alloc_region);
+    bool ret = conn->try_add_section_class(section_offset, block_class, alloc_region);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;    
 }
@@ -234,6 +234,22 @@ bool ConnectionManager::free_block(uint64_t addr) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
     bool ret = conn->free_block(addr);
+    m_rpc_conn_queue_->enqueue(conn);
+    return ret;  
+}
+
+bool ConnectionManager::fetch_block(uint16_t block_class, uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) {
+    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+    assert(conn != nullptr);
+    bool ret = conn->fetch_block(block_class, block_hint, addr, rkey);
+    m_rpc_conn_queue_->enqueue(conn);
+    return ret;  
+}
+
+bool ConnectionManager::free_block(uint16_t block_class, uint64_t addr) {
+    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+    assert(conn != nullptr);
+    bool ret = conn->free_block(block_class, addr);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;  
 }

@@ -26,8 +26,8 @@ namespace mralloc {
         global_rkey_ = rkey;
 
         section_header_ = (section*)meta_addr;
-        fast_region_ = (fast_class*)(section_header_+ section_num_); 
-        region_header_ = (region*)(fast_region_ + block_class_num*section_num_);
+        section_class_header_ = (section_class*)(section_header_+ section_num_); 
+        region_header_ = (region*)(section_class_header_ + block_class_num*section_num_);
         block_rkey_ = (uint32_t*)(region_header_ + region_num_);
         class_block_rkey_ = (uint32_t*)(block_rkey_ + block_num_);
         block_header_ = (uint64_t*)(class_block_rkey_ + block_num_);
@@ -46,10 +46,10 @@ namespace mralloc {
         for(int i = 0; i < section_num_; i++) {
             section_header_[i].store(init_section_header);
         }
-        fast_class_e null_class = {0,0,0,0};
+        section_class_e null_class = {bitmap32_filled, bitmap32_filled};
         for(int i = 0; i < section_num_ ; i++) {
             for(int j = 0; j < block_class_num; j++) {
-                fast_region_[i*block_class_num + j].store(null_class);
+                section_class_header_[i*block_class_num + j].store(null_class);
             }
         }
         
@@ -64,16 +64,6 @@ namespace mralloc {
             class_block_rkey_[i] = 0;
             block_header_[i] = 0;
         }
-
-        // // init: try to allocate each size on each section
-        // for(int i = 0; i < section_num_/4; i++) {
-        //     for(int j = 1; j < block_class_num; j ++) {
-        //         section_e section = section_header_[i*4+3].load();
-        //         region_e alloc_region;
-        //         fetch_region(section, i*4, j, true, alloc_region);
-        //         try_add_fast_region(i*4, j, alloc_region);
-        //     }
-        // }
 
         return true;
     }
@@ -227,25 +217,22 @@ namespace mralloc {
         }
         // class alloc, shared
         else if (shared == true) {
-            int index;
-            uint32_t fast_index = get_fast_region_index(section_offset, block_class);
+            int index; bool has_free = true;
+            uint32_t fast_index = get_section_class_index(section_offset, block_class);
             region_e region_new, region_old;
-            fast_class_e class_region = fast_region_[fast_index].load();
-            for(int i = 0; i < 4;i++){
-                if((index = class_region.offset[i]) != 0){
-                    region_old = region_header_[index].load();
-                    if(region_old.exclusive_ == 0 && region_old.block_class_ == block_class && region_old.class_map_ != bitmap16_filled) {
-                        alloc_region = region_old;
-                        return true;
-                    } else {
-                        fast_class_e new_class_region;
-                        new_class_region = class_region;
-                        new_class_region.offset[i] = 0;
-                        if(fast_region_[fast_index].compare_exchange_strong(class_region, new_class_region)){
-                            class_region = new_class_region;
-                        }
-                    }
+            section_class_e section_class_header = section_class_header_[fast_index].load();
+            section_class_e new_section_class_header = section_class_header;
+            uint32_t class_map = section_class_header.class_map_ & section_class_header.alloc_map_;
+            do {
+                if( (index = find_free_index_from_bitmap32_tail(class_map)) == -1 ){
+                    has_free = false;
+                    break;
                 }
+                raise_bit(new_section_class_header.alloc_map_, new_section_class_header.class_map_, index);
+            } while(!section_class_header_[fast_index].compare_exchange_strong(section_class_header, new_section_class_header));
+            if(has_free) {
+                alloc_region = region_header_[section_offset * region_per_section + index].load();
+                return true;
             }
             uint32_t free_map;
             section_e new_section;
@@ -258,12 +245,20 @@ namespace mralloc {
                 }
                 new_section = alloc_section;
                 new_section.class_map_ |= ((uint32_t)1<<index);
-                new_section.alloc_map_ &= ~((uint32_t)1<<index);
+                new_section.alloc_map_ |= ((uint32_t)1<<index);
             }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
             alloc_section = new_section;
+            do{
+                new_section_class_header = section_class_header;
+                if(new_section_class_header.alloc_map_ & new_section_class_header.class_map_ >> index != 1) {
+                    break;
+                }
+                new_section_class_header.alloc_map_ &= ~(uint32_t)(1<<index);
+                new_section_class_header.class_map_ &= ~(uint32_t)(1<<index);
+            } while (!section_class_header_[fast_index].compare_exchange_strong(section_class_header, new_section_class_header));
             region_old= region_header_[section_offset*region_per_section+index].load();
             init_region_class(region_old, block_class, 0);
-            try_add_fast_region(section_offset, block_class, region_old);
+            try_add_section_class(section_offset, block_class, region_old);
             alloc_region = region_old;
             return true;
         }
@@ -287,37 +282,31 @@ namespace mralloc {
             alloc_section = new_section;
             region_old= region_header_[section_offset*region_per_section+index].load();
             init_region_class(region_old, block_class, 1);
-            try_add_fast_region(section_offset, block_class, region_old);
             alloc_region = region_old;
             return true;
         }
         return false;
     }
 
-    bool ServerBlockManager::try_add_fast_region(uint32_t section_offset, uint32_t block_class, region_e &alloc_region){
-        bool replace = true; uint32_t fast_index = get_fast_region_index(section_offset, block_class);
-        fast_class_e class_region = fast_region_[fast_index].load();
-        fast_class_e new_class_region = class_region;
-        for(int i = 0; i < 4;i++){
-            if (class_region.offset[i] == alloc_region.offset_) {
-                return true;
-            }
+    bool ServerBlockManager::try_add_section_class(uint32_t section_offset, uint32_t block_class, region_e &alloc_region){
+        bool recycle = false;
+        uint32_t fast_index = get_section_class_index(section_offset, block_class);
+        uint32_t region_index = alloc_region.offset_ % region_per_section;
+        section_class_e old_section_class = section_class_header_[fast_index].load();
+        section_class_e new_section_class = old_section_class;
+        do{
+            new_section_class = old_section_class;
+            if(new_section_class.alloc_map_ | new_section_class.class_map_ >> region_index % 2 == 0) {
+                new_section_class.alloc_map_ |= 1<< region_index;
+                new_section_class.class_map_ |= 1<< region_index;
+                recycle = true;
+            } else
+                down_bit(new_section_class.alloc_map_, new_section_class.class_map_, region_index);
+        } while (!section_class_header_[fast_index].compare_exchange_strong(old_section_class, new_section_class));
+        if(recycle) {
+            set_region_empty(alloc_region);
         }
-        for(int i = 0; i < 4;i++){
-            if(class_region.offset[i] == 0) {
-                replace = true;
-                do {
-                    if(class_region.offset[i] != 0){
-                        replace = false;
-                        break;
-                    }
-                    new_class_region = class_region;
-                    new_class_region.offset[i] = alloc_region.offset_;
-                }while(!(fast_region_[fast_index].compare_exchange_strong(class_region, new_class_region)));
-                if(replace) return true;
-            }
-        }
-        return false;
+        return true;
     }
 
     bool ServerBlockManager::fetch_large_region(section_e &alloc_section, uint32_t section_offset, uint64_t region_num, uint64_t &addr) {
@@ -502,13 +491,16 @@ namespace mralloc {
             } while(!region_header_[region_offset].compare_exchange_strong(region, new_region));
             if(free_bit_in_bitmap16(new_region.class_map_) == block_per_region/(block_class+1)) {
                 // printf("[Attention] try to add fast region %lx\n", addr);
-                if(!try_add_fast_region(region_offset/region_per_section, block_class, new_region)) {
-                    // printf("[Attention] try to clean region %lx\n", addr);
-                    set_region_empty(new_region);
-                }
+                try_add_section_class(region_offset/region_per_section, block_class, new_region);
             } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > block_per_region/(block_class+1)/2 && free_bit_in_bitmap16(region.class_map_) <= block_per_region/(block_class+1)/2){
                 // printf("[Attention] try to add fast region %lx\n", addr);
-                try_add_fast_region(region_offset/region_per_section, block_class, new_region);
+                try_add_section_class(region_offset/region_per_section, block_class, new_region);
+            } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > 3*block_per_region/(block_class+1)/4 && free_bit_in_bitmap16(region.class_map_) <= 3*block_per_region/(block_class+1)/4){
+                // printf("[Attention] try to add fast region %lx\n", addr);
+                try_add_section_class(region_offset/region_per_section, block_class, new_region);
+            } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > block_per_region/(block_class+1)/4 && free_bit_in_bitmap16(region.class_map_) <= block_per_region/(block_class+1)/4){
+                // printf("[Attention] try to add fast region %lx\n", addr);
+                try_add_section_class(region_offset/region_per_section, block_class, new_region);
             }
             region = new_region;
             // printf("free a class %u block %lx, newkey is %u\n", new_region.block_class_, addr, new_rkey);

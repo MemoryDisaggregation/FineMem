@@ -88,7 +88,7 @@ class ConnectionManager {
 
     bool fetch_large_region(section_e &alloc_section, uint32_t section_offset, uint64_t region_num, uint64_t &addr) ;
     bool fetch_region(section_e &alloc_section, uint32_t section_offset, uint32_t block_class, bool shared, region_e &alloc_region) ;
-    bool try_add_fast_region(uint32_t section_offset, uint32_t block_class, region_e &alloc_region);
+    bool try_add_section_class(uint32_t section_offset, uint32_t block_class, region_e &alloc_region);
     bool set_region_exclusive(region_e &alloc_region);
     bool set_region_empty(region_e &alloc_region);
 
@@ -99,14 +99,16 @@ class ConnectionManager {
     int fetch_region_class_batch(region_e &alloc_region, uint32_t block_class, mr_rdma_addr* addr, uint64_t num, bool is_exclusive);
 
     bool fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
+    bool fetch_block(uint16_t block_class, uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
     bool free_block(uint64_t addr) ;
+    bool free_block(uint16_t block_class, uint64_t addr) ;
 
     bool fetch_exclusive_region_rkey(region_e &alloc_region, uint32_t* rkey_list);
     int free_region_block(uint64_t addr, bool is_exclusive) ;
 
     inline uint32_t get_addr_region_index(uint64_t addr) {return (addr-heap_start_) / region_size_;};
     inline uint32_t get_addr_region_offset(uint64_t addr) {return (addr-heap_start_) % region_size_ / block_size_;};
-    inline uint32_t get_fast_region_index(uint32_t section_offset, uint32_t block_class) {return section_offset/4*block_class_num + block_class;};
+    inline uint32_t get_section_class_index(uint32_t section_offset, uint32_t block_class) {return section_offset*block_class_num + block_class;};
     inline uint64_t get_section_region_addr(uint32_t section_offset, uint32_t region_offset) {return heap_start_ + section_offset*section_size_ + region_offset * region_size_ ;};
     inline uint64_t get_region_addr(region_e region) {return heap_start_ + region.offset_ * region_size_;};
     inline uint64_t get_region_block_addr(region_e region, uint32_t block_offset) {return heap_start_ + region.offset_ * region_size_ + block_offset * block_size_;} ;
@@ -139,7 +141,7 @@ class ConnectionManager {
 
     // info before heap segment
     uint64_t section_header_;
-    uint64_t fast_region_;
+    uint64_t section_class_header_;
     uint64_t region_header_;
     uint64_t block_rkey_;
     uint64_t class_block_rkey_;

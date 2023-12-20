@@ -114,8 +114,8 @@ bool ComputingNode::start(const std::string addr, const std::string port){
         section_num_ = region_num_ / region_per_section;
 
         section_header_ = m_one_side_info_.section_header_;
-        fast_region_ = (uint64_t)((section_e*)section_header_ + section_num_);
-        region_header_ = (uint64_t)((fast_class*)fast_region_ + block_class_num*section_num_);
+        section_class_header_ = (uint64_t)((section_e*)section_header_ + section_num_);
+        region_header_ = (uint64_t)((section_class_e*)section_class_header_+ block_class_num*section_num_);
         block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
         class_block_rkey_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
         heap_start_ = m_one_side_info_.heap_start_;
