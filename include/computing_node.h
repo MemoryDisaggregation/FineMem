@@ -77,7 +77,8 @@ public:
         printf("ring length:%u\n", ring_cache->get_length());
         return ;
     }
-    void increase_class_watermark(int &upper_bound);
+    void increase_class_watermark(uint16_t block_class, int &upper_bound);
+    void decrease_class_watermark(uint16_t block_class, int &upper_bound);
     void increase_watermark(int &upper_bound);
     void decrease_watermark(int &upper_bound);
 

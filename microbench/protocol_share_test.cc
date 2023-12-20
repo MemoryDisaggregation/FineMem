@@ -38,7 +38,7 @@ void* worker(void* arg) {
     uint32_t cache_section_index;
     mralloc::section_e cache_section;
     mralloc::region_e cache_region;
-    conn->find_section(cache_section, cache_section_index, mralloc::alloc_no_class);
+    conn->find_section(0, cache_section, cache_section_index, mralloc::alloc_no_class);
     conn->fetch_region(cache_section, cache_section_index, 0, true, cache_region);
     for(int j = 0; j < epoch; j ++) {
         // malloc
@@ -52,7 +52,7 @@ void* worker(void* arg) {
                 // printf("change region\n");
                 while(!conn->fetch_region(cache_section, cache_section_index, 0, true, cache_region)){
                     // printf("change section\n");
-                    conn->find_section(cache_section, cache_section_index, mralloc::alloc_no_class);
+                    conn->find_section(0, cache_section, cache_section_index, mralloc::alloc_no_class);
                 }
             }
             // printf("alloc: %p, region id: %u, bitmap: %x\n", addr[i], cache_region.offset_, cache_region.base_map_);

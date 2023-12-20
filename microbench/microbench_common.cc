@@ -98,14 +98,14 @@ class share_allocator : test_allocator{
 public:
     share_allocator(mralloc::ConnectionManager* conn) {
         conn_ = conn;
-        conn_->find_section(cache_section, cache_section_index, mralloc::alloc_no_class);
+        conn_->find_section(0, cache_section, cache_section_index, mralloc::alloc_no_class);
         conn_->fetch_region(cache_section, cache_section_index, 0, true, cache_region);
     }
     ~share_allocator() {};
     bool malloc(uint64_t &addr, uint32_t &rkey) override {
         while(!conn_->fetch_region_block(cache_region, addr, rkey, false)){
             while(!conn_->fetch_region(cache_section, cache_section_index, 0, true, cache_region)){
-                if(!conn_->find_section(cache_section, cache_section_index, mralloc::alloc_no_class)){
+                if(!conn_->find_section(0, cache_section, cache_section_index, mralloc::alloc_no_class)){
                     return false;
                 }
             }
@@ -130,7 +130,7 @@ class exclusive_allocator : test_allocator{
 public:
     exclusive_allocator(mralloc::ConnectionManager* conn) {
         conn_ = conn;
-        conn->find_section(cache_section, cache_section_index, mralloc::alloc_empty);
+        conn->find_section(0, cache_section, cache_section_index, mralloc::alloc_empty);
         conn->fetch_region(cache_section, cache_section_index, 0, false, cache_region.region);
         conn->fetch_exclusive_region_rkey(cache_region.region, cache_region.rkey);
         region_record[cache_region.region.offset_] = cache_region;
@@ -150,7 +150,7 @@ public:
             }
             if(!cache_useful) {
                 while(!conn_->fetch_region(cache_section, cache_section_index, 0, false, cache_region.region)){
-                    if(!conn_->find_section(cache_section, cache_section_index, mralloc::alloc_empty)) {
+                    if(!conn_->find_section(0, cache_section, cache_section_index, mralloc::alloc_empty)) {
                         return false;
                     }
                 }

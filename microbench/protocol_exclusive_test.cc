@@ -39,7 +39,7 @@ void* worker(void* arg) {
     mralloc::section_e cache_section;
     mralloc::region_with_rkey cache_region;
     std::unordered_map<uint16_t, mralloc::region_with_rkey> region_record;
-    conn->find_section(cache_section, cache_section_index, mralloc::alloc_empty);
+    conn->find_section(0, cache_section, cache_section_index, mralloc::alloc_empty);
     conn->fetch_region(cache_section, cache_section_index, 0, false, cache_region.region);
     conn->fetch_exclusive_region_rkey(cache_region.region, cache_region.rkey);
     region_record[cache_region.region.offset_] = cache_region;
@@ -62,7 +62,7 @@ void* worker(void* arg) {
                 }
                 if(!cache_useful) {
                     while(!conn->fetch_region(cache_section, cache_section_index, 0, false, cache_region.region)){
-                        conn->find_section(cache_section, cache_section_index, mralloc::alloc_empty);
+                        conn->find_section(0, cache_section, cache_section_index, mralloc::alloc_empty);
                     }
                     conn->fetch_exclusive_region_rkey(cache_region.region, cache_region.rkey);
                     region_record[cache_region.region.offset_] = cache_region;

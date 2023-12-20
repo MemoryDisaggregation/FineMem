@@ -126,13 +126,23 @@ namespace mralloc {
         return false;
     }
 
-    bool ServerBlockManager::find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
+    bool ServerBlockManager::find_section(uint16_t block_class, section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
         section_e section;
         if(advise == alloc_class) {
+            section_class_e section_class_header;
             for(int i = 0; i < section_num_; i++) {
                 section = section_header_[i].load();
                 if((section.class_map_ | section.alloc_map_) != ~(uint32_t)0){
                     alloc_section = section;
+                    section_offset = i;
+                    return true;
+                }
+            }
+            for(int i = 0; i < section_num_; i++) {
+                uint32_t fast_index = get_section_class_index(i, block_class);
+                section_class_header = section_class_header_[fast_index].load();
+                if((section_class_header.class_map_ & section_class_header.alloc_map_) != ~(uint32_t)0){
+                    alloc_section = section_header_[i].load();
                     section_offset = i;
                     return true;
                 }
@@ -248,6 +258,9 @@ namespace mralloc {
                 new_section.alloc_map_ |= ((uint32_t)1<<index);
             }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
             alloc_section = new_section;
+            region_old= region_header_[section_offset*region_per_section+index].load();
+            init_region_class(region_old, block_class, 0);
+            try_add_section_class(section_offset, block_class, region_old);
             do{
                 new_section_class_header = section_class_header;
                 if(new_section_class_header.alloc_map_ & new_section_class_header.class_map_ >> index != 1) {
@@ -256,9 +269,6 @@ namespace mralloc {
                 new_section_class_header.alloc_map_ &= ~(uint32_t)(1<<index);
                 new_section_class_header.class_map_ &= ~(uint32_t)(1<<index);
             } while (!section_class_header_[fast_index].compare_exchange_strong(section_class_header, new_section_class_header));
-            region_old= region_header_[section_offset*region_per_section+index].load();
-            init_region_class(region_old, block_class, 0);
-            try_add_section_class(section_offset, block_class, region_old);
             alloc_region = region_old;
             return true;
         }

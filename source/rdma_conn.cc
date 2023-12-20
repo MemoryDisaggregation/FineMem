@@ -908,11 +908,11 @@ bool RDMAConnection::update_section(region_e region, alloc_advise advise, alloc_
     section_e section_new = section_old;
     if(advise == alloc_exclusive) {
         do{
-            if(!check_section(section_old, compare, region_offset)){
-                // printf("try update_section failed, compare is %d, advise is %d, class bit is %d, malloc bit is %d\n", compare, advise,
-                //     (section_old.class_map_ >> region_offset) % 2, (section_old.alloc_map_ >> region_offset) % 2);
-                return false;
-            }
+            // if(!check_section(section_old, compare, region_offset)){
+            //     // printf("try update_section failed, compare is %d, advise is %d, class bit is %d, malloc bit is %d\n", compare, advise,
+            //     //     (section_old.class_map_ >> region_offset) % 2, (section_old.alloc_map_ >> region_offset) % 2);
+            //     return false;
+            // }
             section_new = section_old;
             section_new.alloc_map_ |= (bitmap32)1 << region_offset;
             section_new.class_map_ |= (bitmap32)1 << region_offset;
@@ -958,17 +958,18 @@ bool RDMAConnection::update_section(region_e region, alloc_advise advise, alloc_
     return false;
 }
 
-bool RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
+bool RDMAConnection::find_section(uint16_t block_class, section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
     section_e section[8];
     if(advise == alloc_class) {
-        // for(int i = section_num_ - 1; i >= 0; i--) {
         int remain = section_num_, fetch = remain > 8 ? 8:remain, index = 0;
+        section_class_e section_class_header;
         while(remain > 0) {
             remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
             for(int j = 0; j < fetch; j ++) {
                 if(free_bit_in_bitmap32(section[j].class_map_ | section[j].alloc_map_) > region_per_section/3){
                     alloc_section = section[j];
                     section_offset = index + j;
+                    // printf("find new section from section\n");
                     return true;
                 }
             }
@@ -976,13 +977,23 @@ bool RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_of
                 if((section[j].class_map_ | section[j].alloc_map_) != ~(uint32_t)0){
                     alloc_section = section[j];
                     section_offset = index + j;
+                    // printf("find new section from section\n");
+                    return true;
+                }
+            }
+            for(int j = 0; j < fetch; j ++) {
+                uint32_t fast_index = get_section_class_index(index + j, block_class);
+                remote_read(&section_class_header, sizeof(section_class_e), section_class_metadata_addr(fast_index), global_rkey_);
+                if((section_class_header.class_map_ & section_class_header.alloc_map_) != ~(uint32_t)0){
+                    alloc_section = section[j];
+                    section_offset = index + j;
+                    // printf("find new section from section class\n");
                     return true;
                 }
             }
             index += 8; remain -= 8; fetch = remain > 8 ? 8:remain;
         }
     } else if(advise == alloc_no_class) {
-        // for(int i = section_num_ - 1; i >= 0; i--) {
         int remain = section_num_, fetch = remain > 8 ? 8:remain, index = 0;
         while(remain > 0) {
             remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
@@ -1094,6 +1105,7 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         section_class_e new_section_class_header = section_class_header;
         uint32_t class_map = section_class_header.class_map_ & section_class_header.alloc_map_;
         do {
+            new_section_class_header = section_class_header;
             if( (index = find_free_index_from_bitmap32_tail(class_map)) == -1 ){
                 has_free = false;
                 break;
@@ -1120,6 +1132,9 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
             new_section.alloc_map_ |= ((uint32_t)1<<index);
         }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_));
         alloc_section = new_section;
+        remote_read(&region_old, sizeof(region_e), region_metadata_addr(section_offset*region_per_section+index), global_rkey_);
+        init_region_class(region_old, block_class, 0);
+        remote_class_bind(region_old.offset_, block_class);
         do{
             new_section_class_header = section_class_header;
             if(new_section_class_header.alloc_map_ & new_section_class_header.class_map_ >> index != 1) {
@@ -1128,9 +1143,6 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
             new_section_class_header.alloc_map_ &= ~(uint32_t)(1<<index);
             new_section_class_header.class_map_ &= ~(uint32_t)(1<<index);
         } while (!remote_CAS(*(uint64_t*)&new_section_class_header, (uint64_t*)&section_class_header, section_class_metadata_addr(fast_index), global_rkey_));
-        remote_read(&region_old, sizeof(region_e), region_metadata_addr(section_offset*region_per_section+index), global_rkey_);
-        init_region_class(region_old, block_class, 0);
-        remote_class_bind(region_old.offset_, block_class);
         alloc_region = region_old;
         return true;
     }
@@ -1164,7 +1176,7 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
 }
 
 bool RDMAConnection::try_add_section_class(uint32_t section_offset, uint32_t block_class, region_e &alloc_region){
-    bool recycle = false; 
+    // bool recycle = false; 
     uint32_t fast_index = get_section_class_index(section_offset, block_class);
     uint32_t region_index = alloc_region.offset_ % region_per_section;
     section_class_e old_section_class;
@@ -1172,16 +1184,17 @@ bool RDMAConnection::try_add_section_class(uint32_t section_offset, uint32_t blo
     section_class_e new_section_class = old_section_class;
     do{
         new_section_class = old_section_class;
-        if(new_section_class.alloc_map_ | new_section_class.class_map_ >> region_index % 2 == 0) {
-            new_section_class.alloc_map_ |= 1<< region_index;
-            new_section_class.class_map_ |= 1<< region_index;
-            recycle = true;
-        } else
-            down_bit(new_section_class.alloc_map_, new_section_class.class_map_, region_index);
+        // if(new_section_class.alloc_map_ | new_section_class.class_map_ >> region_index % 2 == 0) {
+        //     new_section_class.alloc_map_ |= 1<< region_index;
+        //     new_section_class.class_map_ |= 1<< region_index;
+        //     recycle = true;
+        // } else
+        down_bit(new_section_class.alloc_map_, new_section_class.class_map_, region_index);
     } while(!remote_CAS(*(uint64_t*)&new_section_class, (uint64_t*)&old_section_class, section_class_metadata_addr(fast_index), global_rkey_));
-    if(recycle) {
-        set_region_empty(alloc_region);
-    }
+    // if(recycle) {
+    //     set_region_empty(alloc_region);
+    // }
+    // printf("free success\n");
     return true;
 }
 
@@ -1388,7 +1401,7 @@ bool RDMAConnection::fetch_region_class_block(region_e &alloc_region, uint32_t b
         } 
         new_region = alloc_region;
         if((index = find_free_index_from_bitmap16_tail(alloc_region.class_map_)) == -1) {
-            printf("already full\n");
+            // printf("already full\n");
             return false;
         }
         // printf("index = %d\n", index);
@@ -1402,6 +1415,17 @@ bool RDMAConnection::fetch_region_class_block(region_e &alloc_region, uint32_t b
     alloc_region = new_region;
     addr = get_region_block_addr(alloc_region, index*(block_class + 1));
     rkey = get_region_class_block_rkey(alloc_region, index*(block_class + 1));
+    if(alloc_region.class_map_ == bitmap16_filled) {
+        uint32_t fast_index = get_section_class_index(alloc_region.offset_/region_per_section, block_class);
+        section_class_e section_class_header;
+        remote_read(&section_class_header, sizeof(section_class_e), section_class_metadata_addr(fast_index), global_rkey_);
+        section_class_e new_section_class_header = section_class_header;
+        do {
+            new_section_class_header = section_class_header;
+            new_section_class_header.alloc_map_ |= 1 << alloc_region.offset_%region_per_section;
+            new_section_class_header.class_map_ |= 1 << alloc_region.offset_%region_per_section;
+        } while(!remote_CAS(*(uint64_t*)&new_section_class_header, (uint64_t*)&section_class_header, section_class_metadata_addr(fast_index), global_rkey_));
+    }
     return true;
 }
 
@@ -1410,10 +1434,12 @@ int RDMAConnection::fetch_region_class_batch(region_e &alloc_region, uint32_t bl
     uint64_t free_item = 0;
     do{
         if(alloc_region.exclusive_ != is_exclusive || alloc_region.block_class_ != block_class) {
+            printf("exclusive or block class not fit\n");
             return 0;
         } 
         new_region = alloc_region;
         if((free_item = free_bit_in_bitmap16(alloc_region.class_map_)) == 0) {
+            // printf("no free block any more\n");
             return 0;
         }
         free_item = num < free_item ? num : free_item;
@@ -1434,6 +1460,18 @@ int RDMAConnection::fetch_region_class_batch(region_e &alloc_region, uint32_t bl
     for(int i = 0; i < free_item; i++){
         addr[i].rkey = rkey_list[addr[i].addr];
         addr[i].addr = get_region_block_addr(alloc_region, addr[i].addr);    
+    }
+    if(alloc_region.class_map_ == bitmap16_filled) {
+        uint32_t fast_index = get_section_class_index(alloc_region.offset_/region_per_section, block_class);
+        section_class_e section_class_header;
+        remote_read(&section_class_header, sizeof(section_class_e), section_class_metadata_addr(fast_index), global_rkey_);
+        section_class_e new_section_class_header = section_class_header;
+        uint32_t class_map = section_class_header.class_map_ & section_class_header.alloc_map_;
+        do {
+            new_section_class_header = section_class_header;
+            new_section_class_header.alloc_map_ |= 1 << alloc_region.offset_%region_per_section;
+            new_section_class_header.class_map_ |= 1 << alloc_region.offset_%region_per_section;
+        } while(!remote_CAS(*(uint64_t*)&new_section_class_header, (uint64_t*)&section_class_header, section_class_metadata_addr(fast_index), global_rkey_));
     }
     return free_item;
 }
@@ -1463,16 +1501,14 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
             new_region.base_map_ &= ~(uint32_t)(1<<region_block_offset);
         } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region, region_metadata_addr(region_offset), global_rkey_));
         // printf("free: %p, region id:%u, bitmap from %x to %x\n", addr, new_region.offset_ , region.base_map_, new_region.base_map_);
-        if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > block_per_region/3 && free_bit_in_bitmap32(region.base_map_) <= block_per_region/3){
-            update_section(new_region, alloc_class, alloc_exclusive);
-        } 
-        else if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > 2*block_per_region/3 && free_bit_in_bitmap32(region.base_map_) <= 2*block_per_region/3){
-            update_section(new_region, alloc_no_class, alloc_class); 
-        } 
-        else if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) == block_per_region){
+        if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) == block_per_region){
             update_section(new_region, alloc_empty, alloc_no_class); 
             return -2;
-        }
+        } else if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > 2*block_per_region/3 && free_bit_in_bitmap32(region.base_map_) <= 2*block_per_region/3){
+            update_section(new_region, alloc_no_class, alloc_class); 
+        } else if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > block_per_region/3 && free_bit_in_bitmap32(region.base_map_) <= block_per_region/3){
+            update_section(new_region, alloc_class, alloc_exclusive);
+        } 
         region = new_region;
         return 0;
     } else {
@@ -1500,17 +1536,17 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
         //     return -2-block_class;
         //     // }
         // } else 
-        if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > block_per_region/(block_class+1)/4 && free_bit_in_bitmap16(region.class_map_) <= block_per_region/(block_class+1)/4){
-            // printf("[Attention] try to add fast region %lx\n", addr);
+        if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) == block_per_region/(block_class+1)){
             try_add_section_class(region_offset/region_per_section, block_class, new_region);
+            return -2;
         } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > 3*block_per_region/(block_class+1)/4 && free_bit_in_bitmap16(region.class_map_) <= 3*block_per_region/(block_class+1)/4) {
             try_add_section_class(region_offset/region_per_section, block_class, new_region);
         } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > 1*block_per_region/(block_class+1)/2 && free_bit_in_bitmap16(region.class_map_) <= 1*block_per_region/(block_class+1)/2) {
             try_add_section_class(region_offset/region_per_section, block_class, new_region);
-        } else if(!is_exclusive && free_bit_in_bitmap32(new_region.class_map_) == block_per_region/(block_class+1)){
+        } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > block_per_region/(block_class+1)/4 && free_bit_in_bitmap16(region.class_map_) <= block_per_region/(block_class+1)/4){
+            // printf("[Attention] try to add fast region %lx\n", addr);
             try_add_section_class(region_offset/region_per_section, block_class, new_region);
-            return -2;
-        }
+        }  
         region = new_region;
         // printf("free a class %u block %lx, newkey is %u\n", new_region.block_class_, addr, new_rkey);
         return block_class;

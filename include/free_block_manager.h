@@ -224,7 +224,7 @@ public:
     inline bool check_section(section_e alloc_section, alloc_advise advise, uint32_t offset);
     uint64_t get_heap_start() {return heap_start_;};
     bool update_section(region_e region, alloc_advise advise, alloc_advise compare);
-    bool find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
+    bool find_section(uint16_t block_class, section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
 
     bool fetch_large_region(section_e &alloc_section, uint32_t section_offset, uint64_t region_num, uint64_t &addr) ;
     bool fetch_region(section_e &alloc_section, uint32_t section_offset, uint32_t block_class, bool shared, region_e &alloc_region) ;

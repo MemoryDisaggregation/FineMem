@@ -136,8 +136,8 @@ bool ComputingNode::start(const std::string addr, const std::string port){
             class_cache_upper_bound[i] = 2;
             ret &= fill_cache_block(i);
         }
-        // class_cache_upper_bound[7] = 256;
-        // fill_cache_block(7);
+        // class_cache_upper_bound[8] = 256;
+        // fill_cache_block(8);
         if(!ret) {
             printf("init cache failed\n");
             return false;
@@ -175,11 +175,19 @@ bool ComputingNode::start(const std::string addr, const std::string port){
     return true;
 }
 
-void ComputingNode::increase_class_watermark(int &upper_bound) {
-    if(upper_bound < block_per_region) {
+void ComputingNode::increase_class_watermark(uint16_t block_class, int &upper_bound) {
+    if(upper_bound < block_per_region/(block_class+1)) {
         upper_bound *= 2;
     } else {
-        upper_bound += 1;
+        upper_bound += block_per_region/(block_class+1);
+    }
+}
+
+void ComputingNode::decrease_class_watermark(uint16_t block_class, int &upper_bound) {
+    if(upper_bound < block_per_region/(block_class+1)) {
+        upper_bound /= 2;
+    } else {
+        upper_bound -= block_per_region/(block_class+1);
     }
 }
 
@@ -209,7 +217,7 @@ void ComputingNode::decrease_watermark(int &upper_bound) {
 void ComputingNode::pre_fetcher() {
     uint64_t update_time = time_stamp_;
     uint32_t length;
-    uint64_t addr, batch_addr[max_free_item];
+    uint64_t addr, batch_addr[max_free_item], class_addr[max_class_free_item];
     bool block_breakdown = false, class_breakdown = false;
     cache_upper_bound = block_per_region;
     for(int i = 1; i < class_num; i++) {
@@ -224,8 +232,10 @@ void ComputingNode::pre_fetcher() {
             }
         }
         for(int i = 0; i < class_num; i++){
-            if(cpu_cache_->fetch_class_free_cache(i, addr)) {
-                free_mem_block(addr);
+            if((length = cpu_cache_->fetch_class_free_cache(i, class_addr)) != 0) {
+                // printf("free class %d of %d blocks \n", i, length);
+                for(int j = 0; j < length; j++)
+                    free_mem_block(class_addr[j]);
                 // printf("add free class %d cache addr:%lx, current:%u\n", i, addr, ring_class_cache[i]->get_length());
             }
         }
@@ -238,7 +248,7 @@ void ComputingNode::pre_fetcher() {
         for(int i = 1; i < class_num; i++) {
             if(ring_class_cache[i]->get_length() == 0) {
                 class_breakdown = true;
-                increase_class_watermark(class_cache_upper_bound[i]);
+                increase_class_watermark(i, class_cache_upper_bound[i]);
                 fill_cache_block(i);
                 // printf("class %d watermark: %lu, free space: %u, total used mem:%luMiB\n", i, class_cache_upper_bound[i], ring_class_cache[i]->get_length(), fill_counter*4);
             }
@@ -269,10 +279,10 @@ void ComputingNode::pre_fetcher() {
                 for(int i = 1; i < class_num; i++) {
                     length = ring_class_cache[i]->get_length();
                     if(length <= class_cache_upper_bound[i] * cache_watermark_low) {
-                        increase_class_watermark(class_cache_upper_bound[i]);
+                        increase_class_watermark(i, class_cache_upper_bound[i]);
                         fill_cache_block(i);
                     } else if(length < class_cache_upper_bound[i] && length >= class_cache_upper_bound[i] * cache_watermark_high) {
-                        decrease_watermark(class_cache_upper_bound[i]) ;
+                        decrease_class_watermark(i, class_cache_upper_bound[i]) ;
                         fill_cache_block(i);
                     } else if(length < class_cache_upper_bound[i] ) {
                         fill_cache_block(i);
@@ -288,7 +298,7 @@ void ComputingNode::pre_fetcher() {
 }
 
 void ComputingNode::recycler() {
-    uint64_t addr, batch_addr[max_free_item], length;
+    uint64_t addr, batch_addr[max_free_item], length, class_addr[max_class_free_item];
     while(running) {
         for(int i = 0; i < nprocs; i++){
             if((length = cpu_cache_->fetch_free_cache(i, batch_addr)) != 0) {
@@ -298,8 +308,9 @@ void ComputingNode::recycler() {
             }
         }
         for(int i = 0; i < class_num; i++){
-            if(cpu_cache_->fetch_class_free_cache(i, addr)) {
-                free_mem_block(addr);
+            if((length = cpu_cache_->fetch_class_free_cache(i, class_addr)) != 0) {
+                for(int j = 0; j < length; j++)
+                    free_mem_block(class_addr[j]);
                 // printf("add free class %d cache addr:%lx, current:%u\n", i, addr, ring_class_cache[i]->get_length());
             }
         }
@@ -378,8 +389,8 @@ void ComputingNode::cache_filler() {
             int free_ = cpu_cache_->get_class_length(i);
             if(free_ == 0){
                 // printf("class %d watermark:%d\n", i, cpu_class_watermark[i]);
-               if ( cpu_class_watermark[i] < 16)
-                    cpu_class_watermark[i] += 1;
+               if ( cpu_class_watermark[i] < 32)
+                    cpu_class_watermark[i] *= 2;
                 if(!ring_class_cache[i]->try_fetch_batch(class_batch_addr, cpu_class_watermark[i])){
                     for( int j = 0; j < cpu_class_watermark[i]; j++){
                         if(!fetch_mem_class_block(i, class_batch_addr[j].addr, class_batch_addr[j].rkey)){
@@ -427,8 +438,8 @@ void ComputingNode::cache_filler() {
 }
 
 bool ComputingNode::new_cache_section(uint32_t block_class, alloc_advise advise){
-    if(!m_rdma_conn_->find_section(current_section_, current_section_index_, advise) ) {
-        printf("cannot find avaliable section\n");
+    if(!m_rdma_conn_->find_section(block_class, current_section_, current_section_index_, advise) ) {
+        printf("cannot find avaliable section of class %u\n", block_class);
         return false;
     }
     // printf("get new cache section:%d\n", current_section_index_);
@@ -437,8 +448,8 @@ bool ComputingNode::new_cache_section(uint32_t block_class, alloc_advise advise)
 }
 
 bool ComputingNode::new_backup_section(){
-    if(!m_rdma_conn_->find_section(backup_section_, backup_section_index_, alloc_no_class) ) {
-        printf("cannot find avaliable section\n");
+    if(!m_rdma_conn_->find_section(0, backup_section_, backup_section_index_, alloc_no_class) ) {
+        printf("cannot find avaliable backup section\n");
         return false;
     }
     // printf("get new backup section:%d\n", backup_section_index_);
@@ -461,9 +472,12 @@ bool ComputingNode::new_cache_region(uint32_t block_class) {
     } else {
         while(!m_rdma_conn_->fetch_region(current_section_, current_section_index_, block_class, true, current_class_region_[block_class]) ) {
             if(!new_cache_section(block_class, alloc_class)) {
+                printf("cache region: find section failed\n");
                 return false;
             }
         }
+        exclusive_region_[current_class_region_[block_class].offset_].region = current_class_region_[block_class];
+        m_rdma_conn_->fetch_class_region_rkey(exclusive_region_[current_class_region_[block_class].offset_].region, exclusive_region_[current_class_region_[block_class].offset_].rkey);   
     }
     return true;
 }
@@ -536,6 +550,7 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
         while(request_block_num > 0){
             int get_num;
             while((get_num = m_rdma_conn_->fetch_region_class_batch(current_class_region_[block_class], block_class, addr, request_block_num, false)) == 0){
+                // printf("batch failed\n");
                 new_cache_region(block_class);
             }
             request_block_num -= get_num;
@@ -590,23 +605,30 @@ bool ComputingNode::free_mem_block(uint64_t addr){
     uint64_t region_offset = (addr - heap_start_) / region_size_;
     uint64_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
     region_with_rkey* region;
-    if(ring_cache->get_length() < cache_upper_bound * cache_watermark_high) {
-        if(exclusive_region_[region_offset].region.exclusive_ == 1 ) {
-            mr_rdma_addr result; 
-            result.addr = addr; 
-            result.rkey = exclusive_region_[region_offset].rkey[region_block_offset];
-            // printf("exclusive GC %p, %u\n", result.addr, result.rkey);
-            ring_cache->add_cache(result);
-            return true;
-        } else {
-            mr_rdma_addr result; 
-            result.addr = addr; 
-            // result.rkey = m_rdma_conn_->get_region_block_rkey(exclusive_region_[region_offset].region, region_block_offset);
-            result.rkey = exclusive_region_[region_offset].rkey[region_block_offset];
-            // printf("share GC %p, %u\n", result.addr, result.rkey);
-            ring_cache->add_cache(result);
-            return true;
-        }
+    if(exclusive_region_[region_offset].region.exclusive_ == 1 && ring_cache->get_length() < cache_upper_bound * cache_watermark_high) {
+        mr_rdma_addr result; 
+        result.addr = addr; 
+        result.rkey = exclusive_region_[region_offset].rkey[region_block_offset];
+        // printf("exclusive GC %p, %u\n", result.addr, result.rkey);
+        ring_cache->add_cache(result);
+        return true;
+    } else if(exclusive_region_[region_offset].region.block_class_ != 0 
+            && ring_class_cache[exclusive_region_[region_offset].region.block_class_]->get_length() < 
+            class_cache_upper_bound[exclusive_region_[region_offset].region.block_class_] * cache_watermark_high) {
+        mr_rdma_addr result; 
+        result.addr = addr; 
+        result.rkey = exclusive_region_[region_offset].rkey[region_block_offset];
+        // printf("class GC %p, %u\n", result.addr, result.rkey);
+        ring_class_cache[exclusive_region_[region_offset].region.block_class_]->add_cache(result);
+        return true;
+    } else if (exclusive_region_[region_offset].region.block_class_ == 0 && ring_cache->get_length() < cache_upper_bound * cache_watermark_high){
+        mr_rdma_addr result; 
+        result.addr = addr; 
+        // result.rkey = m_rdma_conn_->get_region_block_rkey(exclusive_region_[region_offset].region, region_block_offset);
+        result.rkey = exclusive_region_[region_offset].rkey[region_block_offset];
+        // printf("share GC %p, %u\n", result.addr, result.rkey);
+        ring_cache->add_cache(result);
+        return true;
     }
     if(region_offset == current_region_->region.offset_) {
         region = current_region_;  
@@ -624,13 +646,22 @@ bool ComputingNode::free_mem_block(uint64_t addr){
             printf("Free the remote metadata failed\n");
             return false;
         }
+        if(exclusive_region_[region_offset].region.block_class_ != 0 && free_class == -2) {
+            if(region_offset == current_class_region_[exclusive_region_[region_offset].region.block_class_].offset_) {
+                printf("try to full empty\n");
+                m_rdma_conn_->set_region_empty(current_class_region_[exclusive_region_[region_offset].region.block_class_]);
+                new_cache_region(exclusive_region_[region_offset].region.block_class_);
+                exclusive_region_[region_offset].region.block_class_ = 0;
+                exclusive_region_[region_offset].region.exclusive_ = 0;
+            }
+        }
         if(free_class == -2 && region_offset == backup_region_.offset_){
+            m_rdma_conn_->set_region_empty(backup_region_);
             new_backup_region();
-        } else 
-        if(region_offset == backup_region_.offset_) {
+        } else if(region_offset == backup_region_.offset_) {
             backup_region_.base_map_ &= ~(uint32_t)(1<<region_block_offset);  
         }
-        if(free_class == -2) free_class = 1;
+        if(free_class == -2) free_class = exclusive_region_[region_offset].region.block_class_;
         fill_counter -= (free_class+1);
         return true;
     } else {

@@ -160,7 +160,7 @@ bool MemoryNode::start(const std::string addr, const std::string port, const std
 
 bool MemoryNode::new_cache_section(uint32_t block_class){
     alloc_advise advise = (block_class == 0?alloc_no_class:alloc_class);
-    if(!server_block_manager_->find_section(current_section_, current_section_index_, advise) ) {
+    if(!server_block_manager_->find_section(block_class, current_section_, current_section_index_, advise) ) {
         printf("cannot find avaliable section\n");
         return false;
     }

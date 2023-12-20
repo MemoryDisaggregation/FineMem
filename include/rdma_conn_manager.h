@@ -84,7 +84,7 @@ class ConnectionManager {
     };
 
     bool update_section(region_e region, alloc_advise advise, alloc_advise compare);
-    bool find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
+    bool find_section(uint16_t block_class, section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
 
     bool fetch_large_region(section_e &alloc_section, uint32_t section_offset, uint64_t region_num, uint64_t &addr) ;
     bool fetch_region(section_e &alloc_section, uint32_t section_offset, uint32_t block_class, bool shared, region_e &alloc_region) ;
@@ -104,6 +104,7 @@ class ConnectionManager {
     bool free_block(uint16_t block_class, uint64_t addr) ;
 
     bool fetch_exclusive_region_rkey(region_e &alloc_region, uint32_t* rkey_list);
+    bool fetch_class_region_rkey(region_e &alloc_region, uint32_t* rkey_list);
     int free_region_block(uint64_t addr, bool is_exclusive) ;
 
     inline uint32_t get_addr_region_index(uint64_t addr) {return (addr-heap_start_) / region_size_;};

@@ -34,7 +34,7 @@ void* worker(void* arg) {
     uint32_t cache_section_index;
     mralloc::section_e cache_section;
     mralloc::region_e cache_region;
-    conn->find_section(cache_section, cache_section_index, mralloc::alloc_class);
+    conn->find_section(7, cache_section, cache_section_index, mralloc::alloc_class);
     conn->fetch_region(cache_section, cache_section_index, 7, true, cache_region);
     for(int j = 0; j < epoch; j ++) {
         // malloc
@@ -44,7 +44,7 @@ void* worker(void* arg) {
             int index = 0 ;
             while(!conn->fetch_region_class_block(cache_region, 7, addr[i], rkey[i], false)){
                 while(!conn->fetch_region(cache_section, cache_section_index, 7, true, cache_region)){
-                    conn->find_section(cache_section, cache_section_index, mralloc::alloc_class);
+                    conn->find_section(7, cache_section, cache_section_index, mralloc::alloc_class);
                 }
             }
         }
