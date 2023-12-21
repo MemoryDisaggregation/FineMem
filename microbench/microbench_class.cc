@@ -592,7 +592,7 @@ int main(int argc, char* argv[]) {
     }
 
     std::ofstream result;
-    result.open("result_" + allocator_type + "_"  + trace_type + "_.csv");
+    result.open("result_class_" + allocator_type + "_"  + trace_type + "_.csv");
     
     for(int i=0;i<1000;i++){
         malloc_record_global[i].store(0);

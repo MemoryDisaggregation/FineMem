@@ -17,7 +17,7 @@
 
 namespace mralloc {
 
-const uint32_t nprocs = 64;
+const uint32_t nprocs = 70;
 const uint32_t max_alloc_item = 256;
 const uint32_t max_free_item = 256;
 const uint32_t max_class_free_item = 512;

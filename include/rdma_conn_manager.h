@@ -123,6 +123,7 @@ class ConnectionManager {
         remote_read(&rkey, sizeof(rkey), class_block_rkey_ + (region.offset_*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
         return rkey;
     };
+    inline uint32_t get_block_num() {return block_num_;};
 
  private:
     

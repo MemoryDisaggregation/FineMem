@@ -1260,7 +1260,7 @@ bool RDMAConnection::set_region_empty(region_e &alloc_region) {
         do {
             new_region = alloc_region;
             if(new_region.base_map_ != 0) {
-                printf("wait for free\n");
+                // printf("wait for free\n");
                 return false;
             }
             new_region.exclusive_ = 0;
@@ -1279,7 +1279,7 @@ bool RDMAConnection::set_region_empty(region_e &alloc_region) {
         do {
             new_region = alloc_region;
             if(new_region.base_map_ != 0) {
-                printf("wait for free\n");
+                // printf("wait for free\n");
                 return false;
             }
             new_region.exclusive_ = 0;
@@ -1294,7 +1294,7 @@ bool RDMAConnection::set_region_empty(region_e &alloc_region) {
         do {
             new_region = alloc_region;
             if(free_bit_in_bitmap16(new_region.class_map_) != block_per_region/(new_region.block_class_+1)) {
-                printf("wait for free\n");
+                // printf("wait for free\n");
                 return false;
             }
             new_region.exclusive_ = 0;
@@ -1556,11 +1556,15 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
 
 bool RDMAConnection::fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) {
     uint64_t old_header = 0, new_header = 1, hint = block_hint % block_num_;
+    uint16_t counter = 0;
     while(!remote_CAS(*(uint64_t*)&new_header, (uint64_t*)&old_header, block_header_ + hint * sizeof(uint64_t), global_rkey_)){
         hint = (hint + 1) % block_num_;
         old_header = 0; new_header = 1;
         if(hint == block_hint) {
-            return false;
+            counter ++;
+            if(counter >3) {
+                return false;
+            }
         }
     };
     addr = get_block_addr(hint);
