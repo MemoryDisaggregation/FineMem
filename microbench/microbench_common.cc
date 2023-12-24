@@ -132,16 +132,16 @@ public:
     exclusive_allocator(mralloc::ConnectionManager* conn) {
         conn_ = conn;
         conn->find_section(0, cache_section, cache_section_index, mralloc::alloc_empty);
-        conn->fetch_region(cache_section, cache_section_index, 0, false, cache_region.region, cache_region_index);
-        conn->fetch_exclusive_region_rkey(cache_region_index, cache_region.rkey);
-        region_record[cache_region_index] = cache_region;
+        conn->fetch_region(cache_section, cache_section_index, 0, false, cache_region.region, cache_region.index);
+        conn->fetch_exclusive_region_rkey(cache_region.index, cache_region.rkey);
+        region_record[cache_region.index] = cache_region;
     }
     ~exclusive_allocator() {};
     bool malloc(uint64_t &addr, uint32_t &rkey) override {
         int index = 0 ;
         while((index = mralloc::find_free_index_from_bitmap32_tail(cache_region.region.base_map_)) == -1 ){
             bool cache_useful = false;
-            region_record[cache_region_index].region = cache_region.region;
+            region_record[cache_region.index].region = cache_region.region;
             for(auto iter = region_record.begin(); iter != region_record.end(); iter ++) {
                 if((index = mralloc::find_free_index_from_bitmap32_tail(iter->second.region.base_map_)) != -1){
                     cache_region = iter->second;
@@ -150,24 +150,24 @@ public:
                 }
             }
             if(!cache_useful) {
-                while(!conn_->fetch_region(cache_section, cache_section_index, 0, false, cache_region.region, cache_region_index)){
+                while(!conn_->fetch_region(cache_section, cache_section_index, 0, false, cache_region.region, cache_region.index)){
                     if(!conn_->find_section(0, cache_section, cache_section_index, mralloc::alloc_empty)) {
                         return false;
                     }
                 }
-                conn_->fetch_exclusive_region_rkey(cache_region_index, cache_region.rkey);
-                region_record[cache_region_index] = cache_region;
+                conn_->fetch_exclusive_region_rkey(cache_region.index, cache_region.rkey);
+                region_record[cache_region.index] = cache_region;
             }
         }
         cache_region.region.base_map_ |= 1<<index;
-        addr = conn_->get_region_block_addr(cache_region_index, index);
+        addr = conn_->get_region_block_addr(cache_region.index, index);
         rkey = cache_region.rkey[index];
         return true;
     };
     bool free(uint64_t addr) override {
         uint32_t index = conn_->get_addr_region_index(addr);
         uint32_t offset = conn_->get_addr_region_offset(addr);
-        if(index == cache_region_index) {
+        if(index == cache_region.index) {
             cache_region.region.base_map_ &= ~(uint32_t)(1<<offset);
             // conn_->remote_rebind(addr, 0, cache_region.rkey[offset]);
         } else {
@@ -180,7 +180,6 @@ private:
     uint32_t cache_section_index;
     mralloc::section_e cache_section;
     mralloc::region_with_rkey cache_region;
-    uint32_t cache_region_index;
     std::unordered_map<uint32_t, mralloc::region_with_rkey> region_record;
     mralloc::ConnectionManager* conn_;
 };
