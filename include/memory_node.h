@@ -109,7 +109,7 @@ public:
     void print_alloc_info();
 
     bool init_mw(ibv_qp* qp, ibv_cq *cq);
-    bool init_class_mw(uint16_t region_offset, uint16_t block_class, ibv_qp* qp, ibv_cq *cq);
+    bool init_class_mw(uint32_t region_offset, uint16_t block_class, ibv_qp* qp, ibv_cq *cq);
     bool bind_mw(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq *cq);
     bool bind_mw_type2(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq *cq);
     bool unbind_mw_type2(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq *cq);
@@ -146,7 +146,9 @@ private:
     section_e current_section_;
     uint32_t current_section_index_;
     region_e current_region_;
+    uint32_t current_region_index_;
     region_e current_class_region_[16];
+    uint32_t current_class_region_index_[16];
 
     // << reserved block cache>>
     ring_buffer_atomic<mr_rdma_addr>* ring_cache;
@@ -157,6 +159,7 @@ private:
     uint64_t simple_cache_watermark;
     uint64_t simple_class_cache_addr[16][4];
     uint32_t simple_class_cache_rkey[16][4];
+    uint32_t simple_class_cache_index[16][4];
     uint64_t simple_class_cache_watermark[16];
 
     // << function enabled >>

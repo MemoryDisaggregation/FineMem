@@ -36,10 +36,11 @@ void* worker(void* arg) {
     int free_record[1000] = {0};
     uint64_t addr[iteration]; uint32_t rkey[iteration];
     uint32_t cache_section_index;
+    uint32_t cache_region_index;
     mralloc::section_e cache_section;
     mralloc::region_e cache_region;
     conn->find_section(0, cache_section, cache_section_index, mralloc::alloc_no_class);
-    conn->fetch_region(cache_section, cache_section_index, 0, true, cache_region);
+    conn->fetch_region(cache_section, cache_section_index, 0, true, cache_region, cache_region_index);
     for(int j = 0; j < epoch; j ++) {
         // malloc
         pthread_barrier_wait(&start_barrier);
@@ -48,9 +49,9 @@ void* worker(void* arg) {
             if(addr[i] != 0 && rkey[i] != 0) {
                 continue;
             }
-            while(!conn->fetch_region_block(cache_region, addr[i], rkey[i], false)){
+            while(!conn->fetch_region_block(cache_region, addr[i], rkey[i], false, cache_region_index)){
                 // printf("change region\n");
-                while(!conn->fetch_region(cache_section, cache_section_index, 0, true, cache_region)){
+                while(!conn->fetch_region(cache_section, cache_section_index, 0, true, cache_region, cache_region_index)){
                     // printf("change section\n");
                     conn->find_section(0, cache_section, cache_section_index, mralloc::alloc_no_class);
                 }
@@ -95,8 +96,8 @@ void* worker(void* arg) {
             if(rand()%100 > 20){
                 result = conn->free_region_block(addr[i], false);
                 addr[i] = 0; rkey[i] = 0;
-                if(result == -2 && conn->get_addr_region_index(addr[i]) != cache_region.offset_) {
-                    conn->set_region_empty(cache_region);
+                if(result == -2 && conn->get_addr_region_index(addr[i]) != cache_region_index) {
+                    conn->set_region_empty(cache_region, cache_region_index);
                 }
             }
         }

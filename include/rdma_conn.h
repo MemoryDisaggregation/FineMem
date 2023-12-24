@@ -57,7 +57,7 @@ public:
     int remote_free_block(uint64_t addr);
     int remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t &newkey);
     int remote_rebind(uint64_t addr, uint32_t block_class, uint32_t &newkey);
-    int remote_class_bind(uint16_t region_offset, uint16_t block_class);
+    int remote_class_bind(uint32_t region_offset, uint16_t block_class);
     int remote_memzero(uint64_t addr, uint64_t size);
     int remote_fusee_alloc(uint64_t &addr, uint32_t &rkey);
     int remote_print_alloc_info();
@@ -76,32 +76,32 @@ public:
 
     uint64_t get_heap_start() {return heap_start_;};
     inline bool check_section(section_e alloc_section, alloc_advise advise, uint32_t offset);
-    bool update_section(region_e region, alloc_advise advise, alloc_advise compare);
+    bool update_section(uint32_t region_index, alloc_advise advise, alloc_advise compare);
     bool find_section(uint16_t block_class, section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
 
     bool fetch_large_region(section_e &alloc_section, uint32_t section_offset, uint64_t region_num, uint64_t &addr) ;
-    bool fetch_region(section_e &alloc_section, uint32_t section_offset, uint32_t block_class, bool shared, region_e &alloc_region) ;
-    bool try_add_section_class(uint32_t section_offset, uint32_t block_class, region_e &alloc_region);
-    bool set_region_exclusive(region_e &alloc_region);
-    bool set_region_empty(region_e &alloc_region);
-    bool fetch_exclusive_region_rkey(region_e &alloc_region, uint32_t* rkey_list) {
-        remote_read(rkey_list, sizeof(uint32_t)*block_per_region, block_rkey_ + alloc_region.offset_*block_per_region*sizeof(uint32_t), global_rkey_);
+    bool fetch_region(section_e &alloc_section, uint32_t section_offset, uint32_t block_class, bool shared, region_e &alloc_region, uint32_t &region_index) ;
+    bool try_add_section_class(uint32_t section_offset, uint32_t block_class, uint32_t region_index);
+    bool set_region_exclusive(region_e &alloc_region, uint32_t region_index);
+    bool set_region_empty(region_e &alloc_region, uint32_t region_index);
+    bool fetch_exclusive_region_rkey(uint32_t region_index, uint32_t* rkey_list) {
+        remote_read(rkey_list, sizeof(uint32_t)*block_per_region, block_rkey_ + region_index*block_per_region*sizeof(uint32_t), global_rkey_);
         return true;
     }
 
-    bool fetch_class_region_rkey(region_e &alloc_region, uint32_t* rkey_list) {
-        remote_read(rkey_list, sizeof(uint32_t)*block_per_region, class_block_rkey_ + alloc_region.offset_*block_per_region*sizeof(uint32_t), global_rkey_);
+    bool fetch_class_region_rkey(uint32_t region_index, uint32_t* rkey_list) {
+        remote_read(rkey_list, sizeof(uint32_t)*block_per_region, class_block_rkey_ + region_index*block_per_region*sizeof(uint32_t), global_rkey_);
         return true;
     }
 
     inline uint32_t get_section_class_index(uint32_t section_offset, uint32_t block_class) {return section_offset*block_class_num + block_class;};
     inline uint64_t get_section_region_addr(uint32_t section_offset, uint32_t region_offset) {return heap_start_ + section_offset*section_size_ + region_offset * region_size_ ;};
-    inline uint64_t get_region_addr(region_e region) {return heap_start_ + region.offset_ * region_size_;};
-    inline uint64_t get_region_block_addr(region_e region, uint32_t block_offset) {return heap_start_ + region.offset_ * region_size_ + block_offset * block_size_;} ;
+    inline uint64_t get_region_addr(uint32_t region_index) {return heap_start_ + region_index * region_size_;};
+    inline uint64_t get_region_block_addr(uint32_t region_index, uint32_t block_offset) {return heap_start_ + region_index * region_size_ + block_offset * block_size_;} ;
     inline uint64_t get_block_addr(uint32_t block_offset) {return heap_start_ + block_offset * block_size_;} ;
-    inline uint32_t get_region_block_rkey(region_e region, uint32_t block_offset) {
+    inline uint32_t get_region_block_rkey(uint32_t region_index, uint32_t block_offset) {
         uint32_t rkey;
-        remote_read(&rkey, sizeof(rkey), block_rkey_ + (region.offset_*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
+        remote_read(&rkey, sizeof(rkey), block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
         return rkey;
     };
     inline uint32_t get_block_rkey(uint32_t block_offset) {
@@ -109,17 +109,17 @@ public:
         remote_read(&rkey, sizeof(rkey), block_rkey_ + (block_offset)*sizeof(uint32_t), global_rkey_);
         return rkey;
     };
-    inline uint32_t get_region_class_block_rkey(region_e region, uint32_t block_offset) {
+    inline uint32_t get_region_class_block_rkey(uint32_t region_index, uint32_t block_offset) {
         uint32_t rkey;
-        remote_read(&rkey, sizeof(rkey), class_block_rkey_ + (region.offset_*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
+        remote_read(&rkey, sizeof(rkey), class_block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
         return rkey;
     };
     
-    bool init_region_class(region_e &alloc_region, uint32_t block_class, bool is_exclusive);
-    bool fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive) ;
-    int fetch_region_batch(region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive) ;
-    bool fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive) ;
-    int fetch_region_class_batch(region_e &alloc_region, uint32_t block_class, mr_rdma_addr* addr, uint64_t num, bool is_exclusive) ;
+    bool init_region_class(region_e &alloc_region, uint32_t block_class, bool is_exclusive, uint32_t region_index);
+    bool fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) ;
+    int fetch_region_batch(region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive, uint32_t region_index) ;
+    bool fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) ;
+    int fetch_region_class_batch(region_e &alloc_region, uint32_t block_class, mr_rdma_addr* addr, uint64_t num, bool is_exclusive, uint32_t region_index) ;
     int free_region_block(uint64_t addr, bool is_exclusive) ;
 
     bool fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;

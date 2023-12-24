@@ -38,11 +38,12 @@ void* worker(void* arg) {
     uint32_t cache_section_index;
     mralloc::section_e cache_section;
     mralloc::region_with_rkey cache_region;
-    std::unordered_map<uint16_t, mralloc::region_with_rkey> region_record;
+    uint32_t cache_region_index;
+    std::unordered_map<uint32_t, mralloc::region_with_rkey> region_record;
     conn->find_section(0, cache_section, cache_section_index, mralloc::alloc_empty);
-    conn->fetch_region(cache_section, cache_section_index, 0, false, cache_region.region);
-    conn->fetch_exclusive_region_rkey(cache_region.region, cache_region.rkey);
-    region_record[cache_region.region.offset_] = cache_region;
+    conn->fetch_region(cache_section, cache_section_index, 0, false, cache_region.region, cache_region_index);
+    conn->fetch_exclusive_region_rkey(cache_region_index, cache_region.rkey);
+    region_record[cache_region_index] = cache_region;
     for(int j = 0; j < epoch; j ++) {
         // malloc
         pthread_barrier_wait(&start_barrier);
@@ -52,7 +53,7 @@ void* worker(void* arg) {
             while((index = mralloc::find_free_index_from_bitmap32_tail(cache_region.region.base_map_)) == -1 ){
                 // printf("cannot happen?\n");
                 bool cache_useful = false;
-                region_record[cache_region.region.offset_].region = cache_region.region;
+                region_record[cache_region_index].region = cache_region.region;
                 for(auto iter = region_record.begin(); iter != region_record.end(); iter ++) {
                     if((index = mralloc::find_free_index_from_bitmap32_tail(iter->second.region.base_map_)) != -1){
                         cache_region = iter->second;
@@ -61,15 +62,15 @@ void* worker(void* arg) {
                     }
                 }
                 if(!cache_useful) {
-                    while(!conn->fetch_region(cache_section, cache_section_index, 0, false, cache_region.region)){
+                    while(!conn->fetch_region(cache_section, cache_section_index, 0, false, cache_region.region, cache_region_index)){
                         conn->find_section(0, cache_section, cache_section_index, mralloc::alloc_empty);
                     }
-                    conn->fetch_exclusive_region_rkey(cache_region.region, cache_region.rkey);
-                    region_record[cache_region.region.offset_] = cache_region;
+                    conn->fetch_exclusive_region_rkey(cache_region_index, cache_region.rkey);
+                    region_record[cache_region_index] = cache_region;
                 }
             }
             cache_region.region.base_map_ |= 1<<index;
-            addr[i] = conn->get_region_block_addr(cache_region.region, index);
+            addr[i] = conn->get_region_block_addr(cache_region_index, index);
             rkey[i] = cache_region.rkey[index];
         }
         gettimeofday(&end, NULL);
@@ -107,9 +108,9 @@ void* worker(void* arg) {
         gettimeofday(&start, NULL);
         for(int i = 0; i < iteration; i ++){
             if(rand()%100 > 2) {
-                uint16_t index = conn->get_addr_region_index(addr[i]);
+                uint32_t index = conn->get_addr_region_index(addr[i]);
                 uint32_t offset = conn->get_addr_region_offset(addr[i]);
-                if(index == cache_region.region.offset_) {
+                if(index == cache_region_index) {
                     cache_region.region.base_map_ &= ~(uint32_t)(1<<offset);
                     conn->remote_rebind(addr[i], 0, cache_region.rkey[offset]);
                 } else {

@@ -169,12 +169,13 @@ bool MemoryNode::new_cache_section(uint32_t block_class){
 
 bool MemoryNode::new_cache_region(uint32_t block_class) {
     if(block_class == 0){
-        while(!server_block_manager_->fetch_region(current_section_, current_section_index_, block_class, true, current_region_) ) {
+        while(!server_block_manager_->fetch_region(current_section_, current_section_index_, block_class, true, current_region_, current_region_index_) ) {
             if(!new_cache_section(block_class))
                 return false;
         }
     } else {
-        while(!server_block_manager_->fetch_region(current_section_, current_section_index_, block_class, true, current_class_region_[block_class]) ) {
+        while(!server_block_manager_->fetch_region(current_section_, 
+                current_section_index_, block_class, true, current_class_region_[block_class], current_class_region_index_[block_class]) ) {
             if(!new_cache_section(block_class))
                 return false;
         }
@@ -187,7 +188,7 @@ bool MemoryNode::fill_cache_block(uint32_t block_class){
         uint32_t length = ring_cache->get_length();
         for(int i = 0; i<simple_cache_watermark - length; i++){
             mr_rdma_addr addr;
-            while(!server_block_manager_->fetch_region_block(current_region_, addr.addr, addr.rkey, false)) {
+            while(!server_block_manager_->fetch_region_block(current_region_, addr.addr, addr.rkey, false, current_region_index_)) {
                 // fetch new region
                 new_cache_region(block_class);
             }
@@ -196,7 +197,7 @@ bool MemoryNode::fill_cache_block(uint32_t block_class){
     } else {
         for(int i = 0; i<simple_class_cache_watermark[block_class]; i++){
             while(!server_block_manager_->fetch_region_class_block(current_class_region_[block_class], block_class, simple_class_cache_addr[block_class][i], 
-                simple_class_cache_rkey[block_class][i], false)) {
+                simple_class_cache_rkey[block_class][i], false, simple_class_cache_index[block_class][i])) {
                 // fetch new region
                 new_cache_region(block_class);
             }
@@ -497,7 +498,7 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
     return true;
 }
 
-bool MemoryNode::init_class_mw(uint16_t region_offset, uint16_t block_class, ibv_qp* qp, ibv_cq *cq) {
+bool MemoryNode::init_class_mw(uint32_t region_offset, uint16_t block_class, ibv_qp* qp, ibv_cq *cq) {
     uint32_t class_size = block_class + 1;
     uint32_t block_offset = region_offset * block_per_region;
     for(int i = 0; i < block_per_region/class_size; i++){

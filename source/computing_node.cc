@@ -120,8 +120,8 @@ bool ComputingNode::start(const std::string addr, const std::string port){
         class_block_rkey_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
         heap_start_ = m_one_side_info_.heap_start_;
         exclusive_region_ = (region_with_rkey*)malloc(sizeof(region_with_rkey) * region_num_);
-        for(int i = 0; i < region_num_; i++)
-            exclusive_region_[i].region.offset_ = i;
+        // for(int i = 0; i < region_num_; i++)
+        //     exclusive_region_[i].region.offset_ = i;
 
         ret = new_cache_section(0, alloc_empty);
         ret &= new_backup_section();
@@ -459,40 +459,43 @@ bool ComputingNode::new_backup_section(){
 bool ComputingNode::new_cache_region(uint32_t block_class) {
     if(block_class == 0){
         // exclusive, and fetch rkey must
-        region_e new_region;
-        while(!m_rdma_conn_->fetch_region(current_section_, current_section_index_, block_class, false, new_region) ) {
+        region_e new_region; uint32_t new_region_index;
+        while(!m_rdma_conn_->fetch_region(current_section_, current_section_index_, block_class, false, new_region, new_region_index) ) {
             // printf("fetch_new section\n");
             if(!new_cache_section(block_class, alloc_empty)){
                 return false;
             }
         }
-        current_region_ = &exclusive_region_[new_region.offset_];
+        current_region_ = &exclusive_region_[new_region_index];
         current_region_->region = new_region;
-        m_rdma_conn_->fetch_exclusive_region_rkey(current_region_->region, current_region_->rkey);
+        current_region_->index = new_region_index;
+        m_rdma_conn_->fetch_exclusive_region_rkey(current_region_->index, current_region_->rkey);
     } else {
-        while(!m_rdma_conn_->fetch_region(current_section_, current_section_index_, block_class, true, current_class_region_[block_class]) ) {
+        while(!m_rdma_conn_->fetch_region(current_section_, current_section_index_, block_class, true, current_class_region_[block_class], current_class_region_index_[block_class]) ) {
             if(!new_cache_section(block_class, alloc_class)) {
                 printf("cache region: find section failed\n");
                 return false;
             }
         }
-        exclusive_region_[current_class_region_[block_class].offset_].region = current_class_region_[block_class];
-        m_rdma_conn_->fetch_class_region_rkey(exclusive_region_[current_class_region_[block_class].offset_].region, exclusive_region_[current_class_region_[block_class].offset_].rkey);   
+        exclusive_region_[current_class_region_index_[block_class]].region = current_class_region_[block_class];
+        exclusive_region_[current_class_region_index_[block_class]].index = current_class_region_index_[block_class];
+        m_rdma_conn_->fetch_class_region_rkey(current_class_region_index_[block_class], exclusive_region_[current_class_region_index_[block_class]].rkey);   
     }
     return true;
 }
 
 bool ComputingNode::new_backup_region() {
         // exclusive, and fetch rkey must
-    while(!m_rdma_conn_->fetch_region(backup_section_, backup_section_index_, 0, true, backup_region_) ) {
+    while(!m_rdma_conn_->fetch_region(backup_section_, backup_section_index_, 0, true, backup_region_, backup_region_index_) ) {
         // printf("fetch_new backup section\n");
         if(!new_backup_section()){
             return false;
         }
     }
     backup_counter += 1;
-    exclusive_region_[backup_region_.offset_].region = backup_region_;
-    m_rdma_conn_->fetch_exclusive_region_rkey(backup_region_, exclusive_region_[backup_region_.offset_].rkey);   
+    exclusive_region_[backup_region_index_].region = backup_region_;
+    exclusive_region_[backup_region_index_].index = backup_region_index_;
+    m_rdma_conn_->fetch_exclusive_region_rkey(backup_region_index_, exclusive_region_[backup_region_index_].rkey);   
     return true;
 }
 
@@ -503,7 +506,7 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
             if(current_region_->region.base_map_ != bitmap32_filled) {
                 int index = find_free_index_from_bitmap32_tail(current_region_->region.base_map_);
                 current_region_->region.base_map_ |= 1<<index;
-                mr_rdma_addr addr(get_region_block_addr(current_region_->region, index), current_region_->rkey[index]);
+                mr_rdma_addr addr(get_region_block_addr(current_region_->index, index), current_region_->rkey[index]);
                 // printf("exclusive addr: %p, rkey: %u\n", addr.addr, addr.rkey);
                 // printf("fill cache:%lx\n", addr.addr);
                 ring_cache->add_cache(addr);
@@ -528,11 +531,11 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
                 int block_num = cache_upper_bound - ring_cache->get_length(), get_num;
                 mr_rdma_addr addr[block_per_region];
                 while(block_num > 0){
-                    while((get_num = m_rdma_conn_->fetch_region_batch(backup_region_, addr, block_num, false)) == 0){
+                    while((get_num = m_rdma_conn_->fetch_region_batch(backup_region_, addr, block_num, false, backup_region_index_)) == 0){
                         new_backup_region();
                     }
                     // printf("block_num = %d, get_num = %d\n", block_num, get_num);
-                    uint64_t offset = backup_region_.offset_;
+                    uint64_t offset = backup_region_index_;
                     uint64_t region_start = heap_start_ + offset * region_size_;
                     for(int j = 0; j < get_num; j++) {
                         exclusive_region_[offset].rkey[(addr[j].addr-region_start)/block_size_] = addr[j].rkey;
@@ -549,7 +552,8 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
         mr_rdma_addr addr[block_per_region];
         while(request_block_num > 0){
             int get_num;
-            while((get_num = m_rdma_conn_->fetch_region_class_batch(current_class_region_[block_class], block_class, addr, request_block_num, false)) == 0){
+            while((get_num = m_rdma_conn_->fetch_region_class_batch(current_class_region_[block_class], 
+                    block_class, addr, request_block_num, false, current_class_region_index_[block_class])) == 0){
                 // printf("batch failed\n");
                 new_cache_region(block_class);
             }
@@ -630,7 +634,7 @@ bool ComputingNode::free_mem_block(uint64_t addr){
         ring_cache->add_cache(result);
         return true;
     }
-    if(region_offset == current_region_->region.offset_) {
+    if(region_offset == current_region_->index) {
         region = current_region_;  
         // if(!m_rdma_conn_->remote_rebind(addr, region->region.block_class_, region->rkey[region_block_offset])){
         if(true){
@@ -647,18 +651,18 @@ bool ComputingNode::free_mem_block(uint64_t addr){
             return false;
         }
         if(exclusive_region_[region_offset].region.block_class_ != 0 && free_class == -2) {
-            if(region_offset == current_class_region_[exclusive_region_[region_offset].region.block_class_].offset_) {
+            if(region_offset == current_class_region_index_[exclusive_region_[region_offset].region.block_class_]) {
                 printf("try to full empty\n");
-                m_rdma_conn_->set_region_empty(current_class_region_[exclusive_region_[region_offset].region.block_class_]);
+                m_rdma_conn_->set_region_empty(current_class_region_[exclusive_region_[region_offset].region.block_class_], region_offset);
                 new_cache_region(exclusive_region_[region_offset].region.block_class_);
                 exclusive_region_[region_offset].region.block_class_ = 0;
                 exclusive_region_[region_offset].region.exclusive_ = 0;
             }
         }
-        if(free_class == -2 && region_offset == backup_region_.offset_){
-            m_rdma_conn_->set_region_empty(backup_region_);
+        if(free_class == -2 && region_offset == backup_region_index_){
+            m_rdma_conn_->set_region_empty(backup_region_, region_offset);
             new_backup_region();
-        } else if(region_offset == backup_region_.offset_) {
+        } else if(region_offset == backup_region_index_) {
             backup_region_.base_map_ &= ~(uint32_t)(1<<region_block_offset);  
         }
         if(free_class == -2) free_class = exclusive_region_[region_offset].region.block_class_;
@@ -677,7 +681,7 @@ bool ComputingNode::free_mem_block(uint64_t addr){
                     free_region_.erase(result);
                 }
                 m_mutex_.unlock();
-                m_rdma_conn_->set_region_empty(region->region);
+                m_rdma_conn_->set_region_empty(region->region, region_offset);
                 region->region.exclusive_ = 0;
             }
             else if(free_bit_in_bitmap32(region->region.base_map_) < 2*block_per_region/3){
@@ -707,7 +711,7 @@ bool ComputingNode::free_mem_block(uint64_t addr){
 }
 
 bool ComputingNode::fetch_mem_block_nocached(uint64_t &addr, uint32_t &rkey){
-    while(!m_rdma_conn_->fetch_region_block(current_region_->region, addr,rkey, false)) {
+    while(!m_rdma_conn_->fetch_region_block(current_region_->region, addr,rkey, false, current_region_->index)) {
         // printf("fetch new region\n");
         new_cache_region(0);
     }

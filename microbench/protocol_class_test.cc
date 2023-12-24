@@ -32,18 +32,19 @@ void* worker(void* arg) {
     uint64_t addr[iteration]; uint32_t rkey[iteration];
     
     uint32_t cache_section_index;
+    uint32_t cache_region_index;
     mralloc::section_e cache_section;
     mralloc::region_e cache_region;
     conn->find_section(7, cache_section, cache_section_index, mralloc::alloc_class);
-    conn->fetch_region(cache_section, cache_section_index, 7, true, cache_region);
+    conn->fetch_region(cache_section, cache_section_index, 7, true, cache_region, cache_region_index);
     for(int j = 0; j < epoch; j ++) {
         // malloc
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < iteration; i ++){
             int index = 0 ;
-            while(!conn->fetch_region_class_block(cache_region, 7, addr[i], rkey[i], false)){
-                while(!conn->fetch_region(cache_section, cache_section_index, 7, true, cache_region)){
+            while(!conn->fetch_region_class_block(cache_region, 7, addr[i], rkey[i], false, cache_region_index)){
+                while(!conn->fetch_region(cache_section, cache_section_index, 7, true, cache_region, cache_region_index)){
                     conn->find_section(7, cache_section, cache_section_index, mralloc::alloc_class);
                 }
             }

@@ -82,7 +82,7 @@ public:
     void increase_watermark(int &upper_bound);
     void decrease_watermark(int &upper_bound);
 
-    inline uint64_t get_region_block_addr(region_e region, uint32_t block_offset) {return heap_start_ + region.offset_ * region_size_ + block_offset * block_size_;} ;
+    inline uint64_t get_region_block_addr(uint32_t region_index, uint32_t block_offset) {return heap_start_ + region_index * region_size_ + block_offset * block_size_;} ;
     bool new_cache_section(uint32_t block_class, alloc_advise advise);
     bool new_cache_region(uint32_t block_class);
     bool new_backup_region();
@@ -152,9 +152,11 @@ private:
     section_e backup_section_;
     uint32_t backup_section_index_;
     region_e backup_region_;
+    uint32_t backup_region_index_;
     int backup_counter = 0;
     int backup_cycle = 1;
     region_e current_class_region_[16];
+    uint32_t current_class_region_index_[16];
 
     // << reserved block cache>>
     ring_buffer_atomic<mr_rdma_addr>* ring_cache;

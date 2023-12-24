@@ -92,7 +92,7 @@ CHECK_RDMA_MSG_SIZE(FreeFastRequest);
 
 class ClassBindRequest : public RequestsMsg{
 public:
-    uint16_t region_offset;
+    uint32_t region_offset;
     uint16_t block_class;
 };
 CHECK_RDMA_MSG_SIZE(ClassBindRequest);

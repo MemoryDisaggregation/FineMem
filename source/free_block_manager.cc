@@ -54,7 +54,7 @@ namespace mralloc {
         }
         
         for(int i = 0; i < region_num_; i++) {
-            init_region_header.offset_ = i;
+            // init_region_header.offset_ = i;
             init_region_header.exclusive_ = 0;
             region_header_[i].store(init_region_header);
         }
@@ -81,9 +81,9 @@ namespace mralloc {
         }   
     }
 
-    bool ServerBlockManager::update_section(region_e region, alloc_advise advise, alloc_advise compare) {
-        uint64_t section_offset = region.offset_/region_per_section;
-        uint64_t region_offset = region.offset_%region_per_section;
+    bool ServerBlockManager::update_section(uint32_t region_index, alloc_advise advise, alloc_advise compare) {
+        uint64_t section_offset = region_index/region_per_section;
+        uint64_t region_offset = region_index%region_per_section;
         section_e section_old = section_header_[section_offset].load();
         section_e section_new = section_old;
         if(advise == alloc_exclusive) {
@@ -169,7 +169,7 @@ namespace mralloc {
         return false;
     }
 
-    bool ServerBlockManager::fetch_region(section_e &alloc_section, uint32_t section_offset, uint32_t block_class, bool shared, region_e &alloc_region) {
+    bool ServerBlockManager::fetch_region(section_e &alloc_section, uint32_t section_offset, uint32_t block_class, bool shared, region_e &alloc_region, uint32_t &region_index) {
         if(block_class == 0 && shared == true) {
             // force use unclassed one to alloc single block
             section_e new_section;
@@ -192,7 +192,8 @@ namespace mralloc {
                 new_section.alloc_map_ |= ((uint32_t)1<<index);
             }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
             alloc_section = new_section;
-            alloc_region = region_header_[section_offset*region_per_section+index].load();
+            region_index = section_offset*region_per_section+index;
+            alloc_region = region_header_[region_index].load();
             return true;
         }
         else if(block_class == 0 && shared == false) {
@@ -211,7 +212,8 @@ namespace mralloc {
                 new_section.class_map_ |= ((uint32_t)1<<index);
             }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
             alloc_section = new_section;
-            region_e region_old= region_header_[section_offset*region_per_section+index].load();
+            region_index = section_offset*region_per_section+index;
+            region_e region_old= region_header_[region_index].load();
             region_e region_new;
             do {
                 region_new = region_old;
@@ -220,7 +222,7 @@ namespace mralloc {
                     return false;
                 }
                 region_new.exclusive_ = 1;
-            } while (!region_header_[region_new.offset_].compare_exchange_strong(region_old, region_new));
+            } while (!region_header_[region_index].compare_exchange_strong(region_old, region_new));
             region_old = region_new;
             alloc_region = region_old;
             return true;
@@ -258,9 +260,10 @@ namespace mralloc {
                 new_section.alloc_map_ |= ((uint32_t)1<<index);
             }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
             alloc_section = new_section;
-            region_old= region_header_[section_offset*region_per_section+index].load();
-            init_region_class(region_old, block_class, 0);
-            try_add_section_class(section_offset, block_class, region_old);
+            region_index = section_offset*region_per_section+index;
+            region_old= region_header_[region_index].load();
+            init_region_class(region_old, block_class, 0, region_index);
+            try_add_section_class(section_offset, block_class, region_old, region_index);
             do{
                 new_section_class_header = section_class_header;
                 if(new_section_class_header.alloc_map_ & new_section_class_header.class_map_ >> index != 1) {
@@ -290,31 +293,32 @@ namespace mralloc {
                 new_section.alloc_map_ |= ((uint32_t)1<<index);
             }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
             alloc_section = new_section;
-            region_old= region_header_[section_offset*region_per_section+index].load();
-            init_region_class(region_old, block_class, 1);
+            region_index = section_offset*region_per_section+index;
+            region_old= region_header_[region_index].load();
+            init_region_class(region_old, block_class, 1, region_index);
             alloc_region = region_old;
             return true;
         }
         return false;
     }
 
-    bool ServerBlockManager::try_add_section_class(uint32_t section_offset, uint32_t block_class, region_e &alloc_region){
+    bool ServerBlockManager::try_add_section_class(uint32_t section_offset, uint32_t block_class, region_e &alloc_region, uint32_t region_index){
         bool recycle = false;
         uint32_t fast_index = get_section_class_index(section_offset, block_class);
-        uint32_t region_index = alloc_region.offset_ % region_per_section;
+        uint32_t region_index_ = region_index % region_per_section;
         section_class_e old_section_class = section_class_header_[fast_index].load();
         section_class_e new_section_class = old_section_class;
         do{
             new_section_class = old_section_class;
-            if(new_section_class.alloc_map_ | new_section_class.class_map_ >> region_index % 2 == 0) {
-                new_section_class.alloc_map_ |= 1<< region_index;
-                new_section_class.class_map_ |= 1<< region_index;
+            if(new_section_class.alloc_map_ | new_section_class.class_map_ >> region_index_ % 2 == 0) {
+                new_section_class.alloc_map_ |= 1<< region_index_;
+                new_section_class.class_map_ |= 1<< region_index_;
                 recycle = true;
             } else
-                down_bit(new_section_class.alloc_map_, new_section_class.class_map_, region_index);
+                down_bit(new_section_class.alloc_map_, new_section_class.class_map_, region_index_);
         } while (!section_class_header_[fast_index].compare_exchange_strong(old_section_class, new_section_class));
         if(recycle) {
-            set_region_empty(alloc_region);
+            set_region_empty(alloc_region, region_index_);
         }
         return true;
     }
@@ -353,8 +357,8 @@ namespace mralloc {
         return false;
     }
 
-    bool ServerBlockManager::set_region_exclusive(region_e &alloc_region) {
-        if(!update_section(alloc_region, alloc_exclusive, alloc_empty)){
+    bool ServerBlockManager::set_region_exclusive(region_e &alloc_region, uint32_t region_index) {
+        if(!update_section(region_index, alloc_exclusive, alloc_empty)){
             return false;
         }
         region_e new_region;
@@ -365,13 +369,13 @@ namespace mralloc {
                 return false;
             }
             new_region.exclusive_ = 1;
-        } while(!region_header_[new_region.offset_].compare_exchange_strong(alloc_region, new_region));
+        } while(!region_header_[region_index].compare_exchange_strong(alloc_region, new_region));
         alloc_region = new_region;
         return true;
     }
-    bool ServerBlockManager::set_region_empty(region_e &alloc_region) {
+    bool ServerBlockManager::set_region_empty(region_e &alloc_region, uint32_t region_index) {
         if(alloc_region.exclusive_ != 1) {
-            if(!set_region_exclusive(alloc_region))
+            if(!set_region_exclusive(alloc_region, region_index))
                 return false;
         }
         region_e new_region;
@@ -383,15 +387,15 @@ namespace mralloc {
             }
             new_region.exclusive_ = 0;
             new_region.block_class_ = 0;
-        } while(!region_header_[new_region.offset_].compare_exchange_strong(alloc_region, new_region));
+        } while(!region_header_[region_index].compare_exchange_strong(alloc_region, new_region));
         alloc_region = new_region;
-        if(!update_section(alloc_region, alloc_empty, alloc_exclusive)){
+        if(!update_section(region_index, alloc_empty, alloc_exclusive)){
             return false;
         }
         return true;
     }
 
-    bool ServerBlockManager::init_region_class(region_e &alloc_region, uint32_t block_class, bool is_exclusive) {
+    bool ServerBlockManager::init_region_class(region_e &alloc_region, uint32_t block_class, bool is_exclusive, uint32_t region_index) {
         // suppose the section has already set!
         region_e new_region;
         do {
@@ -409,12 +413,12 @@ namespace mralloc {
             }
             new_region.class_map_ = ~mask;
             new_region.block_class_ = block_class;
-        } while (!region_header_[new_region.offset_].compare_exchange_strong(alloc_region, new_region));
+        } while (!region_header_[region_index].compare_exchange_strong(alloc_region, new_region));
         alloc_region = new_region;
         return true;
     }
 
-    bool ServerBlockManager::fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive) {
+    bool ServerBlockManager::fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
         int index; region_e new_region;
         do{
             if(alloc_region.exclusive_ != is_exclusive || alloc_region.block_class_ != 0) {
@@ -427,17 +431,17 @@ namespace mralloc {
                 return false;
             }
             new_region.base_map_ |= (uint32_t)1<<index;
-        } while (!region_header_[new_region.offset_].compare_exchange_strong(alloc_region, new_region));
+        } while (!region_header_[region_index].compare_exchange_strong(alloc_region, new_region));
         alloc_region = new_region;
-        addr = get_region_block_addr(alloc_region, index);
-        rkey = get_region_block_rkey(alloc_region, index);
+        addr = get_region_block_addr(region_index, index);
+        rkey = get_region_block_rkey(region_index, index);
         if(alloc_region.base_map_ == bitmap32_filled) {
-            update_section(alloc_region, alloc_exclusive, alloc_no_class);
+            update_section(region_index, alloc_exclusive, alloc_no_class);
         }
         return true;
     }
 
-    bool ServerBlockManager::fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive) {
+    bool ServerBlockManager::fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
         int index; region_e new_region;
         do {
             if(alloc_region.exclusive_ != is_exclusive || alloc_region.block_class_ == 0) {
@@ -454,10 +458,10 @@ namespace mralloc {
             }
             new_region.base_map_ |= mask;
             new_region.class_map_ |= (uint16_t)1<<index;
-        }while(!region_header_[new_region.offset_].compare_exchange_strong(alloc_region, new_region));
+        }while(!region_header_[region_index].compare_exchange_strong(alloc_region, new_region));
         alloc_region = new_region;
-        addr = get_region_block_addr(alloc_region, index*(block_class + 1));
-        rkey = get_region_class_block_rkey(alloc_region, index*(block_class + 1));
+        addr = get_region_block_addr(region_index, index*(block_class + 1));
+        rkey = get_region_class_block_rkey(region_index, index*(block_class + 1));
         return true;
     }
 
@@ -483,7 +487,7 @@ namespace mralloc {
             } while(!region_header_[region_offset].compare_exchange_strong(region, new_region));
             // printf("free: %p, region id:%u, bitmap from %x to %x\n", addr, new_region.offset_ , region.base_map_, new_region.base_map_);
             if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > block_per_region/2 && free_bit_in_bitmap32(region.base_map_) <= block_per_region/2){
-                update_section(new_region, alloc_no_class, alloc_exclusive);
+                update_section(region_offset, alloc_no_class, alloc_exclusive);
             }
             region = new_region;
             return 0;
@@ -501,16 +505,16 @@ namespace mralloc {
             } while(!region_header_[region_offset].compare_exchange_strong(region, new_region));
             if(free_bit_in_bitmap16(new_region.class_map_) == block_per_region/(block_class+1)) {
                 // printf("[Attention] try to add fast region %lx\n", addr);
-                try_add_section_class(region_offset/region_per_section, block_class, new_region);
+                try_add_section_class(region_offset/region_per_section, block_class, new_region, region_offset);
             } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > block_per_region/(block_class+1)/2 && free_bit_in_bitmap16(region.class_map_) <= block_per_region/(block_class+1)/2){
                 // printf("[Attention] try to add fast region %lx\n", addr);
-                try_add_section_class(region_offset/region_per_section, block_class, new_region);
+                try_add_section_class(region_offset/region_per_section, block_class, new_region, region_offset);
             } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > 3*block_per_region/(block_class+1)/4 && free_bit_in_bitmap16(region.class_map_) <= 3*block_per_region/(block_class+1)/4){
                 // printf("[Attention] try to add fast region %lx\n", addr);
-                try_add_section_class(region_offset/region_per_section, block_class, new_region);
+                try_add_section_class(region_offset/region_per_section, block_class, new_region, region_offset);
             } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > block_per_region/(block_class+1)/4 && free_bit_in_bitmap16(region.class_map_) <= block_per_region/(block_class+1)/4){
                 // printf("[Attention] try to add fast region %lx\n", addr);
-                try_add_section_class(region_offset/region_per_section, block_class, new_region);
+                try_add_section_class(region_offset/region_per_section, block_class, new_region, region_offset);
             }
             region = new_region;
             // printf("free a class %u block %lx, newkey is %u\n", new_region.block_class_, addr, new_rkey);
