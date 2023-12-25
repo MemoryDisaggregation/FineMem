@@ -25,12 +25,10 @@
 
 namespace mralloc {
 
-const uint64_t BLOCK_SIZE = 1024*1024*4;
-
 void * run_cache_filler(void* arg) {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    CPU_SET(1, &cpuset);
+    CPU_SET(0, &cpuset);
     pthread_t this_tid = pthread_self();
     uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
     // assert(ret == 0);
@@ -151,7 +149,7 @@ bool ComputingNode::start(const std::string addr, const std::string port){
     // init cpu cache, insert a block for each cpu cache ring buffer
     if(cpu_cache_enabled_) {
         uint64_t remote_addr; uint32_t remote_rkey;
-        cpu_cache_ = new cpu_cache(BLOCK_SIZE);
+        cpu_cache_ = new cpu_cache(block_size_);
         for(int i = 0; i < nprocs; i++){
             fetch_mem_block(remote_addr, remote_rkey);
             assert(remote_addr!=0);
