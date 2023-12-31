@@ -282,7 +282,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
         free_count_ += 1;
         printf("epoch %d free finish\n", j);
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         if (thread_id == 1)
             conn->remote_print_alloc_info();
     }
@@ -306,7 +306,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
     if(thread_id % 2 == 0){
         pthread_barrier_wait(&start_barrier);
         for(int j = 0; j < epoch; j ++) {
-            // pthread_barrier_wait(&start_barrier);
+            pthread_barrier_wait(&start_barrier);
             gettimeofday(&start, NULL);
             for(int i = 0; i < rand_iter; i ++){
                 if(addr[i] != 0 && rkey[i] != 0) 
@@ -317,7 +317,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             }
             gettimeofday(&end, NULL);
             // pthread_barrier_wait(&end_barrier);
-            printf("epoch %d malloc finish\n", j);
+            // printf("epoch %d malloc finish\n", j);
             if (thread_id == 1)
                 conn->remote_print_alloc_info();
                 
@@ -336,7 +336,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
                 malloc_record[time] += 1;
             malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
             malloc_count_ += 1;
-            printf("epoch %d check finish\n", j);
+            // printf("epoch %d check finish\n", j);
             
             // free
             // pthread_barrier_wait(&start_barrier);
@@ -351,14 +351,14 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
                 }
             }
             gettimeofday(&end, NULL);
-            // pthread_barrier_wait(&end_barrier);
+            pthread_barrier_wait(&end_barrier);
             time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
             time = time / rand_iter;
             if(time < 1000)
                 free_record[time] += 1;
             free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
             free_count_ += 1;
-            printf("epoch %d free finish\n", j);
+            // printf("epoch %d free finish\n", j);
             // std::this_thread::sleep_for(std::chrono::milliseconds(100));
             if (thread_id == 1)
                 conn->remote_print_alloc_info();
@@ -384,7 +384,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             // }        
             
             // free
-            // pthread_barrier_wait(&start_barrier);
+            pthread_barrier_wait(&start_barrier);
             gettimeofday(&start, NULL);
             for(int i = 0; i < rand_iter; i ++){
                 if(rand()%100 > 20 && addr[i] != 0){
@@ -402,7 +402,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
                 free_record[time] += 1;
             free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
             free_count_ += 1;
-            printf("epoch %d free finish\n", j);
+            // printf("epoch %d free finish\n", j);
             // std::this_thread::sleep_for(std::chrono::milliseconds(100));
             if (thread_id == 1)
                 conn->remote_print_alloc_info();
@@ -417,8 +417,8 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
                 }
             }
             gettimeofday(&end, NULL);
-            // pthread_barrier_wait(&end_barrier);
-            printf("epoch %d malloc finish\n", j);
+            pthread_barrier_wait(&end_barrier);
+            // printf("epoch %d malloc finish\n", j);
             if (thread_id == 1)
                 conn->remote_print_alloc_info();
                 

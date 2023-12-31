@@ -8,7 +8,7 @@ cd MLNX_OFED_LINUX-5.8-3.0.7.0-ubuntu22.04-x86_64
 
 sudo ./mlnxofedinstall --force
 
-sudo rm -rf MLNX_OFED_LINUX-5.8-3.0.7.0-ubuntu22.04-x86_64*
+cd ../; sudo rm -rf MLNX_OFED_LINUX-5.8-3.0.7.0-ubuntu22.04-x86_64*
 
 sudo sed -i "s/GRUB_CMDLINE_LINUX_DEFAULT=\"/GRUB_CMDLINE_LINUX_DEFAULT=\"iommu=pt/" /etc/default/grub
 

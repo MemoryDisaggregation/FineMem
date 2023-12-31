@@ -317,8 +317,8 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             gettimeofday(&end, NULL);
             // pthread_barrier_wait(&end_barrier);
             // printf("epoch %d malloc finish\n", j);
-            // if (thread_id == 1)
-            //     conn->remote_print_alloc_info();
+            if (thread_id == 1)
+                conn->remote_print_alloc_info();
                 
             // valid check
             // char buffer[2][16] = {"aaa", "bbb"};
@@ -508,7 +508,7 @@ void* worker(void* arg) {
     switch (type)
     {
     case cxl_shm_alloc:
-        alloc = (test_allocator*)new cxl_shm_allocator(conn, (thread_id-1)*128);
+        alloc = (test_allocator*)new cxl_shm_allocator(conn, 0);
         break;
     case fusee_alloc:
         alloc = (test_allocator*)new fusee_allocator(conn);
