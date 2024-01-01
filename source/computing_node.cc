@@ -176,7 +176,7 @@ bool ComputingNode::start(const std::string addr, const std::string port){
 void ComputingNode::increase_class_watermark(uint16_t block_class, int &upper_bound) {
     if(upper_bound < block_per_region/(block_class+1)) {
         upper_bound *= 2;
-    } else {
+    } else if(upper_bound < region_per_section * block_per_region){
         upper_bound += block_per_region/(block_class+1);
     }
 }
@@ -190,7 +190,8 @@ void ComputingNode::decrease_class_watermark(uint16_t block_class, int &upper_bo
 }
 
 void ComputingNode::increase_watermark(int &upper_bound) {
-    if (upper_bound == ring_buffer_size - 16) {
+    // if (upper_bound == ring_buffer_size - 16 ) {
+    if (upper_bound == ring_buffer_size - 16 || upper_bound >= 8 * block_per_region) {
         return;
     }
     if(upper_bound < block_per_region) {
@@ -346,7 +347,7 @@ void ComputingNode::cache_filler() {
             // 1 left   --> fill
             // > 1 left --> fill and -1
             if(free_ == 0){
-                if (cpu_cache_watermark[i] < 16)
+                if (cpu_cache_watermark[i] < 8)
                     cpu_cache_watermark[i] += 1;
                 while(!ring_cache->try_fetch_batch(batch_addr, cpu_cache_watermark[i])){
                     time_stamp_ += 1;
@@ -683,21 +684,10 @@ bool ComputingNode::free_mem_block(uint64_t addr){
                 region->region.exclusive_ = 0;
             }
             else if(free_bit_in_bitmap32(region->region.base_map_) < 2*block_per_region/3){
-                if(current_region_->region.base_map_ == bitmap32_filled){
-                    m_mutex_.lock();
-                    auto result = free_region_.find(region);
-                    if (result != free_region_.end()){
-                        free_region_.erase(result);
-                    }
-                    m_mutex_.unlock();
-                    current_region_ = region;
-                }
-                else {
-                    m_mutex_.lock();
+                m_mutex_.lock();
+                if(free_region_.find(region) == free_region_.end())
                     free_region_.insert(region);
-                    m_mutex_.unlock();
-                    // printf("insert region %p\n", region);
-                }
+                m_mutex_.unlock();
             }
             // mr_rdma_addr value(addr, region->rkey[region_block_offset]);
             // printf("free cache addr:%lx, rkey:%u\n", value.addr, value.rkey);
