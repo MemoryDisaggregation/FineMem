@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <queue>
 #include <mutex>
+#include <fstream>
 
 namespace mralloc {
 
@@ -183,8 +184,12 @@ public:
     ServerBlockManager(uint64_t block_size):block_size_(block_size) {
         region_size_ = block_size_ * block_per_region;
         section_size_ = region_size_ * region_per_section;
+        mem_record_.open("result.csv");
+
     };
-    ~ServerBlockManager() {};
+    ~ServerBlockManager() {
+        mem_record_.close();
+    };
     
     inline uint64_t num_align_upper(uint64_t num, uint64_t align) {
         return (num + align - 1) - ((num + align - 1) % align);
@@ -213,13 +218,34 @@ public:
     bool init(uint64_t meta_addr, uint64_t addr, uint64_t size, uint32_t rkey);
 
     void print_section_info() {
-        uint64_t empty=0, exclusive=0, shared=0;
+        uint64_t empty=0, exclusive=0;
+        uint64_t used = 0;
         for(int i = 0; i< section_num_; i++) {
-            empty += free_bit_in_bitmap32(section_header_[i].load().alloc_map_ | section_header_[i].load().class_map_);
-            exclusive += free_bit_in_bitmap32(~section_header_[i].load().alloc_map_ | ~section_header_[i].load().class_map_);
-            shared += free_bit_in_bitmap32(~section_header_[i].load().alloc_map_ | section_header_[i].load().class_map_);
+            uint32_t empty_map = section_header_[i].load().alloc_map_ | section_header_[i].load().class_map_;
+            uint32_t exclusive_map = ~section_header_[i].load().alloc_map_ | ~section_header_[i].load().class_map_;
+            for(int j = 0; j < region_per_section; j ++) {
+                if(empty_map%2 == 0) {
+                    empty += 1;
+                } else if(exclusive_map%2 == 0) {
+                    exclusive += 1;
+                } else {
+                    used += block_per_region - free_bit_in_bitmap32(region_header_[i*region_per_section + j].load().base_map_);
+                }
+                empty_map >>= 1;
+                exclusive_map >>= 1;
+            }
+            // empty += free_bit_in_bitmap32(section_header_[i].load().alloc_map_ | section_header_[i].load().class_map_);
+            // exclusive += free_bit_in_bitmap32(~section_header_[i].load().alloc_map_ | ~section_header_[i].load().class_map_);
         }
-        printf("summary: empty: %lu, exclusive: %lu, shared: %lu\n", empty, exclusive, shared);
+        used += exclusive * block_per_region;
+        for(int i = 0; i <block_num_; i++) {
+            if(block_header_[i] == 1) {
+                used ++;
+            }
+        }
+        // printf("%lu\n", used*4);
+        mem_record_ << used*4 << std::endl;
+        // printf("summary: empty: %lu, exclusive: %lu, shared: %lu\n", empty, exclusive, shared);
     }
 
     inline bool check_section(section_e alloc_section, alloc_advise advise, uint32_t offset);
@@ -329,7 +355,7 @@ private:
     // info of heap segment
     uint64_t heap_start_;
     uint64_t heap_size_;
-
+    std::ofstream mem_record_;
     // info helping accelerate
 struct cache_info{
     uint64_t current_section_;
