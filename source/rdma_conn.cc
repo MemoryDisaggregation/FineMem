@@ -1034,6 +1034,7 @@ bool RDMAConnection::find_section(uint16_t block_class, section_e &alloc_section
             index += 8; remain -= 8; fetch = remain > 8 ? 8:remain;
         }
     } else { return false; }
+    printf("find no section!\n");
     return false;
 }
 
@@ -1318,7 +1319,7 @@ bool RDMAConnection::init_region_class(region_e &alloc_region, uint32_t block_cl
     region_e new_region;
     do {
         new_region = alloc_region;
-        if((alloc_region.block_class_ != 0 && alloc_region.block_class_ != block_class) || alloc_region.exclusive_ != is_exclusive)  {
+        if((alloc_region.block_class_ != 0 && alloc_region.block_class_ != block_class))  {
             return false;
         } 
         uint16_t mask = 0;
@@ -1329,6 +1330,7 @@ bool RDMAConnection::init_region_class(region_e &alloc_region, uint32_t block_cl
                 mask |= (uint16_t)1<<i;
             reader >>= block_class+1;
         }
+        new_region.exclusive_ = is_exclusive;
         new_region.class_map_ = ~mask;
         new_region.block_class_ = block_class;
     } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_));
@@ -1400,7 +1402,7 @@ bool RDMAConnection::fetch_region_class_block(region_e &alloc_region, uint32_t b
     int index; region_e new_region;
     do {
         if(alloc_region.exclusive_ != is_exclusive || alloc_region.block_class_ != block_class) {
-            printf("already exclusive\n");
+            printf("exclusive:%d, block_class:%d\n", alloc_region.exclusive_, alloc_region.block_class_);
             return false;
         } 
         new_region = alloc_region;
