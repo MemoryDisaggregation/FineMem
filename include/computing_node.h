@@ -92,6 +92,7 @@ public:
     bool fetch_mem_block_nocached(uint64_t &addr, uint32_t &rkey);
     bool fetch_mem_block(uint64_t &addr, uint32_t &rkey);
     bool free_mem_block(uint64_t addr);
+    bool free_mem_batch(uint32_t region_offset, uint32_t free_map);
 
     bool fetch_mem_class_block(uint16_t block_class, uint64_t &addr, uint32_t &rkey);
 
@@ -154,7 +155,7 @@ private:
     region_e backup_region_;
     uint32_t backup_region_index_;
     int backup_counter = 0;
-    int backup_cycle = 1;
+    int backup_cycle = 10;
     region_e current_class_region_[16];
     uint32_t current_class_region_index_[16];
 

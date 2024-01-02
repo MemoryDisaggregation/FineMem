@@ -1486,6 +1486,45 @@ int RDMAConnection::fetch_region_class_batch(region_e &alloc_region, uint32_t bl
     return free_item;
 }
 
+int RDMAConnection::free_region_batch(uint32_t region_offset, uint32_t free_bitmap, bool is_exclusive) {
+    region_e region;
+    // printf("Remove me after no problem: the one-sided free not concern the section state\n");
+    remote_read(&region, sizeof(region_e), region_metadata_addr(region_offset), global_rkey_);
+    // printf("plan to free: %p, region id:%u, bitmap: %x\n", addr, region.offset_ , region.base_map_);
+
+    if(!region.exclusive_ && is_exclusive) {
+        printf("exclusive error, the actual block is shared\n");
+        return -1;
+    }
+    uint32_t new_rkey;
+    if(region.block_class_ == 0) {
+        if((region.base_map_ & ~free_bitmap) == 0) {
+            printf("already freed\n");
+            return -1;
+        } 
+        // remote_rebind(addr, region.block_class_, new_rkey);
+        region_e new_region;
+        do{
+            new_region = region;
+            new_region.base_map_ &= free_bitmap;
+        } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region, region_metadata_addr(region_offset), global_rkey_));
+        // printf("free: %p, region id:%u, bitmap from %x to %x\n", addr, new_region.offset_ , region.base_map_, new_region.base_map_);
+        if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) == block_per_region){
+            update_section(region_offset, alloc_empty, alloc_no_class); 
+            return -2;
+        } else if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > 2*block_per_region/3 && free_bit_in_bitmap32(region.base_map_) <= 2*block_per_region/3){
+            update_section(region_offset, alloc_no_class, alloc_class); 
+        } else if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > block_per_region/3 && free_bit_in_bitmap32(region.base_map_) <= block_per_region/3){
+            update_section(region_offset, alloc_class, alloc_exclusive);
+        } 
+        region = new_region;
+        return 0;
+    } else {
+        printf("class block batch free not support!\n");
+    }
+    return -1;
+}
+
 int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
     uint32_t region_offset = (addr - heap_start_) / region_size_;
     uint32_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;

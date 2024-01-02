@@ -12,7 +12,7 @@
 #include "cpu_cache.h"
 #include <sys/time.h>
 
-const int iteration = 127;
+const int iteration = 512;
 const int epoch = 256;
 
 enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc };
@@ -56,7 +56,7 @@ public:
         int retry_time = conn_->fetch_block(current_index_, addr, rkey);
         if(retry_time) {
             avg_retry = (avg_retry*alloc_num + retry_time)/(alloc_num+1);
-	        alloc_num ++;
+	    alloc_num ++;
             return true;
         } else {
             return false;
@@ -65,10 +65,10 @@ public:
     bool free(uint64_t addr) override {
         return conn_->free_block(addr);
     };
-    bool print_state() override {printf("retry num:%lf\n", avg_retry);};
+    bool print_state() override {printf("%lf\n", avg_retry);};
 private:
-    double avg_retry;
-    int alloc_num;
+    double avg_retry=0;
+    int alloc_num=0;
     uint64_t current_index_;
     mralloc::ConnectionManager* conn_;
 };
@@ -135,7 +135,7 @@ public:
         }
         return true;
     };
-    bool print_state() override {printf("retry num:%lf\n", avg_retry);};
+    bool print_state() override {printf("%lf\n", avg_retry);};
 private:
     double avg_retry=0;
     int alloc_num = 0;
@@ -466,6 +466,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
         malloc_record_global[i].fetch_add(malloc_record[i]);
         free_record_global[i].fetch_add(free_record[i]);
     }
+    alloc->print_state();
     malloc_avg[thread_id] = malloc_avg_time_;
     free_avg.fetch_add(free_avg_time_);
 }
@@ -509,6 +510,7 @@ void short_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
     for(int i=0;i<1000;i++){
         malloc_record_global[i].fetch_add(malloc_record[i]);
     }
+    alloc->print_state();
     malloc_avg[thread_id] = malloc_avg_time_;
 }
 

@@ -102,6 +102,7 @@ class ConnectionManager {
     bool fetch_block(uint16_t block_class, uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
     bool free_block(uint64_t addr) ;
     bool free_block(uint16_t block_class, uint64_t addr) ;
+    int free_region_batch(uint32_t region_offset, uint32_t free_bitmap, bool is_exclusive);
 
     bool fetch_exclusive_region_rkey(uint32_t region_index, uint32_t* rkey_list);
     bool fetch_class_region_rkey(uint32_t region_index, uint32_t* rkey_list);

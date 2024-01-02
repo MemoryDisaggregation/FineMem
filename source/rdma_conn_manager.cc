@@ -327,4 +327,12 @@ int ConnectionManager::free_region_block(uint64_t addr, bool is_exclusive) {
     return ret;
 }
 
+int ConnectionManager::free_region_batch(uint32_t region_offset, uint32_t free_bitmap, bool is_exclusive) {
+    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+    assert(conn != nullptr);
+    int ret = conn->free_region_batch(region_offset, free_bitmap, is_exclusive);
+    m_rpc_conn_queue_->enqueue(conn);
+    return ret;
+}
+
 }  // namespace kv

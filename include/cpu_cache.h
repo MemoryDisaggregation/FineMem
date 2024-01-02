@@ -19,7 +19,7 @@ namespace mralloc {
 
 const uint32_t nprocs = 144;
 const uint32_t max_alloc_item = 256;
-const uint32_t max_free_item = 512;
+const uint32_t max_free_item = 1024;
 const uint32_t max_class_free_item = 512;
 
 template <typename T>
@@ -53,6 +53,9 @@ public:
     void add_cache(T value){
         // host side fill cache, add write pointer
         uint32_t writer = *writer_;
+	while(get_length() >= max_length_ - 1){
+		printf("busy wait\n");
+	}
         if(get_length() < max_length_-1){
             buffer_[writer] = value;        
             *writer_ = (writer + 1) % max_length_;
