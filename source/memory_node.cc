@@ -37,7 +37,7 @@
 #define REMOTE_MEM_SIZE 4194304
 // #define REMOTE_MEM_SIZE 4096
 
-#define INIT_MEM_SIZE ((uint64_t)80*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)200*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 
@@ -53,7 +53,7 @@ const uint64_t SERVER_BASE_ADDR = (uint64_t)0x10000000;
 // const uint64_t SERVER_BASE_ADDR = (uint64_t)0x10000000;
 
 void MemoryNode::print_alloc_info() {
-  server_block_manager_->print_section_info();
+  server_block_manager_->print_section_info(ring_cache->get_length());
 }
 
 /**
@@ -679,16 +679,18 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
     while (true) {
         if (m_stop_) break;
         for (int i = num; i < m_worker_num_; i+=MAX_SERVER_WORKER) {
-        if (m_worker_info_[i]->cmd_msg->notify != NOTIFY_IDLE){
-            active_id = i;
-            cmd_msg = m_worker_info_[i]->cmd_msg;
-        }
+            if (m_worker_info_[i]->cmd_msg->notify != NOTIFY_IDLE){
+                active_id = i;
+                cmd_msg = m_worker_info_[i]->cmd_msg;
+            }
         }
         if (active_id == -1) continue;
         cmd_msg->notify = NOTIFY_IDLE;
         RequestsMsg *request = (RequestsMsg *)cmd_msg;
+        if(active_id != request->id) {
+            printf("find %d, receive from id:%d\n", active_id, request->id);
+        }
         assert(active_id == request->id);
-        // printf("receive from id:%d\n", request->id);
         work_info = m_worker_info_[request->id];
         cmd_resp = work_info->cmd_resp_msg;
         resp_mr = work_info->resp_mr;
