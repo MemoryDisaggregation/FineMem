@@ -222,10 +222,10 @@ int ConnectionManager::fetch_region_block(region_e &alloc_region, uint64_t &addr
     return ret;  
 }
 
-bool ConnectionManager::fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) {
+int ConnectionManager::fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    bool ret = conn->fetch_block(block_hint, addr, rkey);
+    int ret = conn->fetch_block(block_hint, addr, rkey);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;  
 }
