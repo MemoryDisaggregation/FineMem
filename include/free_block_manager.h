@@ -217,7 +217,7 @@ public:
 
     bool init(uint64_t meta_addr, uint64_t addr, uint64_t size, uint32_t rkey);
 
-    void print_section_info() {
+    void print_section_info(int cache) {
         uint64_t empty=0, exclusive=0;
         uint64_t used = 0;
         for(int i = 0; i< section_num_; i++) {
@@ -244,7 +244,7 @@ public:
             }
         }
         // printf("%lu\n", used*4);
-        mem_record_ << used*4 << std::endl;
+        mem_record_ << (used-cache)*4 << std::endl;
         // printf("summary: empty: %lu, exclusive: %lu, shared: %lu\n", empty, exclusive, shared);
     }
 

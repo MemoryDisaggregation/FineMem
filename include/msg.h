@@ -21,7 +21,7 @@ namespace mralloc {
 #define NOTIFY_IDLE 0x00
 #define MAX_MSG_SIZE 64
 #define MAX_SERVER_WORKER 1
-#define MAX_SERVER_CLIENT 512
+#define MAX_SERVER_CLIENT 1024
 #define RESOLVE_TIMEOUT_MS 5000
 #define RDMA_TIMEOUT_US 10000000  // 10s
 #define MAX_REMOTE_SIZE (1UL << 25)
@@ -44,7 +44,7 @@ struct PData {
     uint64_t buf_addr;
     uint32_t buf_rkey;
     uint32_t size;
-    uint8_t id;
+    uint16_t id;
     uint64_t block_size_;
     uint64_t block_num_;
     uint32_t global_rkey_;
@@ -66,7 +66,7 @@ class RequestsMsg {
 public:
     uint64_t resp_addr;
     uint32_t resp_rkey;
-    uint8_t id;
+    uint16_t id;
     uint8_t type;
 };
 CHECK_RDMA_MSG_SIZE(RequestsMsg);
