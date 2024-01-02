@@ -116,13 +116,13 @@ public:
     };
     
     bool init_region_class(region_e &alloc_region, uint32_t block_class, bool is_exclusive, uint32_t region_index);
-    bool fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) ;
+    int fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) ;
     int fetch_region_batch(region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive, uint32_t region_index) ;
     bool fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) ;
     int fetch_region_class_batch(region_e &alloc_region, uint32_t block_class, mr_rdma_addr* addr, uint64_t num, bool is_exclusive, uint32_t region_index) ;
     int free_region_block(uint64_t addr, bool is_exclusive) ;
 
-    bool fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
+    int fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
     bool fetch_block(uint16_t block_class, uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
     bool free_block(uint64_t addr) ;
     bool free_block(uint16_t block_class, uint64_t addr) ;
@@ -158,7 +158,7 @@ public:
     struct ibv_mr *m_resp_mr_;
     char *m_reg_buf_;
     struct ibv_mr *m_reg_buf_mr_;
-    uint8_t conn_id_;
+    uint16_t conn_id_;
 
     // << one-sided support >>
     one_side_info m_one_side_info_;

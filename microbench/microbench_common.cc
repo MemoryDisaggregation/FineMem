@@ -12,7 +12,7 @@
 #include "cpu_cache.h"
 #include <sys/time.h>
 
-const int iteration = 384;
+const int iteration = 127;
 const int epoch = 256;
 
 enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc };
@@ -41,7 +41,8 @@ public:
     test_allocator() {};
     virtual bool malloc(uint64_t &addr, uint32_t &rkey) {};
     virtual bool free(uint64_t addr) {};
-    ~test_allocator() {};
+    virtual bool print_state() {};
+    ~test_allocator() {}; 
 };
 
 class cxl_shm_allocator : test_allocator{
@@ -52,12 +53,22 @@ public:
     }
     ~cxl_shm_allocator() {};
     bool malloc(uint64_t &addr, uint32_t &rkey) override {
-        return conn_->fetch_block(current_index_, addr, rkey);
+        int retry_time = conn_->fetch_block(current_index_, addr, rkey);
+        if(retry_time) {
+            avg_retry = (avg_retry*alloc_num + retry_time)/(alloc_num+1);
+	        alloc_num ++;
+            return true;
+        } else {
+            return false;
+        }
     };
     bool free(uint64_t addr) override {
         return conn_->free_block(addr);
     };
+    bool print_state() override {printf("retry num:%lf\n", avg_retry);};
 private:
+    double avg_retry;
+    int alloc_num;
     uint64_t current_index_;
     mralloc::ConnectionManager* conn_;
 };
@@ -74,6 +85,7 @@ public:
     bool free(uint64_t addr) override {
         return !conn_->remote_free_block(addr);
     };
+    bool print_state() override {};
 private:
     mralloc::ConnectionManager* conn_;
 };
@@ -90,6 +102,7 @@ public:
     bool free(uint64_t addr) override {
         return !conn_->unregister_remote_memory(addr);
     };
+    bool print_state() override {};
 private:
     mralloc::ConnectionManager* conn_;
 };
@@ -103,13 +116,16 @@ public:
     }
     ~share_allocator() {};
     bool malloc(uint64_t &addr, uint32_t &rkey) override {
-        while(!conn_->fetch_region_block(cache_region, addr, rkey, false, cache_region_index)){
+        int retry_time;
+	    while((retry_time = conn_->fetch_region_block(cache_region, addr, rkey, false, cache_region_index)) == 0){
             while(!conn_->fetch_region(cache_section, cache_section_index, 0, true, cache_region, cache_region_index)){
                 if(!conn_->find_section(0, cache_section, cache_section_index, mralloc::alloc_no_class)){
                     return false;
                 }
             }
         }
+	    avg_retry = (avg_retry*alloc_num + retry_time)/(alloc_num+1);
+	    alloc_num ++;
         return true;
     };
     bool free(uint64_t addr) override {
@@ -119,7 +135,10 @@ public:
         }
         return true;
     };
+    bool print_state() override {printf("retry num:%lf\n", avg_retry);};
 private:
+    double avg_retry=0;
+    int alloc_num = 0;
     uint32_t cache_section_index;
     uint32_t cache_region_index;
     mralloc::section_e cache_section;
@@ -176,6 +195,8 @@ public:
         }
         return true;
     };
+    bool print_state() override {};
+
 private:
     uint32_t cache_section_index;
     mralloc::section_e cache_section;
@@ -197,6 +218,8 @@ public:
         cpu_cache_->add_free_cache(addr);
         return true;
     };
+    bool print_state() override {};
+
 private:
     mralloc::cpu_cache* cpu_cache_;
 };
@@ -285,6 +308,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         // if (thread_id == 1)
         //     conn->remote_print_alloc_info();
     }
+    alloc->print_state();
     for(int i=0;i<1000;i++){
         malloc_record_global[i].fetch_add(malloc_record[i]);
         free_record_global[i].fetch_add(free_record[i]);
@@ -531,6 +555,9 @@ void* worker(void* arg) {
     pthread_barrier_wait(&start_barrier);
     warmup(alloc);
     pthread_barrier_wait(&end_barrier);
+    if(thread_id == 1) {
+    	getchar();
+    }
     pthread_barrier_wait(&start_barrier);
     // shuffle_alloc(conn, alloc, thread_id);
     switch (test)

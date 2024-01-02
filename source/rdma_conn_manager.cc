@@ -214,10 +214,10 @@ bool ConnectionManager::init_region_class(region_e &alloc_region, uint32_t block
     m_rpc_conn_queue_->enqueue(conn);
     return ret;        
 }
-bool ConnectionManager::fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
+int ConnectionManager::fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    bool ret = conn->fetch_region_block(alloc_region, addr, rkey, is_exclusive, region_index);
+    int ret = conn->fetch_region_block(alloc_region, addr, rkey, is_exclusive, region_index);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;  
 }

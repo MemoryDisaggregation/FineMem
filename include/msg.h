@@ -44,7 +44,7 @@ struct PData {
     uint64_t buf_addr;
     uint32_t buf_rkey;
     uint32_t size;
-    uint8_t id;
+    uint16_t id;
     uint64_t block_size_;
     uint64_t block_num_;
     uint32_t global_rkey_;
@@ -66,7 +66,7 @@ class RequestsMsg {
 public:
     uint64_t resp_addr;
     uint32_t resp_rkey;
-    uint8_t id;
+    uint16_t id;
     uint8_t type;
 };
 CHECK_RDMA_MSG_SIZE(RequestsMsg);

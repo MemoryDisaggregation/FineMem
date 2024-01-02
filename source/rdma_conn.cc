@@ -1338,17 +1338,21 @@ bool RDMAConnection::init_region_class(region_e &alloc_region, uint32_t block_cl
     return true;
 }
 
-bool RDMAConnection::fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
-    int index; region_e new_region;
+int RDMAConnection::fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
+    int index, retry_time = 0; region_e new_region;
     do{
+	retry_time ++;
+	if(retry_time>10) {
+	  printf("retry time:%d\n",retry_time);
+	}
         if(alloc_region.exclusive_ != is_exclusive || alloc_region.block_class_ != 0) {
             printf("state wrong, addr = %lx, exclusive = %d, class = %u\n", get_region_addr(region_index), alloc_region.exclusive_, alloc_region.block_class_);
-            return false;
+            return 0;
         } 
         new_region = alloc_region;
         if((index = find_free_index_from_bitmap32_tail(alloc_region.base_map_)) == -1) {
             // update_section(alloc_region, alloc_exclusive, alloc_no_class);
-            return false;
+            return 0;
         }
         new_region.base_map_ |= (uint32_t)1<<index;
     } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_));
@@ -1360,7 +1364,7 @@ bool RDMAConnection::fetch_region_block(region_e &alloc_region, uint64_t &addr, 
             // printf("try to set region as exclusive\n");
         // }
     }
-    return true;
+    return retry_time;
 }
 
 int RDMAConnection::fetch_region_batch(region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive, uint32_t region_index) {
@@ -1560,23 +1564,25 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
     return -1;
 }
 
-bool RDMAConnection::fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) {
+int RDMAConnection::fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) {
     uint64_t old_header = 0, new_header = 1, hint = block_hint % block_num_;
     uint16_t counter = 0;
+    int retry_time = 1;
     while(!remote_CAS(*(uint64_t*)&new_header, (uint64_t*)&old_header, block_header_ + hint * sizeof(uint64_t), global_rkey_)){
+        retry_time ++;
         hint = (hint + 1) % block_num_;
         old_header = 0; new_header = 1;
         if(hint == block_hint) {
             counter ++;
             if(counter >3) {
-                return false;
+                return 0;
             }
         }
     };
     addr = get_block_addr(hint);
     rkey = get_block_rkey(hint);
     block_hint = (hint + 1) % block_num_;
-    return true;
+    return retry_time;
 }
 
 bool RDMAConnection::fetch_block(uint16_t block_class, uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) {
