@@ -905,6 +905,9 @@ bool RDMAConnection::update_section(uint32_t region_index, alloc_advise advise, 
     uint64_t region_offset = region_index%region_per_section;
     section_e section_old;
     remote_read(&section_old, sizeof(section_old), section_metadata_addr(section_offset), global_rkey_);
+    if(check_section(section_old, advise, region_offset)) {
+        return true;
+    }
     section_e section_new = section_old;
     if(advise == alloc_exclusive) {
         do{
@@ -920,11 +923,11 @@ bool RDMAConnection::update_section(uint32_t region_index, alloc_advise advise, 
         return true;
     } else if(advise == alloc_empty) {
         do{
-            if(!check_section(section_old, compare, region_offset)){
+            //if(!check_section(section_old, compare, region_offset)){
                 // printf("try update_section failed, compare is %d, advise is %d, class bit is %d, malloc bit is %d\n", compare, advise,
                 //     (section_old.class_map_ >> region_offset) % 2, (section_old.alloc_map_ >> region_offset) % 2);
-                return false;
-            }
+              //  return false;
+            //}
             section_new = section_old;
             section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
             section_new.class_map_ &= ~((bitmap32)1 << region_offset);
@@ -932,11 +935,11 @@ bool RDMAConnection::update_section(uint32_t region_index, alloc_advise advise, 
         return true;
     } else if(advise == alloc_no_class) {
         do{
-            if(!check_section(section_old, compare, region_offset)){
+            //if(!check_section(section_old, compare, region_offset)){
                 // printf("try update_section failed, compare is %d, advise is %d, class bit is %d, malloc bit is %d\n", compare, advise,
                 //     (section_old.class_map_ >> region_offset) % 2, (section_old.alloc_map_ >> region_offset) % 2);
-                return false;
-            }
+              //  return false;
+            //}
             section_new = section_old;
             section_new.class_map_ &= ~((bitmap32)1 << region_offset);
             section_new.alloc_map_ |= (bitmap32)1 << region_offset;
@@ -944,11 +947,11 @@ bool RDMAConnection::update_section(uint32_t region_index, alloc_advise advise, 
         return true;
     } else if(advise == alloc_class) {
         do{
-            if(!check_section(section_old, compare, region_offset)){
+            //if(!check_section(section_old, compare, region_offset)){
                 // printf("try update_section failed, compare is %d, advise is %d, class bit is %d, malloc bit is %d\n", compare, advise,
                 //     (section_old.class_map_ >> region_offset) % 2, (section_old.alloc_map_ >> region_offset) % 2);
-                return false;
-            }
+              //  return false;
+            //}
             section_new = section_old;
             section_new.class_map_ |= (bitmap32)1 << region_offset;
             section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
@@ -1512,9 +1515,9 @@ int RDMAConnection::free_region_batch(uint32_t region_offset, uint32_t free_bitm
         if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) == block_per_region){
             update_section(region_offset, alloc_empty, alloc_no_class); 
             return -2;
-        } else if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > 2*block_per_region/3 && free_bit_in_bitmap32(region.base_map_) <= 2*block_per_region/3){
+        } else if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > 2*block_per_region/3 && free_bit_in_bitmap32(region.base_map_) <= 5*block_per_region/6){
             update_section(region_offset, alloc_no_class, alloc_class); 
-        } else if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > block_per_region/3 && free_bit_in_bitmap32(region.base_map_) <= block_per_region/3){
+        } else if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > block_per_region/3 && free_bit_in_bitmap32(region.base_map_) <= block_per_region/2){
             update_section(region_offset, alloc_class, alloc_exclusive);
         } 
         region = new_region;

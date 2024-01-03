@@ -305,7 +305,7 @@ void ComputingNode::pre_fetcher() {
 
                 }
             }
-            // printf("watermark: %lu, free space: %u, total used mem:%luMiB\n", cache_upper_bound, ring_cache->get_length(), fill_counter*4);
+           // printf("watermark: %lu, free space: %u, total used mem:%luMiB\n", cache_upper_bound, ring_cache->get_length(), fill_counter*4);
         }
     }
 }
@@ -622,7 +622,7 @@ bool ComputingNode::free_mem_batch(uint32_t region_offset, uint32_t free_map){
     int free_length = free_bit_in_bitmap32(free_map), index;
     mr_rdma_addr result[block_per_region];
     region_with_rkey* region;
-    if(exclusive_region_[region_offset].region.exclusive_ == 1 && ring_cache->get_length() < cache_upper_bound * cache_watermark_high) {
+    if(exclusive_region_[region_offset].region.exclusive_ == 1 && ring_cache->get_length() + free_length < cache_upper_bound * cache_watermark_high) {
         for(int i = 0; i < free_length; i++) {
             index = find_free_index_from_bitmap32_tail(free_map);
             free_map |= (uint32_t)(1<<index);
@@ -632,7 +632,7 @@ bool ComputingNode::free_mem_batch(uint32_t region_offset, uint32_t free_map){
         ring_cache->add_batch(result, free_length);
         return true;
     } else if(exclusive_region_[region_offset].region.block_class_ != 0 
-            && ring_class_cache[exclusive_region_[region_offset].region.block_class_]->get_length() < 
+            && ring_class_cache[exclusive_region_[region_offset].region.block_class_]->get_length()+free_length < 
             class_cache_upper_bound[exclusive_region_[region_offset].region.block_class_] * cache_watermark_high) {
         // printf("class GC %p, %u\n", result.addr, result.rkey);
         for(int i = 0; i < free_length; i++) {
@@ -643,7 +643,7 @@ bool ComputingNode::free_mem_batch(uint32_t region_offset, uint32_t free_map){
         } 
         ring_class_cache[exclusive_region_[region_offset].region.block_class_]->add_batch(result, free_length);
         return true;
-    } else if (exclusive_region_[region_offset].region.block_class_ == 0 && ring_cache->get_length() < cache_upper_bound * cache_watermark_high){
+    } else if (exclusive_region_[region_offset].region.block_class_ == 0 && ring_cache->get_length()+ free_length < cache_upper_bound * cache_watermark_high){
         // printf("share GC %p, %u\n", result.addr, result.rkey);
         for(int i = 0; i < free_length; i++) {
             index = find_free_index_from_bitmap32_tail(free_map);
@@ -679,9 +679,9 @@ bool ComputingNode::free_mem_batch(uint32_t region_offset, uint32_t free_map){
                 exclusive_region_[region_offset].region.exclusive_ = 0;
             }
         }
-        if(free_class == -2 && region_offset == backup_region_index_){
+        if(free_class == -2 && region_offset != backup_region_index_){
             m_rdma_conn_->set_region_empty(backup_region_, region_offset);
-            new_backup_region();
+	    //new_backup_region();
         } else if(region_offset == backup_region_index_) {
             backup_region_.base_map_ &= free_map;  
         }
