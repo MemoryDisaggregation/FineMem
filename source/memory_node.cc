@@ -37,7 +37,7 @@
 #define REMOTE_MEM_SIZE 4194304
 // #define REMOTE_MEM_SIZE 4096
 
-#define INIT_MEM_SIZE ((uint64_t)200*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)180*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 
@@ -226,7 +226,9 @@ bool MemoryNode::free_mem_block(uint64_t addr) {
     uint32_t block_id = (addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
     // bind_mw(block_mw[block_id], addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
     // bind_mw(block_mw[block_id], addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
-    new_addr.addr = addr; new_addr.rkey = block_mw[block_id]->rkey;
+    new_addr.addr = addr; 
+    new_addr.rkey = get_global_rkey();
+    // new_addr.rkey = block_mw[block_id]->rkey;
     ring_cache->add_cache(new_addr);
     return true;
 }
@@ -488,10 +490,11 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
 
     for(int i = 0; i < block_num_; i++){
         uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
-        block_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
+        // block_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
         // bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
-        bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
-        server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
+        // bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
+        // server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
+        server_block_manager_->set_block_rkey(i, get_global_rkey());
     }
     printf("bind finished\n");
 

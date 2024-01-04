@@ -40,8 +40,8 @@ uint16_t block_class;
 class test_allocator{
 public:
     test_allocator() {};
-    virtual bool malloc(uint16_t block_class, uint64_t &addr, uint32_t &rkey) {};
-    virtual bool free(uint16_t block_class, uint64_t addr) {};
+    virtual bool malloc(uint16_t block_class, uint64_t &addr, uint32_t &rkey) {return false;};
+    virtual bool free(uint16_t block_class, uint64_t addr) {return false;};
     ~test_allocator() {};
 };
 
@@ -245,10 +245,10 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         char read_buffer[4];
         for(int i = 0; i < rand_iter; i ++){
             if(conn->remote_write(buffer[i%2], 64, addr[i], rkey[i])) {
-                printf("wrong write addr %p, %u\n", addr[i], rkey[i]);
+                printf("wrong write addr %ld, %u\n", addr[i], rkey[i]);
             }
             if(conn->remote_read(read_buffer, 4, addr[i], rkey[i])) {
-                printf("wrong read addr %p, %u\n", addr[i], rkey[i]);
+                printf("wrong read addr %ld, %u\n", addr[i], rkey[i]);
             }
             // printf("access addr %p, %u\n", addr[i], rkey[i]);
             // assert(read_buffer[0] == buffer[i%2][0]);

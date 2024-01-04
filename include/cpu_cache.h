@@ -337,7 +337,9 @@ public:
             fd = shm_open("/cpu_cache", O_CREAT | O_EXCL | O_RDWR, 0600);
             // TODO: our cpu number should be dynamic, max_item can be static
             // e.g. const uint8_t nprocs = get_nprocs();
-            ftruncate(fd, sizeof(cpu_cache_storage));
+            if(!ftruncate(fd, sizeof(cpu_cache_storage))){
+                perror("create shared memory failed");
+            }
             cpu_cache_content_ = (cpu_cache_storage*)mmap(NULL, sizeof(cpu_cache_storage), port_flag, mm_flag, fd, 0);
             for(int i = 0; i < nprocs; i++) {
                 alloc_ring[i] = new ring_buffer<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->items[i], mr_rdma_addr(-1,-1), 

@@ -1,7 +1,7 @@
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
 set(BASE_SOURCE
-    rdma_conn_manager.cc rdma_conn.cc free_block_manager.cc local_heap.cc remote_heap.cc memory_node.cc computing_node.cc
+    rdma_conn_manager.cc rdma_conn.cc free_block_manager.cc memory_node.cc computing_node.cc
     )
 
 add_library(mralloc STATIC ${BASE_SOURCE})
@@ -10,7 +10,6 @@ add_executable(server server.cc)
 
 add_executable(client client.cc)
 
-add_executable(user_code user_code.cc)
 # add_executable(remote_heap remote_heap.cc)
 
 # message("Build Type: ${CMAKE_BUILD_TYPE} ${CMAKE_CXX_FLAGS}")
@@ -27,14 +26,6 @@ target_link_libraries(client
     ibverbs
     rdmacm
     rt
-)
-
-
-target_link_libraries(user_code
-    mralloc
-    ibverbs
-    rdmacm
-    rt    
 )
 
 # target_link_libraries(remote_heap

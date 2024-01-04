@@ -39,9 +39,9 @@ std::atomic<uint64_t> id;
 class test_allocator{
 public:
     test_allocator() {};
-    virtual bool malloc(uint64_t &addr, uint32_t &rkey) {};
-    virtual bool free(uint64_t addr) {};
-    virtual bool print_state() {};
+    virtual bool malloc(uint64_t &addr, uint32_t &rkey) {return false;};
+    virtual bool free(uint64_t addr) {return false;};
+    virtual bool print_state() {return false;};
     ~test_allocator() {}; 
 };
 
@@ -65,7 +65,7 @@ public:
     bool free(uint64_t addr) override {
         return conn_->free_block(addr);
     };
-    bool print_state() override {printf("%lf\n", avg_retry);};
+    bool print_state() override {printf("%lf\n", avg_retry); return true;};
 private:
     double avg_retry=0;
     int alloc_num=0;
@@ -85,7 +85,7 @@ public:
     bool free(uint64_t addr) override {
         return !conn_->remote_free_block(addr);
     };
-    bool print_state() override {};
+    bool print_state() override {return false;};
 private:
     mralloc::ConnectionManager* conn_;
 };
@@ -102,7 +102,7 @@ public:
     bool free(uint64_t addr) override {
         return !conn_->unregister_remote_memory(addr);
     };
-    bool print_state() override {};
+    bool print_state() override {return false;};
 private:
     mralloc::ConnectionManager* conn_;
 };
@@ -135,7 +135,7 @@ public:
         }
         return true;
     };
-    bool print_state() override {printf("%lf\n", avg_retry);};
+    bool print_state() override {printf("%lf\n", avg_retry);return false;};
 private:
     double avg_retry=0;
     int alloc_num = 0;
@@ -195,7 +195,7 @@ public:
         }
         return true;
     };
-    bool print_state() override {};
+    bool print_state() override {return false;};
 
 private:
     uint32_t cache_section_index;
@@ -218,7 +218,7 @@ public:
         cpu_cache_->add_free_cache(addr);
         return true;
     };
-    bool print_state() override {};
+    bool print_state() override {return false;};
 
 private:
     mralloc::cpu_cache* cpu_cache_;
@@ -267,10 +267,10 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         char read_buffer[4];
         for(int i = 0; i < rand_iter; i ++){
             if(conn->remote_write(buffer[i%2], 64, addr[i], rkey[i])) {
-                printf("wrong write addr %p, %u\n", addr[i], rkey[i]);
+                printf("wrong write addr %ld, %u\n", addr[i], rkey[i]);
             }
             if(conn->remote_read(read_buffer, 4, addr[i], rkey[i])) {
-                printf("wrong read addr %p, %u\n", addr[i], rkey[i]);
+                printf("wrong read addr %ld, %u\n", addr[i], rkey[i]);
             }
             // printf("access addr %p, %u\n", addr[i], rkey[i]);
             // assert(read_buffer[0] == buffer[i%2][0]);

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 project(MRALLOC)
 
-set(CMAKE_BUILD_TYPE "Debug")
+set(CMAKE_BUILD_TYPE "Release")
 
 set(RDMA_LIB "-lrdmacm -libverbs")
 set(CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS} -fPIC")
@@ -12,7 +12,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS True)
 if( CMAKE_BUILD_TYPE STREQUAL "Debug" )
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -Wall -Wno-unused-variable")
 else( CMAKE_BUILD_TYPE STREQUAL "Release" )
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3 -fopenmp")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -fopenmp")
 endif( CMAKE_BUILD_TYPE STREQUAL "Debug" )
 
 message("Build Type: ${CMAKE_BUILD_TYPE} ${CMAKE_CXX_FLAGS}")

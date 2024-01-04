@@ -898,6 +898,7 @@ inline bool RDMAConnection::check_section(section_e alloc_section, alloc_advise 
     case alloc_exclusive:
         return ((alloc_section.alloc_map_ & alloc_section.class_map_) & (bitmap32)1<< offset) != 0;
     }
+    return false;
 }
 
 bool RDMAConnection::update_section(uint32_t region_index, alloc_advise advise, alloc_advise compare) {

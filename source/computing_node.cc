@@ -333,7 +333,7 @@ void ComputingNode::recycler() {
 void ComputingNode::print_cpu_cache() {
     for(int i = 0;i < nprocs; i++) {
         if(cpu_cache_watermark[i] != 1 || cpu_cache_->get_length(i) != 1)
-            printf("%d:%d/%lu\t", i, cpu_cache_->get_length(i), cpu_cache_watermark[i]);
+            printf("%d:%d/%u\t", i, cpu_cache_->get_length(i), cpu_cache_watermark[i]);
     }
     printf("\n");
 
