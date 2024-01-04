@@ -177,7 +177,7 @@ private:
     bool m_stop_;
     std::thread *m_conn_handler_;
     WorkerInfo **m_worker_info_;
-    uint32_t m_worker_num_;
+    volatile uint32_t m_worker_num_;
     std::thread **m_worker_threads_;
     MWPool* mw_queue_;
     std::unordered_map<uint64_t, ibv_mr*> mr_recorder;
