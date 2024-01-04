@@ -155,7 +155,7 @@ private:
     region_e backup_region_;
     uint32_t backup_region_index_;
     int backup_counter = 0;
-    int backup_cycle = 10;
+    int backup_cycle = 1000;
     region_e current_class_region_[16];
     uint32_t current_class_region_index_[16];
 
@@ -195,7 +195,7 @@ private:
     std::vector<rdma_mem_t> m_used_mem_; /* the used mem */
     std::mutex m_mutex_;                 /* used for concurrent mem allocation */
 
-    uint64_t time_stamp_;
+     uint64_t time_stamp_;
 };
 
 }

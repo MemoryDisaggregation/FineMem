@@ -963,10 +963,10 @@ bool RDMAConnection::update_section(uint32_t region_index, alloc_advise advise, 
 }
 
 bool RDMAConnection::find_section(uint16_t block_class, section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
-    section_e section[8];
+    section_e section[8] = {0,0};
     if(advise == alloc_class) {
         int remain = section_num_, fetch = remain > 8 ? 8:remain, index = 0;
-        section_class_e section_class_header;
+        section_class_e section_class_header = {0,0};
         while(remain > 0) {
             remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
             for(int j = 0; j < fetch; j ++) {

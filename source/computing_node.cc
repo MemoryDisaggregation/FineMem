@@ -215,10 +215,10 @@ void ComputingNode::decrease_watermark(int &upper_bound) {
 // a infinite loop worker
 void ComputingNode::pre_fetcher() {
     std::unordered_map<uint32_t, uint32_t> region_map; 
-    uint64_t addr_offset;
-    uint64_t update_time = time_stamp_;
-    uint32_t length;
-    uint64_t addr, batch_addr[max_free_item], class_addr[max_class_free_item];
+    uint64_t addr_offset=0;
+    volatile uint64_t update_time = 0;
+    uint32_t length=0;
+    uint64_t addr=0, batch_addr[max_free_item], class_addr[max_class_free_item];
     bool block_breakdown = false, class_breakdown = false;
     cache_upper_bound = block_per_region;
     for(int i = 1; i < class_num; i++) {
@@ -365,12 +365,13 @@ void ComputingNode::cache_filler() {
                     cpu_cache_watermark[i] += 1;
                 while(!ring_cache->try_fetch_batch(batch_addr, cpu_cache_watermark[i])){
                     time_stamp_ += 1;
+		    //printf("no space!\n");
                 }
                 cpu_cache_->add_batch(i, batch_addr, cpu_cache_watermark[i]);
                 update += cpu_cache_watermark[i];
-                // for(int j = 0; j< cpu_cache_watermark[i]; j++){
-                //     printf("success add cache @ %d, %lx - %u\n", i, batch_addr[j].addr, batch_addr[j].rkey);
-                // }
+                //for(int j = 0; j< cpu_cache_watermark[i]; j++){
+                   //  printf("success add cache @ %d, %lx - %u\n", i, batch_addr[j].addr, batch_addr[j].rkey);
+                 //}
                 // printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
             }
             else if(free_ < cpu_cache_watermark[i] && free_ > 1) {
@@ -378,22 +379,26 @@ void ComputingNode::cache_filler() {
                     cpu_cache_watermark[i] -= 1;
                 while(!ring_cache->try_fetch_batch(batch_addr, cpu_cache_watermark[i]-free_)){
                     time_stamp_ += 1;
+		  //  printf("no space!\n");
+
                 }
                 cpu_cache_->add_batch(i, batch_addr, cpu_cache_watermark[i]-free_);
-                // printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
+                 //printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
                 // for(int j = 0; j< cpu_cache_watermark[i]-free_; j++){
-                //     printf("success add cache @ %d, %lx - %u\n", i, batch_addr[j].addr, batch_addr[j].rkey);
-                // }
+                     //printf("success add cache @ %d, %lx - %u\n", i, batch_addr[j].addr, batch_addr[j].rkey);
+                 //}
                 update += cpu_cache_watermark[i] - free_;
             } else if(cpu_cache_watermark[i] > 1 && free_ == 1) {
                 while(!ring_cache->try_fetch_batch(batch_addr, cpu_cache_watermark[i]-free_)){
                     time_stamp_ += 1;
-                }
+                //printf("no space!\n");
+
+		}
                 cpu_cache_->add_batch(i, batch_addr, cpu_cache_watermark[i]-free_);
-                // printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
-                // for(int j = 0; j< cpu_cache_watermark[i]-free_; j++){
-                //     printf("success add cache @ %d, %lx - %u\n", i, batch_addr[j].addr, batch_addr[j].rkey);
-                // }
+                 //printf("success add cache @ %d, %lx - %u\n", i, init_addr_, init_rkey_);
+                 //for(int j = 0; j< cpu_cache_watermark[i]-free_; j++){
+                   // printf("success add cache @ %d, %lx - %u\n", i, batch_addr[j].addr, batch_addr[j].rkey);
+                 //}
                 update += cpu_cache_watermark[i] - free_;
             } 
         }
@@ -444,9 +449,9 @@ void ComputingNode::cache_filler() {
         }
         if(update) {
             time_stamp_ += 1;
-            // print_cpu_cache();
+            //print_cpu_cache();
         }
-        // printf("I'm running!\n");
+        //printf("I'm running!\n");
     }
 }
 
