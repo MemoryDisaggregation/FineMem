@@ -243,7 +243,7 @@ public:
                 used ++;
             }
         }
-        // printf("%lu\n", used*4);
+        // printf("%lu\n", (used-cache)*4);
         mem_record_ << (used-cache)*4 << std::endl;
         // printf("summary: empty: %lu, exclusive: %lu, shared: %lu\n", empty, exclusive, shared);
     }

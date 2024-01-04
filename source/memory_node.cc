@@ -37,7 +37,7 @@
 #define REMOTE_MEM_SIZE 4194304
 // #define REMOTE_MEM_SIZE 4096
 
-#define INIT_MEM_SIZE ((uint64_t)180*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)200*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 
@@ -677,7 +677,6 @@ void MemoryNode::worker(WorkerInfo *work_info, uint32_t num) {
     CmdMsgRespBlock *cmd_resp = work_info->cmd_resp_msg;
     struct ibv_mr *resp_mr = work_info->resp_mr;
     cmd_resp->notify = NOTIFY_WORK;
-    RequestsMsg request;
     int active_id = -1;
     while (true) {
         if (m_stop_) break;
