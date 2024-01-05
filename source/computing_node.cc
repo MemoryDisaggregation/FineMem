@@ -228,7 +228,8 @@ void ComputingNode::pre_fetcher() {
 	// for(int iter=0;iter<2;iter++)
         for(int i = 0; i < nprocs; i++){
             if((length = cpu_cache_->fetch_free_cache(i, batch_addr)) != 0) {
-                for(int j = 0; j < length; j++) {
+                /*
+		    for(int j = 0; j < length; j++) {
                     addr_offset = batch_addr[j]-heap_start_;
                     if(region_map.find(addr_offset/region_size_) == region_map.end()) {
                         region_map[addr_offset/region_size_] = ~(uint32_t)(0);
@@ -239,8 +240,9 @@ void ComputingNode::pre_fetcher() {
                     free_mem_batch(j->first, j->second);
                 }
                 region_map.clear();
-                // for(int j = 0; j < length; j++)
-                //     free_mem_block(batch_addr[j]);
+		*/
+                for(int j = 0; j < length; j++)
+                     free_mem_block(batch_addr[j]);
                 // printf("add free cache addr:%lx, current:%u\n", addr, ring_cache->get_length());
             }
         }

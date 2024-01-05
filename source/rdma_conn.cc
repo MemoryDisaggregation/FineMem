@@ -924,11 +924,11 @@ bool RDMAConnection::update_section(uint32_t region_index, alloc_advise advise, 
         return true;
     } else if(advise == alloc_empty) {
         do{
-            //if(!check_section(section_old, compare, region_offset)){
+            if(!check_section(section_old, compare, region_offset)){
                 // printf("try update_section failed, compare is %d, advise is %d, class bit is %d, malloc bit is %d\n", compare, advise,
                 //     (section_old.class_map_ >> region_offset) % 2, (section_old.alloc_map_ >> region_offset) % 2);
-              //  return false;
-            //}
+                return false;
+            }
             section_new = section_old;
             section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
             section_new.class_map_ &= ~((bitmap32)1 << region_offset);
@@ -936,11 +936,11 @@ bool RDMAConnection::update_section(uint32_t region_index, alloc_advise advise, 
         return true;
     } else if(advise == alloc_no_class) {
         do{
-            //if(!check_section(section_old, compare, region_offset)){
+            if(!check_section(section_old, compare, region_offset)){
                 // printf("try update_section failed, compare is %d, advise is %d, class bit is %d, malloc bit is %d\n", compare, advise,
                 //     (section_old.class_map_ >> region_offset) % 2, (section_old.alloc_map_ >> region_offset) % 2);
-              //  return false;
-            //}
+                return false;
+            }
             section_new = section_old;
             section_new.class_map_ &= ~((bitmap32)1 << region_offset);
             section_new.alloc_map_ |= (bitmap32)1 << region_offset;
@@ -948,11 +948,11 @@ bool RDMAConnection::update_section(uint32_t region_index, alloc_advise advise, 
         return true;
     } else if(advise == alloc_class) {
         do{
-            //if(!check_section(section_old, compare, region_offset)){
+            if(!check_section(section_old, compare, region_offset)){
                 // printf("try update_section failed, compare is %d, advise is %d, class bit is %d, malloc bit is %d\n", compare, advise,
                 //     (section_old.class_map_ >> region_offset) % 2, (section_old.alloc_map_ >> region_offset) % 2);
-              //  return false;
-            //}
+                return false;
+            }
             section_new = section_old;
             section_new.class_map_ |= (bitmap32)1 << region_offset;
             section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
