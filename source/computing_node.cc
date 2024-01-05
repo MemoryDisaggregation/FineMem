@@ -252,14 +252,14 @@ void ComputingNode::pre_fetcher() {
             }
 	}
 	    if(free_num > 0)
-              printf("add free cache %dMiB, current:%u\n", free_num, ring_cache->get_length());
+              printf("add free cache %dMiB, current:%u, upper bound:%u\n", free_num*4, ring_cache->get_length()*4, cache_upper_bound*4);
         }while(free_num >= 8);
         for(int i = 0; i < class_num; i++){
             if((length = cpu_cache_->fetch_class_free_cache(i, class_addr)) != 0) {
                 // printf("free class %d of %d blocks \n", i, length);
                 for(int j = 0; j < length; j++)
                     free_mem_block(class_addr[j]);
-                // printf("add free class %d cache addr:%lx, current:%u\n", i, addr, ring_class_cache[i]->get_length());
+                // printf("add free class %d cache addr:%lx, current:%u, upper bound:%u\n", i, addr, ring_class_cache[i]->get_length(), cache_upper_bound);
             }
         }
         if(ring_cache->get_length() == 0) {
@@ -276,37 +276,25 @@ void ComputingNode::pre_fetcher() {
                 // printf("class %d watermark: %lu, free space: %u, total used mem:%luMiB\n", i, class_cache_upper_bound[i], ring_class_cache[i]->get_length(), fill_counter*4);
             }
         }
+        length = ring_cache->get_length();
         if(update_time != time_stamp_) {
             update_time = time_stamp_;
+		    his_length = 0;
             // fill the block cache
             if(block_breakdown) {
-		    his_length = 0;
                 block_breakdown = false;
             } else {
-                length = ring_cache->get_length();
                 if(length <= cache_upper_bound * cache_watermark_low || length <= 8) {
                     increase_watermark(cache_upper_bound);
-				    his_length = 0;
                     fill_cache_block(0);
                 } else if(length < cache_upper_bound && length >= cache_upper_bound *cache_watermark_high){
-			        his_length = 0; 
                     decrease_watermark(cache_upper_bound);
                     //fill_cache_block(0);
                 } else if(length < cache_upper_bound ) {
                     decrease_watermark(cache_upper_bound);
-                    his_length = 0;
 			        fill_cache_block(0);
                     // printf("fill: %lu ", cache_upper_bound - length);
-                } else if(length > cache_upper_bound ) {
-                    if(his_length != 0 && his_length - length < block_per_region){
-					    mr_rdma_addr addr; 
-					    for(int k = 0; k < block_per_region; k++) {
-					        ring_cache->force_fetch_cache(addr);
-                            free_mem_block_slow(addr.addr);
-					    }
-					} 
-				    his_length = length - block_per_region;		
-		        } else his_length = 0;
+                } 
             }
 
             // fill the class block cache
@@ -330,6 +318,16 @@ void ComputingNode::pre_fetcher() {
                 }
             }
            // printf("watermark: %lu, free space: %u, total used mem:%luMiB\n", cache_upper_bound, ring_cache->get_length(), fill_counter*4);
+        }
+        else if(length > cache_upper_bound ) {
+            if(his_length != 0 && his_length - length < cache_upper_bound &&length - cache_upper_bound > block_per_region){
+				mr_rdma_addr addr; 
+				for(int k = 0; k < block_per_region; k++) {
+					if(ring_cache->try_fetch_cache(addr))
+                        free_mem_block_slow(addr.addr);
+				}
+			} 
+			his_length = length - block_per_region;		
         }
     }
 }
@@ -544,6 +542,7 @@ bool ComputingNode::new_backup_region() {
 bool ComputingNode::fill_cache_block(uint32_t block_class){
     if(block_class == 0){
         int length =  ring_cache->get_length();
+	printf("fill %dMiB\n", (cache_upper_bound - length)*4);
         for(int i = 0; i< cache_upper_bound - length; i++){
             if(current_region_->region.base_map_ != bitmap32_filled) {
                 int index = find_free_index_from_bitmap32_tail(current_region_->region.base_map_);
@@ -829,7 +828,7 @@ bool ComputingNode::free_mem_block(uint64_t addr){
     uint64_t region_offset = (addr - heap_start_) / region_size_;
     uint64_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
     region_with_rkey* region;
-    if(exclusive_region_[region_offset].region.exclusive_ == 1 && ring_cache->get_length() < 40*block_per_region) {
+    if(exclusive_region_[region_offset].region.exclusive_ == 1 && ring_cache->get_length() < 48*block_per_region) {
         mr_rdma_addr result; 
         result.addr = addr; 
         result.rkey = exclusive_region_[region_offset].rkey[region_block_offset];
