@@ -37,7 +37,7 @@
 
 namespace mralloc {
 
-const uint32_t ring_buffer_size = 4096;
+const uint32_t ring_buffer_size = 8192;
 const uint32_t class_ring_buffer_size = 2048;
 
 

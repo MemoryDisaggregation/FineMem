@@ -13,7 +13,7 @@
 #include <sys/time.h>
 
 const int iteration = 64;
-const int epoch = 10240;
+const int epoch = 1024;
 
 enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc };
 
