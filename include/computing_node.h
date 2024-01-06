@@ -156,7 +156,7 @@ private:
     region_e backup_region_;
     uint32_t backup_region_index_;
     int backup_counter = 0;
-    int backup_cycle = 100000;
+    int backup_cycle = -1;
     region_e current_class_region_[16];
     uint32_t current_class_region_index_[16];
 
