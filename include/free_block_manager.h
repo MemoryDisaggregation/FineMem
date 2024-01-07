@@ -245,7 +245,7 @@ public:
         }
         // printf("%lu\n", (used-cache)*4);
         mem_record_ << (used-cache)*4 << std::endl;
-        // printf("summary: empty: %lu, exclusive: %lu, shared: %lu\n", empty, exclusive, shared);
+        // printf("summary: empty: %lu, exclusive: %lu, total: %lu\n", empty, exclusive, (used-cache)*4);
     }
 
     inline bool check_section(section_e alloc_section, alloc_advise advise, uint32_t offset);
