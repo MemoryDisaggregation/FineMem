@@ -225,16 +225,24 @@ private:
 };
 
 void warmup(test_allocator* alloc) {
-    uint64_t addr;
-    uint32_t rkey;
-    for(int i = 0; i < iteration; i++) {
+    uint64_t addr[iteration];
+    uint32_t rkey[iteration];
+    /*
+     * for(int i = 0; i < iteration; i++) {
         if(!alloc->malloc(addr, rkey)){
             printf("warmup malloc failed\n");
         }
         if(!alloc->free(addr)){
             printf("warmup free failed\n");
         }
+    }*/
+    /*
+    for(int i = 0; i < iteration; i++) {
+    	alloc->malloc(addr[i], rkey[i]);
     }
+    for(int i = 0; i < iteration; i++) {
+        alloc->free(addr[i]);
+    }*/
 }
 
 void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_t thread_id) {
@@ -308,6 +316,10 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         // if (thread_id == 1)
         //     conn->remote_print_alloc_info();
     }
+    for(int i = 0; i < rand_iter; i++) {
+	    if(addr[i]!=0)
+		alloc->free(addr[i]);
+    }
     alloc->print_state();
     for(int i=0;i<1000;i++){
         malloc_record_global[i].fetch_add(malloc_record[i]);
@@ -330,6 +342,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
         pthread_barrier_wait(&start_barrier);
         for(int j = 0; j < epoch; j ++) {
             pthread_barrier_wait(&start_barrier);
+//            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             gettimeofday(&start, NULL);
             for(int i = 0; i < rand_iter; i ++){
                 if(addr[i] != 0 && rkey[i] != 0) 
@@ -382,7 +395,6 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
             free_count_ += 1;
             // printf("epoch %d free finish\n", j);
-            // std::this_thread::sleep_for(std::chrono::milliseconds(100));
             // if (thread_id == 1)
             //     conn->remote_print_alloc_info();
         }
@@ -432,6 +444,8 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             
             // pthread_barrier_wait(&start_barrier);
             gettimeofday(&start, NULL);
+//            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            gettimeofday(&start, NULL);
             for(int i = 0; i < rand_iter; i ++){
                 if(addr[i] != 0 && rkey[i] != 0) 
                     continue;
@@ -465,6 +479,10 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
     for(int i=0;i<1000;i++){
         malloc_record_global[i].fetch_add(malloc_record[i]);
         free_record_global[i].fetch_add(free_record[i]);
+    }
+    for(int i = 0; i < rand_iter; i++) {
+    	if(addr[i]!=0)
+		alloc->free(addr[i]);
     }
     alloc->print_state();
     malloc_avg[thread_id] = malloc_avg_time_;
