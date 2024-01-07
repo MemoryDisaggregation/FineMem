@@ -1346,9 +1346,9 @@ int RDMAConnection::fetch_region_block(region_e &alloc_region, uint64_t &addr, u
     int index, retry_time = 0; region_e new_region;
     do{
 	retry_time ++;
-	if(retry_time>10) {
-	  printf("retry time:%d\n",retry_time);
-	}
+	//if(retry_time>10) {
+	 // printf("retry time:%d\n",retry_time);
+	//}
         if(alloc_region.exclusive_ != is_exclusive || alloc_region.block_class_ != 0) {
             printf("state wrong, addr = %lx, exclusive = %d, class = %u\n", get_region_addr(region_index), alloc_region.exclusive_, alloc_region.block_class_);
             return 0;

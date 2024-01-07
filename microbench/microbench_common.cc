@@ -12,8 +12,8 @@
 #include "cpu_cache.h"
 #include <sys/time.h>
 
-const int iteration = 64;
-const int epoch = 1024;
+const int iteration = 128;
+const int epoch = 256;
 
 enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc };
 
@@ -342,6 +342,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
         pthread_barrier_wait(&start_barrier);
         for(int j = 0; j < epoch; j ++) {
             pthread_barrier_wait(&start_barrier);
+//            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             gettimeofday(&start, NULL);
             for(int i = 0; i < rand_iter; i ++){
                 if(addr[i] != 0 && rkey[i] != 0) 
@@ -394,7 +395,6 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
             free_count_ += 1;
             // printf("epoch %d free finish\n", j);
-            // std::this_thread::sleep_for(std::chrono::milliseconds(100));
             // if (thread_id == 1)
             //     conn->remote_print_alloc_info();
         }
@@ -443,6 +443,8 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             //     conn->remote_print_alloc_info();
             
             // pthread_barrier_wait(&start_barrier);
+            gettimeofday(&start, NULL);
+//            std::this_thread::sleep_for(std::chrono::milliseconds(100));
             gettimeofday(&start, NULL);
             for(int i = 0; i < rand_iter; i ++){
                 if(addr[i] != 0 && rkey[i] != 0) 

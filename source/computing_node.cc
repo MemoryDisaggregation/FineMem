@@ -197,7 +197,7 @@ void ComputingNode::decrease_class_watermark(uint16_t block_class, int &upper_bo
 
 void ComputingNode::increase_watermark(int &upper_bound) {
     // if (upper_bound == ring_buffer_size - 16 ) {
-    if (upper_bound == ring_buffer_size - 16 || upper_bound >= 96 * block_per_region) {
+    if (upper_bound == ring_buffer_size - 16 || upper_bound >= 8 * block_per_region) {
         return;
     }
     if(upper_bound < block_per_region) {
@@ -341,7 +341,7 @@ void ComputingNode::pre_fetcher() {
 					if(ring_cache->try_fetch_cache(addr))
                         free_mem_block_slow(addr.addr);
 				}
-				printf("GC, current:%d\n",length-block_per_region);
+				//printf("GC, current:%d\n",length-block_per_region);
 				his_length = length - block_per_region;
 				idle_cycle = 0;
 		} else {his_length = length;}
@@ -560,14 +560,14 @@ bool ComputingNode::new_backup_region() {
     return true;
 }
 
-int fill_counter = 0;
+int block_counter = 0;
 
 bool ComputingNode::fill_cache_block(uint32_t block_class){
     if(block_class == 0){
         int length =  ring_cache->get_length();
 	if(cache_upper_bound > length) {
-		fill_counter += (cache_upper_bound - length)*4;
-		printf("%d\n", fill_counter);
+		block_counter += (cache_upper_bound - length);
+		// printf("%d\n", block_counter);
 	}
         for(int i = 0; i< cache_upper_bound - length; i++){
             if(current_region_->region.base_map_ != bitmap32_filled) {
@@ -844,7 +844,7 @@ bool ComputingNode::free_mem_block_slow(uint64_t addr) {
 		m_mutex_.unlock();
 	    }
             // mr_rdma_addr value(addr, region->rkey[region_block_offset]);
-             printf("free cache addr:%lx\n",addr);
+            // printf("free cache addr:%lx\n",addr);
             // ring_cache->add_cache(value);
             return true;
         }
@@ -856,7 +856,7 @@ bool ComputingNode::free_mem_block(uint64_t addr){
     uint64_t region_offset = (addr - heap_start_) / region_size_;
     uint64_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
     region_with_rkey* region;
-    if(exclusive_region_[region_offset].region.exclusive_ == 1 && ring_cache->get_length() < 108*block_per_region) {
+    if(exclusive_region_[region_offset].region.exclusive_ == 1 && ring_cache->get_length() < 200*block_per_region) {
         mr_rdma_addr result; 
         result.addr = addr; 
         result.rkey = exclusive_region_[region_offset].rkey[region_block_offset];
@@ -872,7 +872,7 @@ bool ComputingNode::free_mem_block(uint64_t addr){
         // printf("class GC %p, %u\n", result.addr, result.rkey);
         ring_class_cache[exclusive_region_[region_offset].region.block_class_]->add_cache(result);
         return true;
-    } else if (exclusive_region_[region_offset].region.block_class_ == 0 && ring_cache->get_length() < 108*block_per_region){
+    } else if (exclusive_region_[region_offset].region.block_class_ == 0 && ring_cache->get_length() < 200*block_per_region){
         mr_rdma_addr result; 
         result.addr = addr; 
         // result.rkey = m_rdma_conn_->get_region_block_rkey(exclusive_region_[region_offset].region, region_block_offset);
