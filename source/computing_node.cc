@@ -48,7 +48,7 @@ void * run_cache_filler(void* arg) {
 void * run_pre_fetcher(void* arg) {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    CPU_SET(2, &cpuset);
+    CPU_SET(1, &cpuset);
     pthread_t this_tid = pthread_self();
     uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
     // assert(ret == 0);
@@ -297,9 +297,11 @@ void ComputingNode::pre_fetcher() {
             } else {
                 if(length <= cache_upper_bound * cache_watermark_low || length <= 8) {
                     increase_watermark(cache_upper_bound);
+                    // printf("fill: %lu ", cache_upper_bound - length);
                     fill_cache_block(0);
                 } else if(length < cache_upper_bound && length >= cache_upper_bound *cache_watermark_high){
                     decrease_watermark(cache_upper_bound);
+                    // printf("not fill: %lu ", cache_upper_bound - length);
                     //fill_cache_block(0);
                 } else if(length < cache_upper_bound ) {
                     decrease_watermark(cache_upper_bound);
@@ -341,7 +343,7 @@ void ComputingNode::pre_fetcher() {
 					if(ring_cache->try_fetch_cache(addr))
                         free_mem_block_slow(addr.addr);
 				}
-				//printf("GC, current:%d\n",length-block_per_region);
+				// printf("GC, current:%d\n",length-block_per_region);
 				his_length = length - block_per_region;
 				idle_cycle = 0;
 		} else {his_length = length;}
@@ -406,7 +408,7 @@ void ComputingNode::cache_filler() {
                     cpu_cache_watermark[i] += 1;
                 while(!ring_cache->try_fetch_batch(batch_addr, cpu_cache_watermark[i])){
                     time_stamp_ += 1;
-		    //printf("no space!\n");
+		    // printf("no space!\n");
                 }
                 cpu_cache_->add_batch(i, batch_addr, cpu_cache_watermark[i]);
                 update += cpu_cache_watermark[i];
@@ -420,7 +422,7 @@ void ComputingNode::cache_filler() {
                     cpu_cache_watermark[i] -= 1;
                 while(!ring_cache->try_fetch_batch(batch_addr, cpu_cache_watermark[i]-free_)){
                     time_stamp_ += 1;
-		  //  printf("no space!\n");
+		//    printf("no space!\n");
 
                 }
                 cpu_cache_->add_batch(i, batch_addr, cpu_cache_watermark[i]-free_);
@@ -432,7 +434,7 @@ void ComputingNode::cache_filler() {
             } else if(cpu_cache_watermark[i] > 1 && free_ == 1) {
                 while(!ring_cache->try_fetch_batch(batch_addr, cpu_cache_watermark[i]-free_)){
                     time_stamp_ += 1;
-                //printf("no space!\n");
+                // printf("no space!\n");
 
 		}
                 cpu_cache_->add_batch(i, batch_addr, cpu_cache_watermark[i]-free_);

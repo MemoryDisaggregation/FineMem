@@ -110,26 +110,27 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
         return -1;
     }
 
-    struct ibv_qp_attr attr;
-    attr.max_dest_rd_atomic = 16;
-    attr.min_rnr_timer = 0x12;
-    attr.ah_attr.is_global = 1;
-    attr.ah_attr.sl    = 0;
-    attr.ah_attr.src_path_bits = 0;
-    attr.ah_attr.grh.flow_label = 0;
-    attr.ah_attr.grh.hop_limit  = 1;
-    attr.ah_attr.grh.traffic_class = 0;
-    attr.timeout = 0x12;
-    attr.retry_cnt = 6;
-    attr.rnr_retry = 0;
-    attr.sq_psn = 0;
-    attr.max_rd_atomic = 16;
-    int    attr_mask;
-    attr_mask = IBV_QP_AV | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER
-                |IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT |
-                IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC;
-    int ret = ibv_modify_qp(m_cm_id_->qp, &attr, attr_mask);
-    assert(ret == 0);
+    //struct ibv_qp_attr attr;
+    //attr.max_dest_rd_atomic = 16;
+    //attr.min_rnr_timer = 0x12;
+    //attr.ah_attr.is_global = 1;
+    //attr.ah_attr.sl    = 0;
+    //attr.ah_attr.src_path_bits = 0;
+   // attr.ah_attr.grh.flow_label = 0;
+    //attr.ah_attr.grh.hop_limit  = 1;
+    //attr.ah_attr.grh.traffic_class = 0;
+    //attr.timeout = 0x12;
+    //attr.retry_cnt = 6;
+    //attr.rnr_retry = 0;
+    //attr.sq_psn = 0;
+    //attr.max_rd_atomic = 16;
+    //int    attr_mask;
+    //attr_mask = IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MAX_QP_RD_ATOMIC;
+    //attr_mask = IBV_QP_AV | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER
+      //          |IBV_QP_TIMEOUT | IBV_QP_RETRY_CNT |
+        //        IBV_QP_RNR_RETRY | IBV_QP_SQ_PSN | IBV_QP_MAX_QP_RD_ATOMIC;
+    //int ret = ibv_modify_qp(m_cm_id_->qp, &attr, attr_mask);
+    //if(ret != 0) printf("connect error,%d\n",ret);
 
     uint8_t access_type_ = access_type;
     struct rdma_conn_param conn_param = {};
@@ -137,7 +138,9 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
     conn_param.private_data = &access_type_;
     conn_param.private_data_len = sizeof(access_type_);
     conn_param.initiator_depth = 16;
-    conn_param.retry_count = 7;
+    conn_param.retry_count = 6;
+    conn_param.flow_control = 0;
+    conn_param.rnr_retry_count = 0;
     if (rdma_connect(m_cm_id_, &conn_param)) {
         perror("rdma_connect fail");
         return -1;

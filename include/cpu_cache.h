@@ -75,10 +75,12 @@ public:
     bool force_fetch_cache(T &value) {
         volatile uint32_t reader = *reader_;
         while(get_length() == 0 ) ;
-        *reader_ = (reader + 1) % max_length_;
-        while(!(buffer_[reader] != zero_)){
-            reader = *reader_;
-        }
+        do{
+            while(!(buffer_[reader] != zero_)){
+                reader = *reader_;
+            }
+            *reader_ = (reader + 1) % max_length_;
+        }while(!(buffer_[reader] != zero_));
         value = buffer_[reader];
         buffer_[reader] = zero_;
         return true;
@@ -89,10 +91,12 @@ public:
         if(get_length() == 0) {
             return false;
         } 
-        *reader_ = (reader + 1) % max_length_;
-        while(!(buffer_[reader] != zero_)){
-            reader = *reader_;
-        }
+        do{
+            while(!(buffer_[reader] != zero_)){
+                reader = *reader_;
+            }
+            *reader_ = (reader + 1) % max_length_;
+        }while(!(buffer_[reader] != zero_));
         value = buffer_[reader];
         buffer_[reader] = zero_;
         return true;
@@ -464,6 +468,10 @@ public:
             printf("sched_getcpu bad \n");
             return;
         }
+        free_ring[nproc]->add_cache(addr);
+    }
+
+    void add_free_cache(unsigned nproc, uint64_t addr) {
         free_ring[nproc]->add_cache(addr);
     }
 

@@ -347,7 +347,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             for(int i = 0; i < rand_iter; i ++){
                 if(addr[i] != 0 && rkey[i] != 0) 
                     continue;
-                if(!alloc->malloc(addr[i], rkey[i]) || addr[i] == 0){
+                if(!alloc->malloc(addr[i], rkey[i]) || addr[i] == 0 || addr[i] == -1){
                     printf("alloc false\n");
                 }
             }
@@ -449,7 +449,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             for(int i = 0; i < rand_iter; i ++){
                 if(addr[i] != 0 && rkey[i] != 0) 
                     continue;
-                if(!alloc->malloc(addr[i], rkey[i])|| addr[i] == 0){
+                if(!alloc->malloc(addr[i], rkey[i])|| addr[i] == 0|| addr[i] == -1){
                     printf("alloc false\n");
                 }
             }
@@ -536,7 +536,7 @@ void* worker(void* arg) {
     uint64_t thread_id = id.fetch_add(1);
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    int id_ = id+3;
+    int id_ = id+51;
     CPU_SET(id_, &cpuset);
     pthread_t this_tid = pthread_self();
     uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
