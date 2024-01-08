@@ -26,7 +26,7 @@ const uint64_t large_block_items = 64;
 const uint64_t max_region_num = 2048;
 const uint64_t region_per_section = 32;
 const uint64_t block_per_region = 32;
-const uint64_t page_size = 1024*1024*2;
+const uint64_t page_size = 1024*1024*64;
 const uint64_t block_class_num = 16;
 
 enum alloc_advise {

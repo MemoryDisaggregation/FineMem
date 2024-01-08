@@ -31,14 +31,17 @@
 // #define REMOTE_MEM_SIZE 16384
 // #define REMOTE_MEM_SIZE 8192
 // #define REMOTE_MEM_SIZE 32768
-#define REMOTE_MEM_SIZE 262144
+// #define REMOTE_MEM_SIZE 262144
 // #define REMOTE_MEM_SIZE 65536
 // #define REMOTE_MEM_SIZE 33554432
 // #define REMOTE_MEM_SIZE 2097152
-// #define REMOTE_MEM_SIZE 4194304
+// #define REMOTE_MEM_SIZE 1048576
+// #define REMOTE_MEM_SIZE 524288
+#define REMOTE_MEM_SIZE 4194304
 // #define REMOTE_MEM_SIZE 4096
+// #define REMOTE_MEM_SIZE 131072
 
-#define INIT_MEM_SIZE ((uint64_t)160*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)80*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 
@@ -397,19 +400,20 @@ int MemoryNode::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
         return -1;
     }
     
-    struct ibv_qp_attr attr;
-    attr.max_dest_rd_atomic = 16;
-    attr.min_rnr_timer = 0x12;
-    attr.ah_attr.is_global = 1;
-    attr.ah_attr.sl    = 0;
-    attr.ah_attr.src_path_bits = 0;
-    attr.ah_attr.grh.flow_label = 0;
-    attr.ah_attr.grh.hop_limit  = 1;
-    attr.ah_attr.grh.traffic_class = 0;
-    int    attr_mask;
-    attr_mask = IBV_QP_AV | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
-    int ret = ibv_modify_qp(cm_id->qp, &attr, attr_mask);
-    assert(ret == 0);
+    // struct ibv_qp_attr attr;
+    // attr.max_dest_rd_atomic = 16;
+    // attr.min_rnr_timer = 0x12;
+    // attr.ah_attr.is_global = 1;
+    // attr.ah_attr.sl    = 0;
+    // attr.ah_attr.src_path_bits = 0;
+    // attr.ah_attr.grh.flow_label = 0;
+    // attr.ah_attr.grh.hop_limit  = 1;
+    // attr.ah_attr.grh.traffic_class = 0;
+    // int    attr_mask;
+    // attr_mask = IBV_QP_AV | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
+    // attr_mask = IBV_QP_MAX_DEST_RD_ATOMIC;
+    // int ret = ibv_modify_qp(cm_id->qp, &attr, attr_mask);
+    // if(ret!=0) {perror("connection error!");};
 
     struct PData rep_pdata;
     CmdMsgBlock *cmd_msg = nullptr;
@@ -482,6 +486,7 @@ int MemoryNode::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
     conn_param.initiator_depth = 16;
     conn_param.private_data = &rep_pdata;
     conn_param.private_data_len = sizeof(rep_pdata);
+    conn_param.flow_control = 0;
 
     if (rdma_accept(cm_id, &conn_param)) {
         perror("rdma_accept fail");
