@@ -17,3 +17,12 @@ target_link_libraries(microbench_class
     rdmacm
     rt
 )
+
+add_executable(attacker attacker.cc)
+
+target_link_libraries(attacker
+    mralloc
+    ibverbs
+    rdmacm
+    rt
+)
