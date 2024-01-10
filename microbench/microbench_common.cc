@@ -41,6 +41,8 @@ static unsigned int random_offsets[iteration];
 static void
 init_random_values (void)
 {
+    for (size_t i = 0; i < iteration; i++)
+        random_offsets[i] = i;
     size_t x,y;
     unsigned int swap;
     for(size_t i = 0; i < iteration; i++) {
@@ -317,7 +319,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
             // assert(read_buffer[0] == buffer[i%2][0]);
         }        
         uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
-        time = time / allocated;
+        time = time / rand_iter;
         if(time < 1000)
             malloc_record[(int)time] += 1;
         malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
@@ -344,13 +346,13 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
         time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
-        time = time / allocated;
+        time = time / rand_iter;
         if(time < 1000)
             free_record[(int)time] += 1;
         free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
         free_count_ += 1;
         printf("epoch %d free finish\n", j);
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         // if (thread_id == 1)
         //     conn->remote_print_alloc_info();
     }
@@ -407,7 +409,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             //     assert(read_buffer[0] == buffer[i%2][0]);
             // }        
             double time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
-            time = time / allocated;
+            time = time / rand_iter;
             if(time < 1000)
                 malloc_record[(int)(time)] += 1;
             malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
@@ -434,7 +436,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             gettimeofday(&end, NULL);
             pthread_barrier_wait(&end_barrier);
             time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
-            time = time / allocated;
+            time = time / rand_iter;
             if(time < 1000)
                 free_record[(int)time] += 1;
             free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
@@ -482,7 +484,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             gettimeofday(&end, NULL);
             pthread_barrier_wait(&end_barrier);
             uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
-            time = time / allocated;
+            time = time / rand_iter;
             if(time < 1000)
                 free_record[(int)time] += 1;
             free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
@@ -512,7 +514,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
                 conn->remote_print_alloc_info();
                 
             time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
-            time = time / allocated;
+            time = time / rand_iter;
             if(time < 1000)
                 malloc_record[(int)time] += 1;
             malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
