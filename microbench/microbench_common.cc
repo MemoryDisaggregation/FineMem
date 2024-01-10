@@ -295,7 +295,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
             if(!alloc->malloc(addr[i], rkey[i])){
                 printf("alloc false\n");
             }
-            alloced ++;
+            allocated ++;
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
