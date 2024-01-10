@@ -345,7 +345,7 @@ void ComputingNode::pre_fetcher() {
 				}
 				// printf("GC, current:%d\n",length-block_per_region);
 				his_length = length - block_per_region;
-				idle_cycle = 0;
+				//idle_cycle = 0;
 		} else {his_length = length;}
 			} 
 	    else {his_length = length;idle_cycle = 0;}		
