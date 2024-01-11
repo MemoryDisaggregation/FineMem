@@ -226,6 +226,7 @@ void ComputingNode::pre_fetcher() {
     uint32_t idle_cycle = 0;
     volatile uint64_t update_time = 0;
     uint32_t length=0;
+    int recycle_counter = 0; uint64_t recycle_addr[32]; uint32_t new_rkey[32];
     uint64_t addr=0, batch_addr[max_free_item], class_addr[max_class_free_item];
     bool block_breakdown = false, class_breakdown = false;
     cache_upper_bound = block_per_region;
@@ -236,29 +237,25 @@ void ComputingNode::pre_fetcher() {
     while(running) {
 	// for(int iter=0;iter<2;iter++)
 	int free_num;
+	int total_free = 0;
 	    do{
-	free_num = 0;
-        for(int i = 0; i < nprocs; i++){
-            if((length = cpu_cache_->fetch_free_cache(i, batch_addr)) != 0) {
-                /*
-		    for(int j = 0; j < length; j++) {
-                    addr_offset = batch_addr[j]-heap_start_;
-                    if(region_map.find(addr_offset/region_size_) == region_map.end()) {
-                        region_map[addr_offset/region_size_] = ~(uint32_t)(0);
+	        free_num = 0; 
+            for(int i = 0; i < nprocs; i++){
+                if((length = cpu_cache_->fetch_free_cache(i, batch_addr)) != 0) {
+                    his_length = 0;
+                    free_num += length;
+                    for(int j = 0; j < length; j++){
+                        if(recycle_counter > 31) {
+                            recycle_counter = 0;
+                            free_mem_block_fast_batch(recycle_addr);
+                        }
+                        recycle_addr[recycle_counter] = batch_addr[j];
+                        recycle_counter ++;
                     }
-                    region_map[addr_offset/region_size_] &= ~(uint32_t)(1<<(addr_offset%region_size_/block_size_));
+                    // free_mem_block(batch_addr[j]);
                 }
-                for(auto j = region_map.begin(); j != region_map.end(); j++){
-                    free_mem_batch(j->first, j->second);
-                }
-                region_map.clear();
-		*/
-		    his_length = 0;
-		        free_num += length;
-                for(int j = 0; j < length; j++)
-                     free_mem_block(batch_addr[j]);
             }
-	}
+	        total_free += free_num;
 	    //if(free_num > 0)
              // printf("add free cache %dMiB, current:%u, upper bound:%u\n", free_num*4, ring_cache->get_length()*4, cache_upper_bound*4);
         }while(free_num >= 8);
@@ -781,7 +778,6 @@ bool ComputingNode::free_mem_block_slow(uint64_t addr) {
     region_with_rkey* region;
     if(region_offset == current_region_->index) {
         region = current_region_;  
-        // if(!m_rdma_conn_->remote_rebind(addr, region->region.block_class_, region->rkey[region_block_offset])){
         if(true){
             region->region.base_map_ &= ~(uint32_t)(1<<region_block_offset);
             return true;
@@ -854,10 +850,26 @@ bool ComputingNode::free_mem_block_slow(uint64_t addr) {
     return false;
 }
 
+bool ComputingNode::free_mem_block_fast_batch(uint64_t *addr){
+    uint32_t rkey[32];
+    m_rdma_conn_->remote_rebind_batch(addr, rkey);
+    for(int i = 0; i < 32; i++) {
+        exclusive_region_[(addr[i] - heap_start_) / region_size_].rkey[(addr[i] - heap_start_) % region_size_ / block_size_] = rkey[i];
+        mr_rdma_addr result; 
+        result.addr = addr[i];
+        result.rkey = rkey[i];
+        ring_cache->add_cache(result);
+    }
+    return true;
+}
+
+
 bool ComputingNode::free_mem_block(uint64_t addr){
     uint64_t region_offset = (addr - heap_start_) / region_size_;
     uint64_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
     region_with_rkey* region;
+    if(rand()%32 == 0)
+        m_rdma_conn_->remote_rebind(addr, 0, exclusive_region_[region_offset].rkey[region_block_offset]);
     if(exclusive_region_[region_offset].region.exclusive_ == 1 && ring_cache->get_length() < 200*block_per_region) {
         mr_rdma_addr result; 
         result.addr = addr; 

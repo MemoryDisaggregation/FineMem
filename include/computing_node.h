@@ -94,6 +94,7 @@ public:
     bool free_mem_block(uint64_t addr);
     bool free_mem_block_slow(uint64_t addr);
     bool free_mem_batch(uint32_t region_offset, uint32_t free_map);
+    bool free_mem_block_fast_batch(uint64_t *addr);
 
     bool fetch_mem_class_block(uint16_t block_class, uint64_t &addr, uint32_t &rkey);
 

@@ -153,7 +153,8 @@ public:
 	    while((retry_time = conn_->fetch_region_block(cache_region, addr, rkey, false, cache_region_index)) == 0){
             while(!conn_->fetch_region(cache_section, cache_section_index, 0, true, cache_region, cache_region_index)){
                 if(!conn_->find_section(0, cache_section, cache_section_index, mralloc::alloc_no_class)){
-                    return false;
+                    printf("waiting for new section avaliable\n");
+			//return false;
                 }
             }
         }
@@ -297,6 +298,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
             if(!alloc->malloc(addr[i], rkey[i])){
                 printf("alloc false\n");
             }
+	    //printf("alloc%p,%u\n",addr[i], rkey[i]);
             allocated ++;
         }
         gettimeofday(&end, NULL);
@@ -352,7 +354,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
         free_count_ += 1;
         printf("epoch %d free finish\n", j);
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
         // if (thread_id == 1)
         //     conn->remote_print_alloc_info();
     }
@@ -382,7 +384,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
         pthread_barrier_wait(&start_barrier);
         for(int j = 0; j < epoch; j ++) {
             pthread_barrier_wait(&start_barrier);
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             gettimeofday(&start, NULL);
             int allocated = 0;
             for(int i = 0; i < rand_iter; i ++){
@@ -394,7 +396,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
                 allocated ++;
             }
             gettimeofday(&end, NULL);
-             pthread_barrier_wait(&end_barrier);
+             //pthread_barrier_wait(&end_barrier);
             // printf("epoch %d malloc finish\n", j);
             if (thread_id == 1)
                 conn->remote_print_alloc_info();
@@ -417,7 +419,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             // printf("epoch %d check finish\n", j);
             
             // free
-             pthread_barrier_wait(&start_barrier);
+            // pthread_barrier_wait(&start_barrier);
             gettimeofday(&start, NULL);
             int result;        
             unsigned int offset_state = 0;
@@ -482,7 +484,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
                 }
             }
             gettimeofday(&end, NULL);
-            pthread_barrier_wait(&end_barrier);
+            //pthread_barrier_wait(&end_barrier);
             uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
             time = time / rand_iter;
             if(time < 1000)
@@ -494,9 +496,9 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             // if (thread_id == 1)
             //     conn->remote_print_alloc_info();
             
-            pthread_barrier_wait(&start_barrier);
+            //pthread_barrier_wait(&start_barrier);
             //gettimeofday(&start, NULL);
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             gettimeofday(&start, NULL);
             allocated = 0;
             for(int i = 0; i < rand_iter; i ++){
@@ -606,7 +608,7 @@ void* worker(void* arg) {
     switch (type)
     {
     case cxl_shm_alloc:
-        alloc = (test_allocator*)new cxl_shm_allocator(conn, 0);
+        alloc = (test_allocator*)new cxl_shm_allocator(conn, rand()%(40*1024*1024));
         break;
     case fusee_alloc:
         alloc = (test_allocator*)new fusee_allocator(conn);
@@ -657,7 +659,7 @@ int main(int argc, char* argv[]) {
         printf("Usage: %s <ip> <port> <thread> <allocator> <trace>\n", argv[0]);
         return 0;
     }
-
+    init_random_values();
     std::string ip = argv[1];
     std::string port = argv[2];
     int thread_num = atoi(argv[3]);

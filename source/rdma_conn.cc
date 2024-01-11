@@ -654,6 +654,47 @@ int RDMAConnection::remote_rebind(uint64_t addr, uint32_t block_class, uint32_t 
     return 0;
 }
 
+int RDMAConnection::remote_rebind_batch(uint64_t *addr, uint32_t *newkey){
+    memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
+    memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));
+    m_cmd_resp_->notify = NOTIFY_IDLE;
+    RebindBatchRequest *request = (RebindBatchRequest *)m_cmd_msg_;
+    request->resp_addr = (uint64_t)m_cmd_resp_;
+    request->resp_rkey = m_resp_mr_->rkey;
+    request->id = conn_id_;
+    request->type = MSG_MW_BATCH;
+    for(int i = 0; i < 32; i++)
+        request->addr[i] = addr[i];
+    m_cmd_msg_->notify = NOTIFY_WORK;
+
+    /* send a request to sever */
+    int ret = rdma_remote_write((uint64_t)m_cmd_msg_, m_msg_mr_->lkey,
+                                sizeof(CmdMsgBlock), m_server_cmd_msg_,
+                                m_server_cmd_rkey_);
+    if (ret) {
+        printf("fail to send requests\n");
+        return ret;
+    }
+
+    /* wait for response */
+    auto start = TIME_NOW;
+    while (m_cmd_resp_->notify == NOTIFY_IDLE) {
+        if (TIME_DURATION_US(start, TIME_NOW) > RDMA_TIMEOUT_US) {
+        printf("wait for request completion timeout\n");
+        return -1;
+        }
+    }
+    RebindBatchResponse *resp_msg = (RebindBatchResponse *)m_cmd_resp_;
+    if (resp_msg->status != RES_OK) {
+        printf("mem window bind fail\n");
+        return -1;
+    }
+    for(int i = 0; i < 32; i++) {
+        newkey[i] = resp_msg->rkey[i];
+    }
+    return 0;
+}
+
 int RDMAConnection::remote_class_bind(uint32_t region_offset, uint16_t block_class){
     memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
     memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));

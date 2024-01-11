@@ -57,6 +57,7 @@ public:
     int remote_free_block(uint64_t addr);
     int remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t &newkey);
     int remote_rebind(uint64_t addr, uint32_t block_class, uint32_t &newkey);
+    int remote_rebind_batch(uint64_t *addr, uint32_t *newkey);
     int remote_class_bind(uint32_t region_offset, uint16_t block_class);
     int remote_memzero(uint64_t addr, uint64_t size);
     int remote_fusee_alloc(uint64_t &addr, uint32_t &rkey);
