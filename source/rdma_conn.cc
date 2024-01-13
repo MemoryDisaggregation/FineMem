@@ -1031,81 +1031,117 @@ bool RDMAConnection::update_section(uint32_t region_index, alloc_advise advise, 
 }
 
 bool RDMAConnection::find_section(uint16_t block_class, section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
-    section_e section[8] = {0,0};
+    section_e section = {0,0};
+    // section_e section[8] = {0,0};
+    int offset = section_offset;
     if(advise == alloc_class) {
-        int remain = section_num_, fetch = remain > 8 ? 8:remain, index = 0;
-        section_class_e section_class_header = {0,0};
-        while(remain > 0) {
-            remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
-            for(int j = 0; j < fetch; j ++) {
-                if(free_bit_in_bitmap32(section[j].class_map_ | section[j].alloc_map_) > region_per_section/3){
-                    alloc_section = section[j];
-                    section_offset = index + j;
+        for(int i = 0; i < section_num_; i++) {
+            int index = (offset+i)%section_num_;
+            remote_read(&section, sizeof(section_e), section_metadata_addr(index), global_rkey_);
+            if((section.class_map_ | section.alloc_map_) != ~(uint32_t)0){
+                alloc_section = section;
+                section_offset = index;
                     // printf("find new section from section\n");
-                    return true;
-                }
+                return true;
             }
-            for(int j = 0; j < fetch; j ++) {
-                if((section[j].class_map_ | section[j].alloc_map_) != ~(uint32_t)0){
-                    alloc_section = section[j];
-                    section_offset = index + j;
-                    // printf("find new section from section\n");
-                    return true;
-                }
-            }
-            for(int j = 0; j < fetch; j ++) {
-                uint32_t fast_index = get_section_class_index(index + j, block_class);
-                remote_read(&section_class_header, sizeof(section_class_e), section_class_metadata_addr(fast_index), global_rkey_);
-                if((section_class_header.class_map_ & section_class_header.alloc_map_) != ~(uint32_t)0){
-                    alloc_section = section[j];
-                    section_offset = index + j;
-                    // printf("find new section from section class\n");
-                    return true;
-                }
-            }
-            index += 8; remain -= 8; fetch = remain > 8 ? 8:remain;
         }
     } else if(advise == alloc_no_class) {
-        int remain = section_num_, fetch = remain > 8 ? 8:remain, index = 0;
-        while(remain > 0) {
-            remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
-            for(int j = 0; j < fetch; j ++) {
-                if(free_bit_in_bitmap32(section[j].class_map_ & section[j].alloc_map_) > region_per_section/3){
-                    alloc_section = section[j];
-                    section_offset = index + j;
-                    return true;
-                }
+        for(int i = 0; i < section_num_; i++) {
+            int index = (offset+i)%section_num_;
+            remote_read(&section, sizeof(section_e), section_metadata_addr(index), global_rkey_);
+            if((section.class_map_ & section.alloc_map_) != ~(uint32_t)0){
+                alloc_section = section;
+                section_offset = index;
+                    // printf("find new section from section\n");
+                return true;
             }
-            for(int j = 0; j < fetch; j ++) {
-                if((section[j].class_map_ & section[j].alloc_map_) != ~(uint32_t)0){
-                    alloc_section = section[j];
-                    section_offset = index + j;
-                    return true;
-                }
-            }
-            index += 8; remain -= 8; fetch = remain > 8 ? 8:remain;
         }
     } else if (advise == alloc_empty) {
-        int remain = section_num_, fetch = remain > 8 ? 8:remain, index = 0;
-        while(remain > 0) {
-            remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
-            for(int j = 0; j < fetch; j ++) {
-                if(free_bit_in_bitmap32(section[j].class_map_ | section[j].alloc_map_) > region_per_section/3){
-                    alloc_section = section[j];
-                    section_offset = index + j;
-                    return true;
-                }
+        for(int i = 0; i < section_num_; i++) {
+            int index = (offset+i)%section_num_;
+            remote_read(&section, sizeof(section_e), section_metadata_addr(index), global_rkey_);
+            if((section.class_map_ | section.alloc_map_) != ~(uint32_t)0){
+                alloc_section = section;
+                section_offset = index;
+                    // printf("find new section from section\n");
+                return true;
             }
-            for(int j = 0; j < fetch; j ++) {
-                if((section[j].class_map_ | section[j].alloc_map_) != ~(uint32_t)0){
-                    alloc_section = section[j];
-                    section_offset = index + j;
-                    return true;
-                }
-            }
-            index += 8; remain -= 8; fetch = remain > 8 ? 8:remain;
         }
     } else { return false; }
+    // if(advise == alloc_class) {
+    //     int remain = section_num_, fetch = remain > 8 ? 8:remain, index = 0;
+    //     section_class_e section_class_header = {0,0};
+    //     while(remain > 0) {
+    //         remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
+    //         for(int j = 0; j < fetch; j ++) {
+    //             if(free_bit_in_bitmap32(section[j].class_map_ | section[j].alloc_map_) > region_per_section/3){
+    //                 alloc_section = section[j];
+    //                 section_offset = index + j;
+    //                 // printf("find new section from section\n");
+    //                 return true;
+    //             }
+    //         }
+    //         for(int j = 0; j < fetch; j ++) {
+    //             if((section[j].class_map_ | section[j].alloc_map_) != ~(uint32_t)0){
+    //                 alloc_section = section[j];
+    //                 section_offset = index + j;
+    //                 // printf("find new section from section\n");
+    //                 return true;
+    //             }
+    //         }
+    //         for(int j = 0; j < fetch; j ++) {
+    //             uint32_t fast_index = get_section_class_index(index + j, block_class);
+    //             remote_read(&section_class_header, sizeof(section_class_e), section_class_metadata_addr(fast_index), global_rkey_);
+    //             if((section_class_header.class_map_ & section_class_header.alloc_map_) != ~(uint32_t)0){
+    //                 alloc_section = section[j];
+    //                 section_offset = index + j;
+    //                 // printf("find new section from section class\n");
+    //                 return true;
+    //             }
+    //         }
+    //         index += 8; remain -= 8; fetch = remain > 8 ? 8:remain;
+    //     }
+    // } else if(advise == alloc_no_class) {
+    //     int remain = section_num_, fetch = remain > 8 ? 8:remain, index = 0;
+    //     while(remain > 0) {
+    //         remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
+    //         for(int j = 0; j < fetch; j ++) {
+    //             if(free_bit_in_bitmap32(section[j].class_map_ & section[j].alloc_map_) > region_per_section/3){
+    //                 alloc_section = section[j];
+    //                 section_offset = index + j;
+    //                 return true;
+    //             }
+    //         }
+    //         for(int j = 0; j < fetch; j ++) {
+    //             if((section[j].class_map_ & section[j].alloc_map_) != ~(uint32_t)0){
+    //                 alloc_section = section[j];
+    //                 section_offset = index + j;
+    //                 return true;
+    //             }
+    //         }
+    //         index += 8; remain -= 8; fetch = remain > 8 ? 8:remain;
+    //     }
+    // } else if (advise == alloc_empty) {
+    //     int remain = section_num_, fetch = remain > 8 ? 8:remain, index = 0;
+    //     while(remain > 0) {
+    //         remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
+    //         for(int j = 0; j < fetch; j ++) {
+    //             if(free_bit_in_bitmap32(section[j].class_map_ | section[j].alloc_map_) > region_per_section/3){
+    //                 alloc_section = section[j];
+    //                 section_offset = index + j;
+    //                 return true;
+    //             }
+    //         }
+    //         for(int j = 0; j < fetch; j ++) {
+    //             if((section[j].class_map_ | section[j].alloc_map_) != ~(uint32_t)0){
+    //                 alloc_section = section[j];
+    //                 section_offset = index + j;
+    //                 return true;
+    //             }
+    //         }
+    //         index += 8; remain -= 8; fetch = remain > 8 ? 8:remain;
+    //     }
+    // } else { return false; }
     printf("find no section!\n");
     return false;
 }

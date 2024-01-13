@@ -32,9 +32,9 @@ pthread_mutex_t file_lock;
 
 std::atomic<int> malloc_record_global[1000];
 std::atomic<int> free_record_global[1000];
-volatile double malloc_avg[128];
-volatile double cas_avg[128];
-volatile int cas_max[128];
+volatile double malloc_avg[128] = {0};
+volatile double cas_avg[128] = {0};
+volatile int cas_max[128] = {0};
 std::atomic<uint64_t> free_avg;
 std::atomic<uint64_t> id;
 
@@ -111,7 +111,7 @@ public:
 private:
     double avg_retry=0;
     int alloc_num=0;
-    int max_retry;
+    int max_retry=0;
     uint64_t current_index_;
     mralloc::ConnectionManager* conn_;
 };
@@ -123,10 +123,12 @@ public:
     }
     ~fusee_allocator() {};
     bool malloc(uint64_t &addr, uint32_t &rkey) override {
-        return !conn_->remote_fetch_block(addr, rkey);
+        while(conn_->remote_fetch_block(addr, rkey)); 
+	return true;
     };
     bool free(uint64_t addr) override {
-        return !conn_->remote_free_block(addr);
+        while(conn_->remote_free_block(addr));
+	return true;
     };
     bool print_state() override {return false;};
 private:
@@ -152,8 +154,9 @@ private:
 
 class share_allocator : test_allocator{
 public:
-    share_allocator(mralloc::ConnectionManager* conn) {
+    share_allocator(mralloc::ConnectionManager* conn, uint64_t start_hint) {
         conn_ = conn;
+        cache_region_index = start_hint;
         conn_->find_section(0, cache_section, cache_section_index, mralloc::alloc_no_class);
         conn_->fetch_region(cache_section, cache_section_index, 0, true, cache_region, cache_region_index);
     }
@@ -605,13 +608,15 @@ void short_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
             malloc_record[(int)time] += 1;
         malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
         malloc_count_ += 1;
-        // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(60));
         
     }
     for(int i=0;i<1000;i++){
         malloc_record_global[i].fetch_add(malloc_record[i]);
     }
     alloc->print_state();
+    cas_avg[thread_id] = alloc->get_avg_retry();
+    cas_max[thread_id] = alloc->get_max_retry(); 
     malloc_avg[thread_id] = malloc_avg_time_;
 }
 
@@ -644,7 +649,7 @@ void* worker(void* arg) {
         alloc = (test_allocator*)new rpc_allocator(conn);
         break;
     case share_alloc:
-        alloc = (test_allocator*)new share_allocator(conn);
+        alloc = (test_allocator*)new share_allocator(conn, rand()%(50));
         break;
     case exclusive_alloc:
         alloc = (test_allocator*)new exclusive_allocator(conn);
@@ -774,6 +779,6 @@ int main(int argc, char* argv[]) {
     printf("total cas avg: %lf\n", cas_avg_final/thread_num);
     result << "total cas avg: " << cas_avg_final/thread_num << std::endl;
     printf("max cas : %d\n", cas_max_final);
-    result << "max cas : %d" << cas_max_final << std::endl;
+    result << "max cas :" << cas_max_final << std::endl;
     result.close();
 }
