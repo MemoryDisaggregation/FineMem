@@ -88,8 +88,10 @@ public:
     bool malloc(uint64_t &addr, uint32_t &rkey) override {
         int retry_time = conn_->fetch_block(current_index_, addr, rkey);
         if(retry_time) {
+            if(retry_time > max_retry) 
+                max_retry = retry_time;
             avg_retry = (avg_retry*alloc_num + retry_time)/(alloc_num+1);
-	    alloc_num ++;
+	        alloc_num ++;
             return true;
         } else {
             return false;
@@ -98,10 +100,11 @@ public:
     bool free(uint64_t addr) override {
         return conn_->free_block(addr);
     };
-    bool print_state() override {printf("%lf\n", avg_retry); return true;};
+    bool print_state() override {printf("%lf, %d\n", avg_retry, max_retry); return true;};
 private:
     double avg_retry=0;
     int alloc_num=0;
+    int max_retry;
     uint64_t current_index_;
     mralloc::ConnectionManager* conn_;
 };
@@ -158,6 +161,8 @@ public:
                 }
             }
         }
+        if(retry_time > max_retry) 
+            max_retry = retry_time;
 	    avg_retry = (avg_retry*alloc_num + retry_time)/(alloc_num+1);
 	    alloc_num ++;
         return true;
@@ -169,10 +174,11 @@ public:
         }
         return true;
     };
-    bool print_state() override {printf("%lf\n", avg_retry);return false;};
+    bool print_state() override {printf("%lf, %d\n", avg_retry, max_retry);return false;};
 private:
     double avg_retry=0;
     int alloc_num = 0;
+    int max_retry = 0;
     uint32_t cache_section_index;
     uint32_t cache_region_index;
     mralloc::section_e cache_section;
@@ -289,7 +295,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
     uint64_t current_index = 0;
     int rand_iter = iteration;
     for(int j = 0; j < epoch; j ++) {
-        pthread_barrier_wait(&start_barrier);
+        //pthread_barrier_wait(&start_barrier);
 	    gettimeofday(&start, NULL);
         int allocated = 0;
         for(int i = 0; i < rand_iter; i ++){
@@ -302,13 +308,14 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
             allocated ++;
         }
         gettimeofday(&end, NULL);
-        pthread_barrier_wait(&end_barrier);
+        //pthread_barrier_wait(&end_barrier);
         printf("epoch %d malloc finish\n", j);
         if (thread_id == 1)
             conn->remote_print_alloc_info();
 
         // valid check
-        char buffer[2][16] = {"aaa", "bbb"};
+        /*
+	 * char buffer[2][16] = {"aaa", "bbb"};
         char read_buffer[4];
         for(int i = 0; i < rand_iter; i ++){
             if(conn->remote_write(buffer[i%2], 64, addr[i], rkey[i])) {
@@ -320,16 +327,19 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
             // printf("access addr %p, %u\n", addr[i], rkey[i]);
             // assert(read_buffer[0] == buffer[i%2][0]);
         }        
-        uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
+        */
+	uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
         time = time / rand_iter;
-        if(time < 1000)
+	if(time < 1) time = 1;
+        if(time > 0 && time < 1000)
             malloc_record[(int)time] += 1;
         malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
         malloc_count_ += 1;
         printf("epoch %d check finish\n", j);
         
         // free
-        pthread_barrier_wait(&start_barrier);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        //pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         int result; 
         allocated = 0;
@@ -346,7 +356,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
             }
         }
         gettimeofday(&end, NULL);
-        pthread_barrier_wait(&end_barrier);
+        //pthread_barrier_wait(&end_barrier);
         time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
         time = time / rand_iter;
         if(time < 1000)
@@ -354,8 +364,8 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
         free_count_ += 1;
         printf("epoch %d free finish\n", j);
-        std::this_thread::sleep_for(std::chrono::milliseconds(60));
         // if (thread_id == 1)
+        std::this_thread::sleep_for(std::chrono::milliseconds(rand()%30+30));
         //     conn->remote_print_alloc_info();
     }
     for(int i = 0; i < rand_iter; i++) {
@@ -383,7 +393,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
     if(thread_id % 2 == 0){
         pthread_barrier_wait(&start_barrier);
         for(int j = 0; j < epoch; j ++) {
-            pthread_barrier_wait(&start_barrier);
+            //pthread_barrier_wait(&start_barrier);
             gettimeofday(&start, NULL);
             int allocated = 0;
             for(int i = 0; i < rand_iter; i ++){
@@ -395,7 +405,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
                 allocated ++;
             }
             gettimeofday(&end, NULL);
-            // pthread_barrier_wait(&end_barrier);
+            //pthread_barrier_wait(&end_barrier);
             // printf("epoch %d malloc finish\n", j);
             if (thread_id == 1)
                 conn->remote_print_alloc_info();
@@ -411,15 +421,16 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             // }        
             double time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
             time = time / rand_iter;
+	    if(time < 1) time  = 1;
             if(time < 1000)
                 malloc_record[(int)(time)] += 1;
             malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
             malloc_count_ += 1;
             // printf("epoch %d check finish\n", j);
             
-            // std::this_thread::sleep_for(std::chrono::milliseconds(60));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
             // free
-            // pthread_barrier_wait(&start_barrier);
+            //pthread_barrier_wait(&start_barrier);
             gettimeofday(&start, NULL);
             int result;        
             unsigned int offset_state = 0;
@@ -436,7 +447,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
                 }
             }
             gettimeofday(&end, NULL);
-            pthread_barrier_wait(&end_barrier);
+            //pthread_barrier_wait(&end_barrier);
             time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
             time = time / rand_iter;
             if(time < 1000)
@@ -469,7 +480,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             // }        
             
             // free
-            pthread_barrier_wait(&start_barrier);
+            //pthread_barrier_wait(&start_barrier);
             gettimeofday(&start, NULL);
             unsigned int offset_state = 0;
             unsigned int next_idx ;
@@ -485,19 +496,20 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
                 }
             }
             gettimeofday(&end, NULL);
-            // pthread_barrier_wait(&end_barrier);
+            //pthread_barrier_wait(&end_barrier);
             uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
             time = time / rand_iter;
+	    if (time < 1) time = 1;
             if(time < 1000)
                 free_record[(int)time] += 1;
             free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
             free_count_ += 1;
             // printf("epoch %d free finish\n", j);
-            // std::this_thread::sleep_for(std::chrono::milliseconds(60));
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
             // if (thread_id == 1)
             //     conn->remote_print_alloc_info();
             
-            // pthread_barrier_wait(&start_barrier);
+            //pthread_barrier_wait(&start_barrier);
             //gettimeofday(&start, NULL);
             //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             gettimeofday(&start, NULL);
@@ -511,13 +523,14 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
                 allocated++;
             }
             gettimeofday(&end, NULL);
-            pthread_barrier_wait(&end_barrier);
+            //pthread_barrier_wait(&end_barrier);
             // printf("epoch %d malloc finish\n", j);
             if (thread_id == 1)
                 conn->remote_print_alloc_info();
                 
             time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
             time = time / rand_iter;
+	    if(time < 1) time  =1;
             if(time < 1000)
                 malloc_record[(int)time] += 1;
             malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
