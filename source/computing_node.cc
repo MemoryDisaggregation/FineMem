@@ -118,6 +118,9 @@ bool ComputingNode::start(const std::string addr, const std::string port){
         region_header_ = (uint64_t)((section_class_e*)section_class_header_+ block_class_num*section_num_);
         block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
         class_block_rkey_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
+        block_header_ = (uint64_t)((uint32_t*)class_block_rkey_ + block_num_);
+        backup_rkey_ = (uint64_t)((uint64_t*)block_header_ + block_num_);
+        
         heap_start_ = m_one_side_info_.heap_start_;
         exclusive_region_ = (region_with_rkey*)malloc(sizeof(region_with_rkey) * region_num_);
         // for(int i = 0; i < region_num_; i++)
@@ -245,14 +248,25 @@ void ComputingNode::pre_fetcher() {
                     his_length = 0;
                     free_num += length;
                     for(int j = 0; j < length; j++){
-                        if(recycle_counter > 31) {
-                            recycle_counter = 0;
-                            free_mem_block_fast_batch(recycle_addr);
+                        // free_mem_block(batch_addr[j]);
+                        uint64_t region_offset = (batch_addr[j] - heap_start_) / region_size_;
+                        uint64_t region_block_offset = (batch_addr[j] - heap_start_) % region_size_ / block_size_;
+                        uint32_t new_key = m_rdma_conn_->rebind_region_block_rkey(region_offset, region_block_offset);
+                        if(new_key != 0) {
+                            mr_rdma_addr result; 
+                            result.addr = batch_addr[j]; 
+                            exclusive_region_[region_offset].rkey[region_block_offset] = new_key;
+                            result.rkey = new_key;
+                            ring_cache->add_cache(result);
+                        } else {
+                            if(recycle_counter > 31) {
+                                recycle_counter = 0;
+                                free_mem_block_fast_batch(recycle_addr);
+                            }
+                            recycle_addr[recycle_counter] = batch_addr[j];
+                            recycle_counter ++;
                         }
-                        recycle_addr[recycle_counter] = batch_addr[j];
-                        recycle_counter ++;
                     }
-                    // free_mem_block(batch_addr[j]);
                 }
             }
 	        total_free += free_num;
@@ -334,7 +348,7 @@ void ComputingNode::pre_fetcher() {
         if(length > cache_upper_bound ) {
             if(his_length != 0 && his_length == length &&length - cache_upper_bound > block_per_region){
 			idle_cycle += 1;
-		if(idle_cycle > 10000){		
+		    if(idle_cycle > 10000){		
 	    	    mr_rdma_addr addr; 
 				for(int k = 0; k < block_per_region; k++) {
 					if(ring_cache->try_fetch_cache(addr))
@@ -555,7 +569,7 @@ bool ComputingNode::new_backup_region() {
     backup_counter += 1;
     exclusive_region_[backup_region_index_].region = backup_region_;
     exclusive_region_[backup_region_index_].index = backup_region_index_;
-    m_rdma_conn_->fetch_exclusive_region_rkey(backup_region_index_, exclusive_region_[backup_region_index_].rkey);   
+    // m_rdma_conn_->fetch_exclusive_region_rkey(backup_region_index_, exclusive_region_[backup_region_index_].rkey);   
     return true;
 }
 
@@ -867,9 +881,11 @@ bool ComputingNode::free_mem_block_fast_batch(uint64_t *addr){
 bool ComputingNode::free_mem_block(uint64_t addr){
     uint64_t region_offset = (addr - heap_start_) / region_size_;
     uint64_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
-    region_with_rkey* region;
-    if(rand()%32 == 0)
-        m_rdma_conn_->remote_rebind(addr, 0, exclusive_region_[region_offset].rkey[region_block_offset]);
+    region_with_rkey* region; 
+    // if(rand()%32 == 0)
+    exclusive_region_[region_offset].rkey[region_block_offset] = m_rdma_conn_->get_region_block_rkey(region_offset, region_block_offset);
+        // m_rdma_conn_->remote_rebind(addr, 0, exclusive_region_[region_offset].rkey[region_block_offset]);
+    // }
     if(exclusive_region_[region_offset].region.exclusive_ == 1 && ring_cache->get_length() < 200*block_per_region) {
         mr_rdma_addr result; 
         result.addr = addr; 

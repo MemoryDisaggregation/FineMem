@@ -144,6 +144,8 @@ private:
     uint64_t block_rkey_;
     uint64_t class_block_rkey_;
     uint64_t heap_start_;
+    uint64_t block_header_;
+    uint64_t backup_rkey_;
 
     // << allocation metadata >>
     one_side_info m_one_side_info_;

@@ -116,8 +116,20 @@ class ConnectionManager {
     inline uint64_t get_region_addr(uint32_t region_index) {return heap_start_ + region_index * region_size_;};
     inline uint64_t get_region_block_addr(uint32_t region_index, uint32_t block_offset) {return heap_start_ + region_index * region_size_ + block_offset * block_size_;} ;
     inline uint32_t get_region_block_rkey(uint32_t region_index, uint32_t block_offset) {
-        uint32_t rkey;
-        remote_read(&rkey, sizeof(rkey), block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
+        uint32_t rkey; uint32_t rkey_new = -1;
+        // do{
+            remote_read(&rkey, sizeof(rkey), block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
+        // }while(rkey == -1);
+        // if(rkey == -1){
+            // remote_rebind(get_region_block_addr(region_index, block_offset), 0, rkey);
+        // }
+        // remote_write(&rkey_new, sizeof(uint32_t), block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
+
+        // rkey_CAS = rkey;
+        // if(!remote_CAS((uint32_t)-1, &rkey_CAS, block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_)){
+        //     printf("rkey cas failed!\n");
+        //     return 0;
+        // }
         return rkey;
     };
     inline uint32_t get_region_class_block_rkey(uint32_t region_index, uint32_t block_offset) {
@@ -125,6 +137,23 @@ class ConnectionManager {
         remote_read(&rkey, sizeof(rkey), class_block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
         return rkey;
     };
+
+    inline uint32_t rebind_region_block_rkey(uint32_t region_index, uint32_t block_offset) {
+        uint32_t rkey; uint32_t rkey_new = -1;
+        remote_read(&rkey, sizeof(rkey), backup_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
+        if(rkey == (uint32_t)-1 || rkey == 0){
+            return 0;
+        }
+        remote_write(&rkey_new, sizeof(uint32_t), backup_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
+
+        // rkey_CAS = rkey;
+        // if(!remote_CAS((uint32_t)-1, &rkey_CAS, block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_)){
+        //     printf("rkey cas failed!\n");
+        //     return 0;
+        // }
+        return rkey;
+    };
+    
     inline uint32_t get_block_num() {return block_num_;};
 
  private:
@@ -150,6 +179,8 @@ class ConnectionManager {
     uint64_t block_rkey_;
     uint64_t class_block_rkey_;
     uint64_t heap_start_;
+    uint64_t block_header_;
+    uint64_t backup_rkey_;
 
 };
 

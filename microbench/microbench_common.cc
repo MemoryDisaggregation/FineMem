@@ -354,7 +354,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
         free_count_ += 1;
         printf("epoch %d free finish\n", j);
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
         // if (thread_id == 1)
         //     conn->remote_print_alloc_info();
     }

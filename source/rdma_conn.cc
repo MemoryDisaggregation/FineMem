@@ -190,7 +190,10 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
     block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
     class_block_rkey_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
     block_header_ = (uint64_t)((uint32_t*)class_block_rkey_ + block_num_);
+    backup_rkey_ = (uint64_t)((uint64_t*)block_header_ + block_num_);
+    
     heap_start_ = server_pdata.heap_start_;
+    
     
     assert(server_pdata.size == sizeof(CmdMsgBlock));
 
@@ -1462,8 +1465,10 @@ int RDMAConnection::fetch_region_batch(region_e &alloc_region, mr_rdma_addr* add
     uint32_t rkey_list[block_per_region];
     fetch_exclusive_region_rkey(region_index, rkey_list);
     for(int i = 0; i < free_item; i++){
-        addr[i].rkey = rkey_list[addr[i].addr];
+        addr[i].rkey = rkey_list[addr[i].addr]; 
+        // addr[i].rkey = get_region_block_rkey(region_index, addr[i].addr); 
         addr[i].addr = get_region_block_addr(region_index, addr[i].addr);    
+        // printf("get addr %p, %u\n", addr[i].addr, addr[i].rkey);
     }
     if(alloc_region.base_map_ == bitmap32_filled) {
         update_section(region_index, alloc_exclusive, alloc_no_class);

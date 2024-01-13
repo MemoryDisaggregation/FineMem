@@ -48,6 +48,8 @@ int ConnectionManager::init(const std::string ip, const std::string port,
     region_header_ = (uint64_t)((section_class_e*)section_class_header_ + block_class_num*section_num_);
     block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
     class_block_rkey_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
+    block_header_ = (uint64_t)((uint32_t*)class_block_rkey_ + block_num_);
+    backup_rkey_ = (uint64_t)((uint64_t*)block_header_ + block_num_);
     heap_start_ = m_one_side_info_.heap_start_;
   }
 
