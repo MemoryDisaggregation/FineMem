@@ -377,7 +377,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         free_count_ += 1;
         printf("epoch %d free finish\n", j);
         // if (thread_id == 1)
-        std::this_thread::sleep_for(std::chrono::milliseconds(rand()%30+30));
+        std::this_thread::sleep_for(std::chrono::milliseconds(60));
         //     conn->remote_print_alloc_info();
     }
     for(int i = 0; i < rand_iter; i++) {
@@ -549,7 +549,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
                 malloc_record[(int)time] += 1;
             malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
             malloc_count_ += 1;
-            std::this_thread::sleep_for(std::chrono::milliseconds(60));
+            std::this_thread::sleep_for(std::chrono::milliseconds(30+rand()%30));
         }
         for(int i = 0; i < rand_iter; i ++){
             if(rand()%100 > 20 && addr[i] != 0){
@@ -649,7 +649,7 @@ void* worker(void* arg) {
         alloc = (test_allocator*)new rpc_allocator(conn);
         break;
     case share_alloc:
-        alloc = (test_allocator*)new share_allocator(conn, rand()%(50));
+        alloc = (test_allocator*)new share_allocator(conn, rand()%55);
         break;
     case exclusive_alloc:
         alloc = (test_allocator*)new exclusive_allocator(conn);
