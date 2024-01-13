@@ -33,6 +33,8 @@ pthread_mutex_t file_lock;
 std::atomic<int> malloc_record_global[1000];
 std::atomic<int> free_record_global[1000];
 volatile double malloc_avg[128];
+volatile double cas_avg[128];
+volatile int cas_max[128];
 std::atomic<uint64_t> free_avg;
 std::atomic<uint64_t> id;
 
@@ -75,6 +77,8 @@ public:
     virtual bool malloc(uint64_t &addr, uint32_t &rkey) {return false;};
     virtual bool free(uint64_t addr) {return false;};
     virtual bool print_state() {return false;};
+    virtual double get_avg_retry() {return 0;};
+    virtual int get_max_retry() {return 0;};
     ~test_allocator() {}; 
 };
 
@@ -101,6 +105,9 @@ public:
         return conn_->free_block(addr);
     };
     bool print_state() override {printf("%lf, %d\n", avg_retry, max_retry); return true;};
+    double get_avg_retry() {return avg_retry;};
+    int get_max_retry() {return max_retry;};
+
 private:
     double avg_retry=0;
     int alloc_num=0;
@@ -175,6 +182,8 @@ public:
         return true;
     };
     bool print_state() override {printf("%lf, %d\n", avg_retry, max_retry);return false;};
+    double get_avg_retry() {return avg_retry;};
+    int get_max_retry() {return max_retry;};
 private:
     double avg_retry=0;
     int alloc_num = 0;
@@ -378,6 +387,8 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         free_record_global[i].fetch_add(free_record[i]);
     }
     malloc_avg[thread_id] = malloc_avg_time_;
+    cas_avg[thread_id] = alloc->get_avg_retry();
+    cas_max[thread_id] = alloc->get_max_retry();
     free_avg.fetch_add(free_avg_time_);
 }
 
@@ -556,6 +567,8 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
     }
     alloc->print_state();
     malloc_avg[thread_id] = malloc_avg_time_;
+    cas_avg[thread_id] = alloc->get_avg_retry();
+    cas_max[thread_id] = alloc->get_max_retry();
     free_avg.fetch_add(free_avg_time_);
 }
 
@@ -745,9 +758,22 @@ int main(int argc, char* argv[]) {
     for(int i = 0; i < 128; i++) {
         malloc_avg_final += malloc_avg[i];
     }
+    volatile double cas_avg_final = 0;
+    for(int i = 0; i < 128; i++) {
+        cas_avg_final += cas_avg[i];
+    }
+    volatile int cas_max_final = 0;
+    for(int i = 0; i < 128; i++) {
+        if(cas_max[i] > cas_max_final)
+            cas_max_final = cas_max[i];
+    }
     printf("total malloc avg: %lfus\n", malloc_avg_final/thread_num);
     result << "total malloc avg: " << malloc_avg_final/thread_num << std::endl;
     printf("total free avg: %luus\n", free_avg.load()/thread_num);
     result << "total free avg: " << free_avg.load()/thread_num << std::endl;
+    printf("total cas avg: %lf\n", cas_avg_final/thread_num);
+    result << "total cas avg: " << cas_avg_final/thread_num << std::endl;
+    printf("max cas : %d\n", cas_max_final);
+    result << "max cas : %d" << cas_max_final << std::endl;
     result.close();
 }
