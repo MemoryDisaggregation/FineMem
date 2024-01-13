@@ -354,7 +354,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
         free_count_ += 1;
         printf("epoch %d free finish\n", j);
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::chrono::milliseconds(60));
         // if (thread_id == 1)
         //     conn->remote_print_alloc_info();
     }
@@ -384,7 +384,6 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
         pthread_barrier_wait(&start_barrier);
         for(int j = 0; j < epoch; j ++) {
             pthread_barrier_wait(&start_barrier);
-            //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             gettimeofday(&start, NULL);
             int allocated = 0;
             for(int i = 0; i < rand_iter; i ++){
@@ -396,7 +395,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
                 allocated ++;
             }
             gettimeofday(&end, NULL);
-             //pthread_barrier_wait(&end_barrier);
+            // pthread_barrier_wait(&end_barrier);
             // printf("epoch %d malloc finish\n", j);
             if (thread_id == 1)
                 conn->remote_print_alloc_info();
@@ -418,6 +417,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             malloc_count_ += 1;
             // printf("epoch %d check finish\n", j);
             
+            // std::this_thread::sleep_for(std::chrono::milliseconds(60));
             // free
             // pthread_barrier_wait(&start_barrier);
             gettimeofday(&start, NULL);
@@ -445,6 +445,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             free_count_ += 1;
             // printf("epoch %d free finish\n", j);
             // if (thread_id == 1)
+            std::this_thread::sleep_for(std::chrono::milliseconds(60));
             //     conn->remote_print_alloc_info();
         }
     } else {
@@ -484,7 +485,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
                 }
             }
             gettimeofday(&end, NULL);
-            //pthread_barrier_wait(&end_barrier);
+            // pthread_barrier_wait(&end_barrier);
             uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
             time = time / rand_iter;
             if(time < 1000)
@@ -492,11 +493,11 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
             free_count_ += 1;
             // printf("epoch %d free finish\n", j);
-           // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            // std::this_thread::sleep_for(std::chrono::milliseconds(60));
             // if (thread_id == 1)
             //     conn->remote_print_alloc_info();
             
-            //pthread_barrier_wait(&start_barrier);
+            // pthread_barrier_wait(&start_barrier);
             //gettimeofday(&start, NULL);
             //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             gettimeofday(&start, NULL);
@@ -521,7 +522,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
                 malloc_record[(int)time] += 1;
             malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
             malloc_count_ += 1;
-
+            std::this_thread::sleep_for(std::chrono::milliseconds(60));
         }
         for(int i = 0; i < rand_iter; i ++){
             if(rand()%100 > 20 && addr[i] != 0){
@@ -592,7 +593,7 @@ void* worker(void* arg) {
     uint64_t thread_id = id.fetch_add(1);
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    int id_ = thread_id+1;
+    int id_ = thread_id+2;
     CPU_SET(id_, &cpuset);
     pthread_t this_tid = pthread_self();
     uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
