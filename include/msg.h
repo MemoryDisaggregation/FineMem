@@ -19,7 +19,7 @@ namespace mralloc {
 
 #define NOTIFY_WORK 0xFF
 #define NOTIFY_IDLE 0x00
-#define MAX_MSG_SIZE 64
+#define MAX_MSG_SIZE 512
 #define MAX_SERVER_WORKER 1
 #define MAX_SERVER_CLIENT 1024
 #define RESOLVE_TIMEOUT_MS 5000
@@ -31,7 +31,7 @@ namespace mralloc {
   (std::chrono::duration_cast<std::chrono::microseconds>((END) - (START)) \
        .count())
 
-enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_FETCH, MSG_FETCH_FAST, MSG_MW_BIND, RPC_FUSEE_SUBTABLE, MSG_MW_REBIND, MSG_MW_CLASS_BIND, MSG_FREE_FAST, MSG_PRINT_INFO};
+enum MsgType { MSG_REGISTER, MSG_UNREGISTER, MSG_FETCH, MSG_FETCH_FAST, MSG_MW_BIND, RPC_FUSEE_SUBTABLE, MSG_MW_REBIND, MSG_MW_CLASS_BIND, MSG_FREE_FAST, MSG_PRINT_INFO, MSG_MW_BATCH};
 
 enum ResStatus { RES_OK, RES_FAIL };
 
@@ -113,6 +113,18 @@ CHECK_RDMA_MSG_SIZE(RebindBlockRequest);
 class RebindBlockResponse : public ResponseMsg {
 public:
     uint32_t rkey;
+};
+CHECK_RDMA_MSG_SIZE(RebindBlockResponse);
+
+class RebindBatchRequest : public RequestsMsg{
+public:
+    uint64_t addr[32];
+};
+CHECK_RDMA_MSG_SIZE(RebindBlockRequest);
+
+class RebindBatchResponse : public ResponseMsg {
+public:
+    uint32_t rkey[32];
 };
 CHECK_RDMA_MSG_SIZE(RebindBlockResponse);
 

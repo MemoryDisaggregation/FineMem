@@ -272,6 +272,7 @@ public:
     bool fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) ;
 
     inline bool set_block_rkey(uint64_t index, uint32_t rkey) {block_rkey_[index] = rkey; return true;};
+    inline bool set_backup_rkey(uint64_t index, uint32_t rkey) {backup_rkey_[index] = rkey; return true;};
     inline bool set_class_block_rkey(uint64_t index, uint32_t rkey) {class_block_rkey_[index] = rkey; return true;};
 
     inline uint64_t get_block_num() {return block_num_;};
@@ -285,6 +286,8 @@ public:
     inline uint64_t get_metadata() {return (uint64_t)section_header_;};
 
     inline uint32_t get_block_rkey(uint64_t index) {return block_rkey_[index];};
+    
+    inline uint32_t get_backup_rkey(uint64_t index) {return backup_rkey_[index];};
 
     inline uint64_t get_block_index(uint64_t addr) {return (addr-heap_start_)/block_size_;}
 
@@ -351,6 +354,7 @@ private:
     uint32_t* block_rkey_;
     uint32_t* class_block_rkey_;
     uint64_t* block_header_;
+    uint32_t* backup_rkey_;
 
     // info of heap segment
     uint64_t heap_start_;

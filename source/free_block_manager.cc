@@ -31,12 +31,13 @@ namespace mralloc {
         block_rkey_ = (uint32_t*)(region_header_ + region_num_);
         class_block_rkey_ = (uint32_t*)(block_rkey_ + block_num_);
         block_header_ = (uint64_t*)(class_block_rkey_ + block_num_);
+        backup_rkey_ = (uint32_t*)(block_header_ + block_num_);
         
         heap_start_ = addr;
         heap_size_ = size;
-        assert(heap_start_ > (uint64_t)(block_header_ + block_num_));
+        assert(heap_start_ > (uint64_t)(backup_rkey_ + block_num_));
 
-        if((uint64_t)(class_block_rkey_ + block_num_) > heap_start_) {
+        if((uint64_t)(backup_rkey_ + block_num_) > heap_start_) {
             printf("metadata out of bound\n");
         }
 

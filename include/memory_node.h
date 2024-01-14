@@ -38,7 +38,7 @@
 
 namespace mralloc {
 
-const int cache_length = 32*4*1024;
+const int cache_length = 72*1024;
 
 class MWPool {
  public:
@@ -93,6 +93,7 @@ public:
     bool start(const std::string addr, const std::string port, const std::string device);
     void stop();
     bool alive();
+    void rebinder();
 
     bool new_cache_section(uint32_t block_class);
     bool new_cache_region(uint32_t block_class);
@@ -134,7 +135,7 @@ private:
 
     struct ibv_mr *rdma_register_memory(void *ptr, uint64_t size);
 
-    int remote_write(WorkerInfo *work_info, uint64_t local_addr, uint32_t lkey,
+    int remote_write(volatile WorkerInfo *work_info, uint64_t local_addr, uint32_t lkey,
                     uint32_t length, uint64_t remote_addr, uint32_t rkey);
 
     int allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
@@ -142,7 +143,7 @@ private:
 
     int deallocate_and_unregister_memory(uint64_t addr);
 
-    void worker(WorkerInfo *work_info, uint32_t num);
+    void worker(volatile WorkerInfo *work_info, uint32_t num);
 
     // << allocation metadata >>
     section_e current_section_;
@@ -166,8 +167,9 @@ private:
 
     // << function enabled >>
     bool one_sided_enabled_;
-    ibv_qp* one_side_qp_;
-    ibv_cq* one_side_cq_;
+    ibv_qp* rebinder_qp; ibv_cq* rebinder_cq;
+    ibv_qp* one_side_qp_[MAX_SERVER_WORKER*MAX_SERVER_CLIENT];
+    ibv_cq* one_side_cq_[MAX_SERVER_WORKER*MAX_SERVER_CLIENT];
 
     struct ibv_mr *global_mr_;
     struct rdma_event_channel *m_cm_channel_;
@@ -176,7 +178,7 @@ private:
     struct ibv_context *m_context_;
     bool m_stop_;
     std::thread *m_conn_handler_;
-    WorkerInfo **m_worker_info_;
+    volatile WorkerInfo *volatile* volatile m_worker_info_;
     volatile uint32_t m_worker_num_;
     std::thread **m_worker_threads_;
     MWPool* mw_queue_;
@@ -191,6 +193,7 @@ private:
 
     // << memory window? >>
     ibv_mw** block_mw;
+    ibv_mw** backup_mw;
     ibv_mw** block_class_mw;
     ServerBlockManager *server_block_manager_;
     uint8_t running;
