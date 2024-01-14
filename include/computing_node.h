@@ -194,7 +194,7 @@ private:
     block_header_e* header_list;
     uint32_t* rkey_list;
     uint64_t last_alloc_;
-    
+    uint64_t hint_ = 0;
     ConnectionManager *m_rdma_conn_;
     std::vector<rdma_mem_t> m_used_mem_; /* the used mem */
     std::mutex m_mutex_;                 /* used for concurrent mem allocation */

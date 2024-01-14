@@ -1099,7 +1099,7 @@ bool RDMAConnection::find_section(uint16_t block_class, section_e &alloc_section
                     return true;
                 }
             }
-            index = (index + fetch)%section_num_; remain -= fetch; fetch = (index + 8) > section_num_ ? (section_num_ - offset):8;
+            index = (index + fetch)%section_num_; remain -= fetch; fetch = (index + 8) > section_num_ ? (section_num_ - index):8;
         }
     } else if(advise == alloc_no_class) {
         int remain = section_num_, fetch = (offset + 8) > section_num_ ? (section_num_ - offset):8, index = offset;
@@ -1119,7 +1119,7 @@ bool RDMAConnection::find_section(uint16_t block_class, section_e &alloc_section
                     return true;
                 }
             }
-            index = (index + fetch)%section_num_; remain -= fetch; fetch = (index + 8) > section_num_ ? (section_num_ - offset):8;
+            index = (index + fetch)%section_num_; remain -= fetch; fetch = (index + 8) > section_num_ ? (section_num_ - index):8;
         }
     } else if (advise == alloc_empty) {
         int remain = section_num_, fetch = (offset + 8) > section_num_ ? (section_num_ - offset):8, index = offset;
@@ -1139,7 +1139,7 @@ bool RDMAConnection::find_section(uint16_t block_class, section_e &alloc_section
                     return true;
                 }
             }
-            index = (index + fetch)%section_num_; remain -= fetch; fetch = (index + 8) > section_num_ ? (section_num_ - offset):8;
+            index = (index + fetch)%section_num_; remain -= fetch; fetch = (index + 8) > section_num_ ? (section_num_ - index):8;
         }
     } else { return false; }
     printf("find no section!\n");
