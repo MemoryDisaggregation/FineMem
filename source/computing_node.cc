@@ -610,9 +610,10 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
 		block_counter += (cache_upper_bound - length);
 		// printf("%d\n", block_counter);
 	}
+        mr_rdma_addr addr;
         for(int i = 0; i< cache_upper_bound - length; i++){
-            mr_rdma_addr addr;
             m_rdma_conn_->fetch_block(hint_, addr.addr, addr.rkey);
+            ring_cache->add_cache(addr);
             // if(current_region_->region.base_map_ != bitmap32_filled) {
             //     int index = find_free_index_from_bitmap32_tail(current_region_->region.base_map_);
             //     current_region_->region.base_map_ |= 1<<index;
