@@ -94,6 +94,7 @@ public:
     bool free_mem_block(uint64_t addr);
     bool free_mem_block_slow(uint64_t addr);
     bool free_mem_batch(uint32_t region_offset, uint32_t free_map);
+    bool free_mem_block_fast_batch(uint64_t *addr);
 
     bool fetch_mem_class_block(uint16_t block_class, uint64_t &addr, uint32_t &rkey);
 
@@ -143,6 +144,8 @@ private:
     uint64_t block_rkey_;
     uint64_t class_block_rkey_;
     uint64_t heap_start_;
+    uint64_t block_header_;
+    uint64_t backup_rkey_;
 
     // << allocation metadata >>
     one_side_info m_one_side_info_;
@@ -191,7 +194,7 @@ private:
     block_header_e* header_list;
     uint32_t* rkey_list;
     uint64_t last_alloc_;
-    
+    uint64_t hint_ = 0;
     ConnectionManager *m_rdma_conn_;
     std::vector<rdma_mem_t> m_used_mem_; /* the used mem */
     std::mutex m_mutex_;                 /* used for concurrent mem allocation */
