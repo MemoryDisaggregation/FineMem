@@ -377,23 +377,24 @@ void ComputingNode::recycler() {
                     free_num += length;
                     for(int j = 0; j < length; j++){
                         // free_mem_block(batch_addr[j]);
-                        uint64_t region_offset = (batch_addr[j] - heap_start_) / region_size_;
-                        uint64_t region_block_offset = (batch_addr[j] - heap_start_) % region_size_ / block_size_;
-                        uint32_t new_key = m_rdma_conn_->rebind_region_block_rkey(region_offset, region_block_offset);
-                        if(new_key != 0) {
-                            mr_rdma_addr result; 
-                            result.addr = batch_addr[j]; 
-                            exclusive_region_[region_offset].rkey[region_block_offset] = new_key;
-                            result.rkey = new_key;
-                            ring_cache->add_cache(result);
-                        } else {
-                            if(recycle_counter > 31) {
-                                recycle_counter = 0;
-                                free_mem_block_fast_batch(recycle_addr);
-                            }
-                            recycle_addr[recycle_counter] = batch_addr[j];
-                            recycle_counter ++;
-                        }
+                        m_rdma_conn_->free_block(batch_addr[j]);
+                        // uint64_t region_offset = (batch_addr[j] - heap_start_) / region_size_;
+                        // uint64_t region_block_offset = (batch_addr[j] - heap_start_) % region_size_ / block_size_;
+                        // uint32_t new_key = m_rdma_conn_->rebind_region_block_rkey(region_offset, region_block_offset);
+                        // if(new_key != 0) {
+                        //     mr_rdma_addr result; 
+                        //     result.addr = batch_addr[j]; 
+                        //     exclusive_region_[region_offset].rkey[region_block_offset] = new_key;
+                        //     result.rkey = new_key;
+                        //     ring_cache->add_cache(result);
+                        // } else {
+                        //     if(recycle_counter > 31) {
+                        //         recycle_counter = 0;
+                        //         free_mem_block_fast_batch(recycle_addr);
+                        //     }
+                        //     recycle_addr[recycle_counter] = batch_addr[j];
+                        //     recycle_counter ++;
+                        // }
                     }
                 }
             }
