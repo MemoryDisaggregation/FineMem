@@ -200,7 +200,7 @@ void ComputingNode::decrease_class_watermark(uint16_t block_class, int &upper_bo
 
 void ComputingNode::increase_watermark(int &upper_bound) {
     // if (upper_bound == ring_buffer_size - 16 ) {
-    if (upper_bound == ring_buffer_size - 16 || upper_bound >= 8 * block_per_region) {
+    if (upper_bound == ring_buffer_size - 16 || upper_bound >= 4 * block_per_region) {
         return;
     }
     if(upper_bound < block_per_region) {
@@ -377,24 +377,25 @@ void ComputingNode::recycler() {
                     free_num += length;
                     for(int j = 0; j < length; j++){
                         // free_mem_block(batch_addr[j]);
-                        m_rdma_conn_->free_block(batch_addr[j]);
-                        // uint64_t region_offset = (batch_addr[j] - heap_start_) / region_size_;
-                        // uint64_t region_block_offset = (batch_addr[j] - heap_start_) % region_size_ / block_size_;
-                        // uint32_t new_key = m_rdma_conn_->rebind_region_block_rkey(region_offset, region_block_offset);
-                        // if(new_key != 0) {
-                        //     mr_rdma_addr result; 
-                        //     result.addr = batch_addr[j]; 
-                        //     exclusive_region_[region_offset].rkey[region_block_offset] = new_key;
-                        //     result.rkey = new_key;
-                        //     ring_cache->add_cache(result);
-                        // } else {
-                        //     if(recycle_counter > 31) {
-                        //         recycle_counter = 0;
-                        //         free_mem_block_fast_batch(recycle_addr);
-                        //     }
-                        //     recycle_addr[recycle_counter] = batch_addr[j];
-                        //     recycle_counter ++;
-                        // }
+                        // m_rdma_conn_->free_block(batch_addr[j]);
+                        uint64_t region_offset = (batch_addr[j] - heap_start_) / region_size_;
+                        uint64_t region_block_offset = (batch_addr[j] - heap_start_) % region_size_ / block_size_;
+                        uint32_t new_key = m_rdma_conn_->rebind_region_block_rkey(region_offset, region_block_offset);
+                        if(new_key != 0) {
+                            mr_rdma_addr result; 
+                            result.addr = batch_addr[j]; 
+                            exclusive_region_[region_offset].rkey[region_block_offset] = new_key;
+                            result.rkey = new_key;
+                            ring_cache->add_cache(result);
+                        } else {
+                            // free_mem_block(batch_addr[j]);
+                            if(recycle_counter > 31) {
+                                recycle_counter = 0;
+                                free_mem_block_fast_batch(recycle_addr);
+                            }
+                            recycle_addr[recycle_counter] = batch_addr[j];
+                            recycle_counter ++;
+                        }
                     }
                 }
             }
@@ -612,51 +613,51 @@ bool ComputingNode::fill_cache_block(uint32_t block_class){
 	}
         mr_rdma_addr addr;
         for(int i = 0; i< cache_upper_bound - length; i++){
-            m_rdma_conn_->fetch_block(hint_, addr.addr, addr.rkey);
-            ring_cache->add_cache(addr);
-            // if(current_region_->region.base_map_ != bitmap32_filled) {
-            //     int index = find_free_index_from_bitmap32_tail(current_region_->region.base_map_);
-            //     current_region_->region.base_map_ |= 1<<index;
-            //     mr_rdma_addr addr(get_region_block_addr(current_region_->index, index), current_region_->rkey[index]);
-            //     // printf("exclusive addr: %p, rkey: %u\n", addr.addr, addr.rkey);
-            //     // printf("fill cache:%lx\n", addr.addr);
-            //     ring_cache->add_cache(addr);
-            //     fill_counter += 1;
-            // } else {
-            //     m_mutex_.lock();
-            //     if(!free_region_.empty()) {
-            //         current_region_ = *free_region_.begin();
-            //         free_region_.erase(free_region_.begin());
-            //         // m_rdma_conn_->fetch_exclusive_region_rkey(current_region_->region, current_region_->rkey);
-            //         m_mutex_.unlock();
-            //         return fill_cache_block(block_class);
-            //     }
-            //     m_mutex_.unlock();
-            //     if(backup_cycle >= 0 && backup_counter >= backup_cycle) {
-            //         backup_counter = 0;
-            //         if(new_cache_region(block_class)) {
-            //             return fill_cache_block(block_class);
-            //         } 
-            //     }
-            //     // printf("no backup region, just fetch new region\n");
-            //     int block_num = cache_upper_bound - ring_cache->get_length(), get_num;
-            //     mr_rdma_addr addr[block_per_region];
-            //     while(block_num > 0){
-            //         while((get_num = m_rdma_conn_->fetch_region_batch(backup_region_, addr, block_num, false, backup_region_index_)) == 0){
-            //             new_backup_region();
-            //         }
-            //         // printf("block_num = %d, get_num = %d\n", block_num, get_num);
-            //         uint64_t offset = backup_region_index_;
-            //         uint64_t region_start = heap_start_ + offset * region_size_;
-            //         for(int j = 0; j < get_num; j++) {
-            //             exclusive_region_[offset].rkey[(addr[j].addr-region_start)/block_size_] = addr[j].rkey;
-            //         }
-            //         block_num -= get_num;
-            //         fill_counter += get_num;
-            //         ring_cache->add_batch(addr, get_num);
-            //     };
-            //     return true;
-            // }
+            // m_rdma_conn_->fetch_block(hint_, addr.addr, addr.rkey);
+            // ring_cache->add_cache(addr);
+            if(current_region_->region.base_map_ != bitmap32_filled) {
+                int index = find_free_index_from_bitmap32_tail(current_region_->region.base_map_);
+                current_region_->region.base_map_ |= 1<<index;
+                mr_rdma_addr addr(get_region_block_addr(current_region_->index, index), current_region_->rkey[index]);
+                // printf("exclusive addr: %p, rkey: %u\n", addr.addr, addr.rkey);
+                // printf("fill cache:%lx\n", addr.addr);
+                ring_cache->add_cache(addr);
+                fill_counter += 1;
+            } else {
+                m_mutex_.lock();
+                if(!free_region_.empty()) {
+                    current_region_ = *free_region_.begin();
+                    free_region_.erase(free_region_.begin());
+                    // m_rdma_conn_->fetch_exclusive_region_rkey(current_region_->region, current_region_->rkey);
+                    m_mutex_.unlock();
+                    return fill_cache_block(block_class);
+                }
+                m_mutex_.unlock();
+                if(backup_cycle >= 0 && backup_counter >= backup_cycle) {
+                    backup_counter = 0;
+                    if(new_cache_region(block_class)) {
+                        return fill_cache_block(block_class);
+                    } 
+                }
+                // printf("no backup region, just fetch new region\n");
+                int block_num = cache_upper_bound - ring_cache->get_length(), get_num;
+                mr_rdma_addr addr[block_per_region];
+                while(block_num > 0){
+                    while((get_num = m_rdma_conn_->fetch_region_batch(backup_region_, addr, block_num, false, backup_region_index_)) == 0){
+                        new_backup_region();
+                    }
+                    // printf("block_num = %d, get_num = %d\n", block_num, get_num);
+                    uint64_t offset = backup_region_index_;
+                    uint64_t region_start = heap_start_ + offset * region_size_;
+                    for(int j = 0; j < get_num; j++) {
+                        exclusive_region_[offset].rkey[(addr[j].addr-region_start)/block_size_] = addr[j].rkey;
+                    }
+                    block_num -= get_num;
+                    fill_counter += get_num;
+                    ring_cache->add_batch(addr, get_num);
+                };
+                return true;
+            }
         }
     } else {
         int request_block_num = class_cache_upper_bound[block_class] - ring_class_cache[block_class]->get_length();
@@ -914,8 +915,8 @@ bool ComputingNode::free_mem_block(uint64_t addr){
     uint64_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
     region_with_rkey* region; 
     // if(rand()%32 == 0)
-    exclusive_region_[region_offset].rkey[region_block_offset] = m_rdma_conn_->get_region_block_rkey(region_offset, region_block_offset);
-        // m_rdma_conn_->remote_rebind(addr, 0, exclusive_region_[region_offset].rkey[region_block_offset]);
+    // exclusive_region_[region_offset].rkey[region_block_offset] = m_rdma_conn_->get_region_block_rkey(region_offset, region_block_offset);
+    m_rdma_conn_->remote_rebind(addr, 0, exclusive_region_[region_offset].rkey[region_block_offset]);
     // }
     if(exclusive_region_[region_offset].region.exclusive_ == 1 && ring_cache->get_length() < 200*block_per_region) {
         mr_rdma_addr result; 
