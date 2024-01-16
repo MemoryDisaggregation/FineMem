@@ -2,7 +2,7 @@
 
 🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧This repo is under constructing🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧
 
-All source codes of LegoHeap and FuDM are avaliable here, while we do not complete the documents. And the source code of LegoAlloc-User, LegoAlloc-Swap and LegoAlloc-KV stores at other repos, which we will add in this repo future.
+All source codes of LegoHeap and FuDM are avaliable here, while we are still working on complete the documents. And the source code of LegoAlloc-User, LegoAlloc-Swap and LegoAlloc-KV stores at other repos, which we will add in this repo future.
 
 Only OFED & Cmake needed, no other libraray requirement.
 
