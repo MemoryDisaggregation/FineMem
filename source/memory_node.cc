@@ -1,13 +1,4 @@
-/*
- * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @Date: 2023-07-24 10:13:27
- * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-10 10:54:44
- * @FilePath: /rmalloc_newbase/source/memory_node.cc
- * @Description: A memory heap at remote memory server, control all remote memory on it, and provide coarse-grained memory allocation
- * 
- * Copyright (c) 2023 by wxy1999@mail.ustc.edu.cn, All Rights Reserved. 
- */
+
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -55,7 +46,6 @@ const uint64_t base_block_size = (uint64_t)1024*2*1024;
 const bool global_rkey = true;
 
 const uint64_t SERVER_BASE_ADDR = (uint64_t)0x10000000;
-// const uint64_t SERVER_BASE_ADDR = (uint64_t)0x10000000;
 
 void * run_rebinder(void* arg) {
     cpu_set_t cpuset;
@@ -63,16 +53,15 @@ void * run_rebinder(void* arg) {
     CPU_SET(1, &cpuset);
     pthread_t this_tid = pthread_self();
     uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
-    // assert(ret == 0);
     ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
     for (int i = 0; i < sysconf(_SC_NPROCESSORS_CONF); i ++) {
         if (CPU_ISSET(i, &cpuset)) {
             printf("filler running on core: %d\n" , i);
         }
     }
-  MemoryNode *heap = (MemoryNode*)arg;
-  heap->rebinder();
-  return NULL;
+    MemoryNode *heap = (MemoryNode*)arg;
+    heap->rebinder();
+    return NULL;
 } 
 
 void MemoryNode::print_alloc_info() {
@@ -126,10 +115,6 @@ bool MemoryNode::start(const std::string addr, const std::string port, const std
         printf("support %d memory window total\n", device_attr.max_mw);
     }
     mw_queue_ = new MWPool(m_pd_);
-    // if (!mw_queue_) {
-    //   perror("memeory window init fail");
-    //   return false;
-    // }
 
     // create connection manager and listen
 
@@ -166,17 +151,6 @@ bool MemoryNode::start(const std::string addr, const std::string port, const std
 
     m_conn_handler_ = new std::thread(&MemoryNode::handle_connection, this);
 
-    // optional init 
-
-
-    // wait for all threads exit
-    // m_conn_handler_->join();
-    // for (uint32_t i = 0; i < MAX_SERVER_WORKER; i++) {
-    //   if (m_worker_threads_[i] != nullptr) {
-    //     m_worker_threads_[i]->join();
-    //   }
-    // }
-    // getchar();
     return true;
 
 }
@@ -187,13 +161,11 @@ void MemoryNode::rebinder() {
     while(1) {
         for(int i = 0; i < block_num; i ++) {
             if(server_block_manager_->get_backup_rkey(i)== (uint32_t)-1){
-                // printf("need rebind\n");
                 server_block_manager_->set_backup_rkey(i, 0);
                 bind_mw(block_mw[i], server_block_manager_->get_block_addr(i), server_block_manager_->get_block_size(), rebinder_qp, rebinder_cq);
                 server_block_manager_->set_backup_rkey(i, block_mw[i]->rkey);
                 server_block_manager_->set_block_rkey(i, backup_mw[i]->rkey);
                 swap = block_mw[i]; block_mw[i] = backup_mw[i]; backup_mw[i] = swap;
-                // printf("rebind success, %u\n", block_mw[i]->rkey);
             }
         }
     }
@@ -263,12 +235,8 @@ bool MemoryNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
 
 bool MemoryNode::free_mem_block(uint64_t addr) {
     mr_rdma_addr new_addr;
-    // memset((void*)addr, 0, server_block_manager_->get_block_size());
     uint32_t block_id = (addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
-    // bind_mw(block_mw[block_id], addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
-    // bind_mw(block_mw[block_id], addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
     new_addr.addr = addr; 
-    // new_addr.rkey = get_global_rkey();
     new_addr.rkey = block_mw[block_id]->rkey;
     ring_cache->add_cache(new_addr);
     return true;
@@ -328,7 +296,6 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
     simple_cache_watermark = 36;
 
     for(int i = 1; i < block_class_num; i++) {
-        // ret &= new_cache_region(i);
         ret &= simple_class_cache_watermark[i] = 1;
     }
 
@@ -366,7 +333,6 @@ void MemoryNode::stop() {
         m_worker_threads_[i] = nullptr;
         }
     }
-    // TODO: release resources
     munmap((void*)SERVER_BASE_ADDR, INIT_MEM_SIZE);
     delete server_block_manager_;
 }
@@ -380,7 +346,6 @@ void MemoryNode::handle_connection() {
             perror("rdma_get_cm_event fail");
             return;
         }
-        // printf("recieve create: %u\n", event->event);
         
         if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST) {
             struct rdma_cm_id *cm_id = event->id;
@@ -437,21 +402,6 @@ int MemoryNode::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
         return -1;
     }
     
-    // struct ibv_qp_attr attr;
-    // attr.max_dest_rd_atomic = 16;
-    // attr.min_rnr_timer = 0x12;
-    // attr.ah_attr.is_global = 1;
-    // attr.ah_attr.sl    = 0;
-    // attr.ah_attr.src_path_bits = 0;
-    // attr.ah_attr.grh.flow_label = 0;
-    // attr.ah_attr.grh.hop_limit  = 1;
-    // attr.ah_attr.grh.traffic_class = 0;
-    // int    attr_mask;
-    // attr_mask = IBV_QP_AV | IBV_QP_MAX_DEST_RD_ATOMIC | IBV_QP_MIN_RNR_TIMER;
-    // attr_mask = IBV_QP_MAX_DEST_RD_ATOMIC;
-    // int ret = ibv_modify_qp(cm_id->qp, &attr, attr_mask);
-    // if(ret!=0) {perror("connection error!");};
-
     struct PData rep_pdata;
     CmdMsgBlock *cmd_msg = nullptr;
     CmdMsgRespBlock *cmd_resp = nullptr;
@@ -522,7 +472,6 @@ int MemoryNode::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
     conn_param.initiator_depth = 16;
     conn_param.private_data = &rep_pdata;
     conn_param.private_data_len = sizeof(rep_pdata);
-    // conn_param.flow_control = 0;
 
     if (rdma_accept(cm_id, &conn_param)) {
         perror("rdma_accept fail");
@@ -556,22 +505,10 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
         backup_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
         bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
         bind_mw(backup_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
-        // bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
         server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
         server_block_manager_->set_backup_rkey(i, backup_mw[i]->rkey);
-        // server_block_manager_->set_block_rkey(i, get_global_rkey());
     }
 
-    // struct timeval start, end;
-    // gettimeofday(&start, NULL);
-    // for(int i = 0; i < 30000; i++){
-    //     uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
-    //     bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
-    //     // rdma_register_memory((void*)block_addr_, server_block_manager_->get_block_size());
-    // }
-    // gettimeofday(&end, NULL);
-    // double time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
-    // printf("%lf\n", time);
     printf("bind finished\n");
 
     return true;
@@ -583,10 +520,8 @@ bool MemoryNode::init_class_mw(uint32_t region_offset, uint16_t block_class, ibv
     for(int i = 0; i < block_per_region/class_size; i++){
         uint64_t block_addr_ = server_block_manager_->get_block_addr(block_offset + i*class_size);
         if(block_class_mw[block_offset + i*class_size] == NULL) block_class_mw[block_offset + i*class_size] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
-        // bind_mw(block_class_mw[block_offset + i*class_size], block_addr_, server_block_manager_->get_block_size()*class_size, qp, cq);
         bind_mw(block_class_mw[block_offset + i*class_size], block_addr_, server_block_manager_->get_block_size()*class_size, qp, cq);
         server_block_manager_->set_class_block_rkey(block_offset + i*class_size, block_class_mw[block_offset + i*class_size]->rkey);
-        // printf("addr %lx bind class %d, with rkey %u\n", block_addr_, block_class, block_class_mw[block_offset + i*class_size]->rkey);
     }
     return true;
 }
@@ -654,17 +589,8 @@ struct ibv_mr *MemoryNode::rdma_register_memory(void *ptr, uint64_t size) {
 int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
                                                uint64_t size) {
     /* align mem */
-    // uint64_t total_size = size + MEM_ALIGN_SIZE;
     uint64_t mem = (uint64_t)malloc(size);
-    // uint64_t mem = (uint64_t)mmap(NULL, total_size, PROT_READ | PROT_WRITE, 
-    //         MAP_PRIVATE | MAP_ANONYMOUS |  MAP_HUGETLB, -1, 0);
     addr = mem;
-    // if (addr % MEM_ALIGN_SIZE != 0)
-    //     addr = addr + (MEM_ALIGN_SIZE - addr % MEM_ALIGN_SIZE);
-    // ibv_mw* mw = mw_queue_->dequeue();
-    // mw_recorder[addr] = mw;
-    // bind_mw(mw, addr, size, one_side_qp_, one_side_cq_);
-    // rkey = mw->rkey;
     struct ibv_mr *mr = rdma_register_memory((void *)addr, size);
     if (!mr) {
         perror("ibv_reg_mr fail");
@@ -672,15 +598,10 @@ int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
     }
     mr_recorder[addr] = mr;
     rkey = mr->rkey;
-    // printf("allocate and register memory %ld %d\n", addr, rkey);
-    // TODO: save this memory info for later delete
     return 0;
 }
 
 int MemoryNode::deallocate_and_unregister_memory(uint64_t addr) {
-    // ibv_mw* mw = mw_recorder[addr];
-    // bind_mw(mw, addr, 0, one_side_qp_, one_side_cq_);
-    // mw_queue_->enqueue(mw);
     ibv_dereg_mr(mr_recorder[addr]);
     free((void*)addr);
     return 0;
@@ -708,8 +629,6 @@ int MemoryNode::remote_write(volatile WorkerInfo *work_info, uint64_t local_addr
         perror("ibv_post_send fail");
         return -1;
     }
-
-    // printf("remote write %ld %d\n", remote_addr, rkey);
 
     auto start = TIME_NOW;
     struct ibv_wc wc;
@@ -774,12 +693,9 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
         resp_mr = work_info->resp_mr;
         cmd_resp->notify = NOTIFY_WORK;
         active_id = -1;
-        // printf("receive %d\n", request->type);
         if (request->type == MSG_REGISTER) {
             /* handle memory register requests */
             RegisterRequest *reg_req = (RegisterRequest *)request;
-            // printf("receive a memory register message, size: %ld\n",
-            // reg_req->size);
             RegisterResponse *resp_msg = (RegisterResponse *)cmd_resp;
             if (allocate_and_register_memory(resp_msg->addr, resp_msg->rkey,
                                             reg_req->size)) {
@@ -793,7 +709,6 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
                         reg_req->resp_rkey);
         } else if (request->type == MSG_FETCH_FAST) {
             /* handle memory fetch requests */
-            // printf("receive a memory fetch message\n");
             FetchBlockResponse *resp_msg = (FetchBlockResponse *)cmd_resp;
             uint64_t addr;
             uint32_t rkey;
@@ -806,8 +721,6 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
             } else {
                 resp_msg->status = RES_FAIL;
             }
-            // printf("fetch memory, addr: %lx, rkey: %d, start addr: %lx, global rkey: %u\n", resp_msg->addr,
-                    // resp_msg->rkey, heap_start_addr_, global_mr_->rkey);
             /* write response */
             remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
                         sizeof(CmdMsgRespBlock), request->resp_addr,
@@ -824,13 +737,10 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
                         sizeof(CmdMsgRespBlock), request->resp_addr,
                         request->resp_rkey);
             // Attension: no actual used at the critical path
-            // TODO: bind memory window, generate new rkey
-            // TODO: bath to rebind
         } else if (request->type == MSG_MW_CLASS_BIND) {
             ClassBindRequest *reg_req = (ClassBindRequest *)request;
             ClassBindResponse *resp_msg = (ClassBindResponse *)cmd_resp;
             if (!init_class_mw(reg_req->region_offset, reg_req->block_class, one_side_qp_[request->id], one_side_cq_[request->id])) {
-            // if (!init_class_mw(reg_req->region_offset, reg_req->block_class, work_info->cm_id->qp, work_info->cq)) {
                 resp_msg->status = RES_FAIL;
             } else {
                 resp_msg->status = RES_OK;
@@ -845,10 +755,6 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
             RebindBlockResponse *resp_msg = (RebindBlockResponse *)cmd_resp;
             uint32_t block_id = (reg_req->addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
             if(reg_req->block_class == 0) {
-                // bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq);
-                // memset((void*)reg_req->addr, 0, server_block_manager_->get_block_size());
-                // if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
-                // bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
                 uint32_t rkey = server_block_manager_->get_backup_rkey(block_id);
                 if(rkey != -1){
                     resp_msg->rkey = rkey;
@@ -861,23 +767,10 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
                     server_block_manager_->set_block_rkey(block_id, backup_mw[block_id]->rkey);
                     ibv_mw* swap = block_mw[block_id]; block_mw[block_id] = backup_mw[block_id]; backup_mw[block_id] = swap;
                     server_block_manager_->set_backup_rkey(block_id, -1);
-                    // if (!bind_mw(block_mw[block_id], reg_req->addr, server_block_manager_->get_block_size(), one_side_qp_[request->id], one_side_cq_[request->id])) {
-                        // resp_msg->status = RES_FAIL;
-                        // printf("rebind success\n");
-                    // } else {
-                        // ibv_mw* swap;
-                        // swap = block_mw[block_id]; block_mw[block_id] = backup_mw[block_id]; backup_mw[block_id] = swap;
-                        // server_block_manager_->set_block_rkey(block_id, block_mw[block_id]->rkey);
-                        // printf("rebind success\n");
-                        resp_msg->status = RES_OK;
-                    // }
-
+                    resp_msg->status = RES_OK;
                 }
             } else {
-                // bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), one_side_qp_, one_side_cq_);
                 if (!bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), one_side_qp_[request->id], one_side_cq_[request->id])) {
-                // bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq);
-                // if (!bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), work_info->cm_id->qp, work_info->cq)) {
                     resp_msg->status = RES_FAIL;
                 } else {
                     server_block_manager_->set_class_block_rkey(block_id, block_class_mw[block_id]->rkey);
@@ -916,7 +809,6 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
             remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
                         sizeof(CmdMsgRespBlock), unreg_req->resp_addr,
                         unreg_req->resp_rkey);
-            // TODO: implemente memory unregister
         } else if(request->type == MSG_PRINT_INFO){
             ResponseMsg *resp_msg = (ResponseMsg *)cmd_resp;
             print_alloc_info();
@@ -940,13 +832,6 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
                     server_block_manager_->set_block_rkey(block_id, backup_mw[block_id]->rkey);
                     ibv_mw* swap = block_mw[block_id]; block_mw[block_id] = backup_mw[block_id]; backup_mw[block_id] = swap;
                     server_block_manager_->set_backup_rkey(block_id, -1);
-                    // if (!bind_mw(block_mw[block_id], reg_req->addr[i], server_block_manager_->get_block_size(), one_side_qp_[request->id], one_side_cq_[request->id])) {
-                    //     resp_msg->status = RES_FAIL;
-                    // } else {
-                    //     server_block_manager_->set_block_rkey(block_id, block_mw[block_id]->rkey);
-                    //     resp_msg->status = RES_OK;
-                    // }
-                    // resp_msg->rkey[i] = block_mw[block_id]->rkey;
                 }
             }
             /* write response */

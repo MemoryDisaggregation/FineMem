@@ -28,12 +28,6 @@ target_link_libraries(client
     rt
 )
 
-# target_link_libraries(remote_heap
-#     polarkv
-#     ibverbs
-#     rdmacm
-# )
-
 install(TARGETS mralloc
         ARCHIVE DESTINATION lib
         LIBRARY DESTINATION lib

@@ -31,9 +31,7 @@ const bool fusee_enable = true;
 #define SUBTABLE_LEN          (RACE_HASH_ADDRESSABLE_BUCKET_NUM * sizeof(RaceHashBucket))
 #define SUBTABLE_RES_LEN      (RACE_HASH_MAX_SUBTABLE_NUM * SUBTABLE_LEN)
 #define KV_RES_LEN            (RACE_HASH_RESERVED_MAX_KV_NUM * RACE_HASH_KV_BLOCK_LENGTH)
-// #define META_AREA_LEN         (128 * 1024 * 1024)
 #define META_AREA_LEN         (256 * 1024 * 1024)
-// #define GC_AREA_LEN           (128 * 1024 * 1024)
 #define GC_AREA_LEN           (0)
 #define HASH_AREA_LEN         (128 * 1024 * 1024)
 #define CLIENT_META_LEN       (1 * 1024 * 1024)
@@ -126,7 +124,6 @@ public:
     }
 
     int init_subtable(void * subtable_addr) {
-        // RaceHashBucket * bucket = (RaceHashBucket *)subtable_addr;
         uint64_t max_subtables = (hash_addr_ + HASH_AREA_LEN - (uint64_t)subtable_addr) / roundup_256(SUBTABLE_LEN);
 
         subtable_alloc_map_.resize(max_subtables);

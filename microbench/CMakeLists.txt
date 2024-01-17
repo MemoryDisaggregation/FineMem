@@ -8,21 +8,3 @@ target_link_libraries(microbench_common
     rdmacm
     rt
 )
-
-add_executable(microbench_class microbench_class.cc)
-
-target_link_libraries(microbench_class
-    mralloc
-    ibverbs
-    rdmacm
-    rt
-)
-
-add_executable(attacker attacker.cc)
-
-target_link_libraries(attacker
-    mralloc
-    ibverbs
-    rdmacm
-    rt
-)

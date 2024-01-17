@@ -17,6 +17,8 @@
 
 namespace mralloc {
 
+// TODO: Add rseq support learning from TCMALLOC
+
 const uint32_t nprocs = 144;
 const uint32_t max_alloc_item = 256;
 const uint32_t max_free_item = 1024;
@@ -337,10 +339,7 @@ public:
         int mm_flag   = MAP_SHARED; 
         int fd = shm_open("/cpu_cache", O_RDWR, 0);
         if(fd==-1){
-            // if shm not exist, create and init it
             fd = shm_open("/cpu_cache", O_CREAT | O_EXCL | O_RDWR, 0600);
-            // TODO: our cpu number should be dynamic, max_item can be static
-            // e.g. const uint8_t nprocs = get_nprocs();
             if(ftruncate(fd, sizeof(cpu_cache_storage))){
                 perror("create shared memory failed");
             }

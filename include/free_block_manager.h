@@ -1,13 +1,4 @@
-/*
- * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @Date: 2023-08-11 16:42:26
- * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-09 11:10:26
- * @FilePath: /rmalloc_newbase/include/free_block_manager.h
- * @Description: Buddy tree for memory management 
- * 
- * Copyright (c) 2023 by wxy1999@mail.ustc.edu.cn, All Rights Reserved. 
- */
+
 #pragma once
 
 #include <bits/stdint-uintn.h>
@@ -234,8 +225,6 @@ public:
                 empty_map >>= 1;
                 exclusive_map >>= 1;
             }
-            // empty += free_bit_in_bitmap32(section_header_[i].load().alloc_map_ | section_header_[i].load().class_map_);
-            // exclusive += free_bit_in_bitmap32(~section_header_[i].load().alloc_map_ | ~section_header_[i].load().class_map_);
         }
         used += exclusive * block_per_region;
         for(int i = 0; i <block_num_; i++) {
@@ -243,9 +232,7 @@ public:
                 used ++;
             }
         }
-        // printf("%lu\n", (used-cache)*4);
         mem_record_ << (used-cache)*4 << std::endl;
-        // printf("summary: empty: %lu, exclusive: %lu, total: %lu\n", empty, exclusive, (used-cache)*4);
     }
 
     inline bool check_section(section_e alloc_section, alloc_advise advise, uint32_t offset);
@@ -304,39 +291,6 @@ public:
 private:
 
     std::mutex m_mutex_;
-
-    /*
-    --------------------------------  <-- mmap addr ( - 2 MiB)
-    << section header >>
-    32 region per section with 8Byte
-    2048 region, 4096 bit
-    64 section x 8 Byte
-    using 2bit to a region:
-        00-empty
-        01-not full, can set certain class
-        10-not full, already set certain class
-        11-full, or exclusive
-    0 --> : varaint GB region 
-    <-- 2047 : a single GB region
-    --------------------------------
-    << fast region >>
-    16 class x 64 x 8 Byte
-    each class has 64 region of that class size
-    --------------------------------
-    << region_header >>
-    2048 x 8 Byte
-    offset is never changed
-    --------------------------------
-    << block_rkey >>
-    2048 x 32 x 4 Byte
-    -------------------------------- 
-    << class_block_rkey >>
-    2048 x 32 x 4 Byte 
-    --------------------------------
-    << unused alignment space >>
-    --------------------------------  <-- heap start ( 0 )
-
-    */
 
     // basic info
     uint64_t block_size_;
@@ -480,9 +434,6 @@ public:
     inline uint64_t get_block_addr(uint64_t index) {return heap_start + index * block_size_;};
 
     inline uint64_t get_block_addr() {return heap_start;};
-
-    // inline block_header get_block_header(uint64_t index) {return header_list[index];};
-    // inline block_header get_block_header(uint64_t index) {return header_list[index];};
 
     inline block_header* get_metadata() {return header_list;};
 

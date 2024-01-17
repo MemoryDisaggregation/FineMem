@@ -1,13 +1,3 @@
-/*
- * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @Date: 2023-12-04 14:32:55
- * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-04 14:47:21
- * @FilePath: /rmalloc_newbase/include/mr_utils.h
- * @Description: 
- * 
- * Copyright (c) 2023 by wxy1999@mail.ustc.edu.cn, All Rights Reserved. 
- */
 
 #include <bits/stdint-uintn.h>
 namespace mralloc {

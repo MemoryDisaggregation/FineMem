@@ -1,13 +1,4 @@
-/*
- * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @Date: 2023-11-21 17:26:29
- * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-06 22:03:07
- * @FilePath: /rmalloc_newbase/include/memory_node.h
- * @Description: 
- * 
- * Copyright (c) 2023 by wxy1999@mail.ustc.edu.cn, All Rights Reserved. 
- */
+
 #pragma once
 #include <bits/stdint-uintn.h>
 #include <infiniband/verbs.h>
@@ -102,12 +93,7 @@ public:
     bool fetch_mem_block(uint64_t &addr, uint32_t &rkey);
     bool fetch_mem_class_block(uint64_t &addr, uint32_t &rkey);
     bool free_mem_block(uint64_t addr);
-    
-    // deprecated functions
-    // bool fetch_mem_local(uint64_t &addr, uint64_t size, uint32_t &lkey, uint32_t &rkey);
-    // bool fetch_mem_local(uint64_t start_addr, uint64_t &addr, uint64_t size, uint32_t &lkey, uint32_t &rkey);
-    // bool fetch_mem_block_local(uint64_t &addr, uint32_t &lkey, uint32_t &rkey);
-    // bool fetch_mem_block_remote(uint64_t &addr, uint32_t &rkey);
+
 
     void print_alloc_info();
 

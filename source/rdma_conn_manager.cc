@@ -1,13 +1,4 @@
-/*
- * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @Date: 2023-07-24 10:13:27
- * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-05 17:14:37
- * @FilePath: /rmalloc_newbase/source/rdma_conn_manager.cc
- * @Description: 
- * 
- * Copyright (c) 2023 by wxy1999@mail.ustc.edu.cn, All Rights Reserved. 
- */
+
 #include "rdma_conn_manager.h"
 #include "atomic"
 #include "msg.h"
@@ -30,7 +21,6 @@ int ConnectionManager::init(const std::string ip, const std::string port,
   for (uint32_t i = 0; i < rpc_conn_num; i++) {
     RDMAConnection *conn = new RDMAConnection();
     if (conn->init(ip, port, CONN_RPC)) {
-      // TODO: release resources
       return -1;
     }
     m_one_side_info_ = conn->get_one_side_info();
@@ -56,10 +46,8 @@ int ConnectionManager::init(const std::string ip, const std::string port,
   for (uint32_t i = 0; i < one_sided_conn_num; i++) {
     RDMAConnection *conn = new RDMAConnection();
     if (conn->init(ip, port, CONN_ONESIDE)) {
-      // TODO: release resources
       return -1;
     }
-    // conn->malloc_hint((uint64_t)0x28000000, i);
     m_one_sided_conn_queue_->enqueue(conn);
   }
   return 0;
@@ -148,15 +136,6 @@ int ConnectionManager::remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, ui
   m_rpc_conn_queue_->enqueue(conn);
   return ret;
 }
-
-// int ConnectionManager::remote_fetch_block_one_sided(uint64_t &addr, uint32_t &rkey) {
-//   RDMAConnection *conn = m_one_sided_conn_queue_->dequeue();
-//   assert(conn != nullptr);
-// //   int ret = conn->remote_fetch_block_one_sided(addr, rkey);
-//   int ret = conn->remote_fetch_block_one_sided(addr, rkey);
-//   m_one_sided_conn_queue_->enqueue(conn);
-//   return ret;
-// } 
 
 bool ConnectionManager::update_section(uint32_t region_index, alloc_advise advise, alloc_advise compare) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();

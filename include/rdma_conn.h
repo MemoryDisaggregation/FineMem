@@ -1,13 +1,4 @@
-/*
- * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @Date: 2023-07-24 10:13:26
- * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-05 17:11:41
- * @FilePath: /rmalloc_newbase/include/rdma_conn.h
- * @Description: RDMA Connection functions, with RDMA read/write and fetch block, used by both LocalHeap and RemoteHeap
- * 
- * Copyright (c) 2023 by wxy1999@mail.ustc.edu.cn, All Rights Reserved. 
- */
+
 #pragma once
 
 #include <arpa/inet.h>
@@ -110,31 +101,12 @@ public:
     inline uint64_t get_block_addr(uint32_t block_offset) {return heap_start_ + block_offset * block_size_;} ;
     inline uint32_t get_region_block_rkey(uint32_t region_index, uint32_t block_offset) {
         uint32_t rkey; uint32_t rkey_new = -1;
-        // do{
-            remote_read(&rkey, sizeof(rkey), block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
-        // }while(rkey == -1);
-        // if(rkey == -1){
-        //     remote_rebind(get_region_block_addr(region_index, block_offset), 0, rkey);
-        // }
-        // remote_write(&rkey_new, sizeof(uint32_t), block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
-        // rkey_CAS = rkey;
-        // if(!remote_CAS((uint32_t)-1, &rkey_CAS, block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_)){
-        //     printf("rkey cas failed!\n");
-        //     return 0;
-        // }
+        remote_read(&rkey, sizeof(rkey), block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
         return rkey;
     };
     inline uint32_t get_block_rkey(uint32_t block_offset) {
         uint32_t rkey; uint32_t rkey_new = -1;
-        // do{
-            remote_read(&rkey, sizeof(rkey), block_rkey_ + (block_offset)*sizeof(uint32_t), global_rkey_);
-        // }while(rkey == -1);
-        // remote_write(&rkey_new, sizeof(uint32_t), block_rkey_ + (block_offset)*sizeof(uint32_t), global_rkey_);
-        
-        // if(!remote_CAS((uint32_t)-1, &rkey_CAS, block_rkey_ + (block_offset)*sizeof(uint32_t), global_rkey_)){
-        //     printf("rkey cas failed!\n");
-        //     return 0;
-        // }
+        remote_read(&rkey, sizeof(rkey), block_rkey_ + (block_offset)*sizeof(uint32_t), global_rkey_);
         return rkey;
     };
     inline uint32_t get_region_class_block_rkey(uint32_t region_index, uint32_t block_offset) {
@@ -159,12 +131,6 @@ public:
     private:
 
     struct ibv_mr *rdma_register_memory(void *ptr, uint64_t size);
-
-    // << one-sided support functions >>
-    // bool update_mem_metadata(uint64_t index);
-    // bool update_mem_bitmap(uint64_t index);
-    // bool update_rkey_metadata();
-    // bool fetch_rkey_list_one_sided(uint64_t addr, uint32_t* rkey_list);
 
     // << one-sided read/write >>
     int rdma_remote_read(uint64_t local_addr, uint32_t lkey, uint64_t length,
@@ -210,15 +176,8 @@ public:
     uint64_t heap_start_;
     uint64_t block_header_;
     uint64_t backup_rkey_;
-    // large_block_lockless block_;
-    // uint32_t* rkey_list;
-    // uint64_t last_alloc_;
-    // uint64_t user_start_;
-    // int total_old_= 0;
 
 };
-
-// static bool* full_bitmap;
 
 
 }  // namespace kv

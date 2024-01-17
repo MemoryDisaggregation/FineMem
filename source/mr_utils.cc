@@ -1,13 +1,3 @@
-/*
- * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @Date: 2023-12-04 14:36:11
- * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-04 14:56:33
- * @FilePath: /rmalloc_newbase/source/mr_utils.cc
- * @Description: 
- * 
- * Copyright (c) 2023 by wxy1999@mail.ustc.edu.cn, All Rights Reserved. 
- */
 
 #include <fstream>
 #include <boost/property_tree/ptree.hpp>
@@ -19,7 +9,6 @@ namespace mralloc {
 
 int load_config(const char * fname, struct GlobalConfig * config) {
     std::fstream config_fs(fname);
-    // assert(config_fs.is_open());
 
     boost::property_tree::ptree pt;
     try {
@@ -29,7 +18,6 @@ int load_config(const char * fname, struct GlobalConfig * config) {
     }
 
     try {
-
         config->server_id = pt.get<uint32_t>("server_id");
         config->rdma_cm_port  = pt.get<uint16_t>("rdma_cm_port");
         config->memory_node_num = pt.get<uint16_t>("memory_node_num");

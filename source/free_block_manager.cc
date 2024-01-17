@@ -1,13 +1,4 @@
-/*
- * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @Date: 2023-08-14 09:42:48
- * @LastEditors: blahaj wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-12-06 22:14:29
- * @FilePath: /rmalloc_newbase/source/free_block_manager.cc
- * @Description: 
- * 
- * Copyright (c) 2023 by wxy1999@mail.ustc.edu.cn, All Rights Reserved. 
- */
+
 #include "free_block_manager.h"
 #include <bits/stdint-uintn.h>
 #include <sys/types.h>
@@ -55,7 +46,6 @@ namespace mralloc {
         }
         
         for(int i = 0; i < region_num_; i++) {
-            // init_region_header.offset_ = i;
             init_region_header.exclusive_ = 0;
             region_header_[i].store(init_region_header);
         }
@@ -182,7 +172,6 @@ namespace mralloc {
                 if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
                     free_map = alloc_section.class_map_;
                     if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
-                        // printf("section has no free space!\n");
                         return false;
                     }
                 }
@@ -206,7 +195,6 @@ namespace mralloc {
                 free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
                 // search exclusive block, from the tail
                 if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
-                    // printf("section has no free space!\n");
                     return false;
                 }
                 new_section = alloc_section;
@@ -254,7 +242,6 @@ namespace mralloc {
                 free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
                 // search class block, from the tail
                 if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
-                    // printf("section has no free space!\n");
                     return false;
                 }
                 new_section = alloc_section;
@@ -287,7 +274,6 @@ namespace mralloc {
                 free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
                 // search class block, from the tail
                 if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
-                    // printf("section has no free space!\n");
                     return false;
                 }
                 new_section = alloc_section;
@@ -429,7 +415,6 @@ namespace mralloc {
             } 
             new_region = alloc_region;
             if((index = find_free_index_from_bitmap32_tail(alloc_region.base_map_)) == -1) {
-                // printf("full, change region\n");
                 return false;
             }
             new_region.base_map_ |= (uint32_t)1<<index;
@@ -487,7 +472,6 @@ namespace mralloc {
                 new_region = region;
                 new_region.base_map_ &= ~(uint32_t)(1<<region_block_offset);
             } while(!region_header_[region_offset].compare_exchange_strong(region, new_region));
-            // printf("free: %p, region id:%u, bitmap from %x to %x\n", addr, new_region.offset_ , region.base_map_, new_region.base_map_);
             if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > block_per_region/2 && free_bit_in_bitmap32(region.base_map_) <= block_per_region/2){
                 update_section(region_offset, alloc_no_class, alloc_exclusive);
             }
@@ -506,20 +490,15 @@ namespace mralloc {
                 new_region.class_map_ &= ~(uint16_t)(1<<region_block_offset/(block_class+1));
             } while(!region_header_[region_offset].compare_exchange_strong(region, new_region));
             if(free_bit_in_bitmap16(new_region.class_map_) == block_per_region/(block_class+1)) {
-                // printf("[Attention] try to add fast region %lx\n", addr);
                 try_add_section_class(region_offset/region_per_section, block_class, new_region, region_offset);
             } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > block_per_region/(block_class+1)/2 && free_bit_in_bitmap16(region.class_map_) <= block_per_region/(block_class+1)/2){
-                // printf("[Attention] try to add fast region %lx\n", addr);
                 try_add_section_class(region_offset/region_per_section, block_class, new_region, region_offset);
             } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > 3*block_per_region/(block_class+1)/4 && free_bit_in_bitmap16(region.class_map_) <= 3*block_per_region/(block_class+1)/4){
-                // printf("[Attention] try to add fast region %lx\n", addr);
                 try_add_section_class(region_offset/region_per_section, block_class, new_region, region_offset);
             } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > block_per_region/(block_class+1)/4 && free_bit_in_bitmap16(region.class_map_) <= block_per_region/(block_class+1)/4){
-                // printf("[Attention] try to add fast region %lx\n", addr);
                 try_add_section_class(region_offset/region_per_section, block_class, new_region, region_offset);
             }
             region = new_region;
-            // printf("free a class %u block %lx, newkey is %u\n", new_region.block_class_, addr, new_rkey);
             return block_class;
         }
         return -1;
@@ -615,30 +594,14 @@ namespace mralloc {
         block_header_e header_old, header_new;
         large_block* free = free_list.load();
         while(free != nullptr) {
-            // while((free_index = find_free_index_from_bitmap(free->bitmap.load())) != 64 && free->offset >= user_start) {
-            //     // find valid bit, try to allocate
-            //     header_old = free->header[free_index].load();
-            //     if(header_old.flag % 2 == 1)
-            //         continue;
-            //     header_new = header_old; header_new.flag |= 1;
-            //     if(!free->header[free_index].compare_exchange_strong(header_old, header_new)){
-            //         continue;
-            //     }
-            //     free->bitmap.fetch_or((uint64_t)1<<free_index);
-            //     addr = heap_start + (free->offset*large_block_items + free_index)*block_size_;
-            //     rkey = global_rkey;
-            //     return true;
-            // }
             uint64_t bitmap_, bitmap_new_;
             if(free->offset >= user_start && (bitmap_ = free->bitmap.load()) !=  ~(uint64_t)0) {
                 do{
                     bitmap_new_ = bitmap_;
                     free_index = find_free_index_from_bitmap(bitmap_);
                     bitmap_new_ |= (uint64_t)1<<free_index;
-                    // printf("bitmap result = %lu\n", result);
                 } while (!free->bitmap.compare_exchange_strong(bitmap_, bitmap_new_) && (bitmap_) != ~(uint64_t)0);
                 if(bitmap_ != ~(uint64_t)0) {
-                    // printf("block full\n");
                     addr = heap_start + (free->offset*large_block_items + free_index)*block_size_;
                     rkey = free->rkey[free_index];
                     return true;
@@ -736,7 +699,6 @@ namespace mralloc {
                 if(header[index].compare_exchange_strong(header_old, update_header)){
                     addr = get_block_addr(index);
                     rkey = global_rkey;
-                    // rkey = get_block_rkey(index);
                     while(!last_alloc.compare_exchange_strong(last_alloc_, index + 1));
                     return true;
                 }
@@ -748,7 +710,6 @@ namespace mralloc {
     bool ServerBlockManagerv1::fetch(uint64_t start_addr, uint64_t size, uint64_t &addr, uint32_t &rkey) {
         uint64_t start_index = get_block_index(start_addr);
         uint64_t end_index = get_block_index(start_addr + size - 1);
-        // uint64_t end_index = (start_addr + size - heap_start - 1)/block_size_ ;
         block_header* header = get_metadata();
         for (int i = start_index; i <= end_index; i++) {
             block_header_e header_old = header[i].load();
@@ -770,7 +731,6 @@ namespace mralloc {
         }
         rkey = global_rkey;
         addr = get_block_addr(start_index);
-        // last_alloc = end_index + 1;
         user_start = end_index + 1;
         printf("last alloc:%lu\n", last_alloc.load());
         return true;
@@ -787,7 +747,6 @@ namespace mralloc {
         raw_rkey = rkey;
         uint64_t start_addr = addr + raw_size - cache_size;
         for(uint64_t i = 0; i < cache_size / block_size_; i++){
-            // free_block_queue.push({addr + raw_size - block_size_, rkey});
             free_block_queue.push({start_addr + i * block_size_, rkey});
             raw_size -= block_size_;
         }
@@ -815,11 +774,9 @@ namespace mralloc {
 
     bool FreeQueueManager::fill_block(uint64_t addr, uint64_t size, uint32_t rkey) {
         std::unique_lock<std::mutex> lock(m_mutex_);
-        // if (addr + size == raw_heap) {
         if (0) {
             raw_heap -= size;
             raw_size += size;
-            // total_used -= size;
             return true;
         } else if (size % block_size_ != 0){
             printf("Error: FreeQueueManager only support size that is multiple of %ld\n", block_size_);
@@ -828,27 +785,22 @@ namespace mralloc {
         for(uint64_t i = 0; i < size / block_size_; i++){
             free_block_queue.push({addr + i * block_size_, rkey});
         }
-        // total_used -= size;
         return true;    
     }
 
     bool FreeQueueManager::fetch_block(uint64_t &addr, uint32_t &rkey){
         std::unique_lock<std::mutex> lock(m_mutex_);
         if(free_block_queue.empty()){
-            // for(uint64_t i = 0; i < 10; i++){
-                if(raw_size >= block_size_){
-                    free_block_queue.push({raw_heap + raw_size - block_size_, raw_rkey});
-                    raw_size -= block_size_;
-                } else {
-                    // perror("no enough cache!\n");
-                    return false;
-                }
-            // }
+            if(raw_size >= block_size_){
+                free_block_queue.push({raw_heap + raw_size - block_size_, raw_rkey});
+                raw_size -= block_size_;
+            } else {
+                return false;
+            }
         }
         remote_addr rem_addr = free_block_queue.front();
         free_block_queue.pop();
         total_used += block_size_;
-        // printf("mem used: %lu\n", total_used);
         addr = rem_addr.addr; rkey = rem_addr.rkey;
         return true;
     }

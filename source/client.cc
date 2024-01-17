@@ -1,13 +1,3 @@
-/*
- * @Author: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @Date: 2023-08-12 22:24:28
- * @LastEditors: Blahaj Wang && wxy1999@mail.ustc.edu.cn
- * @LastEditTime: 2023-11-14 17:48:17
- * @FilePath: /rmalloc_newbase/source/client.cc
- * @Description: 
- * 
- * Copyright (c) 2023 by wxy1999@mail.ustc.edu.cn, All Rights Reserved. 
- */
 
 #include <bits/floatn.h>
 #include <bits/stdint-uintn.h>
@@ -49,32 +39,13 @@ void* fetch_mem(void* arg) {
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < 32; i ++){
-            // addr[i] = (uint64_t)mmap(NULL, 1024*1024*4, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_HUGE_2MB, -1, 0);
             heap->fetch_mem_block_nocached(addr[i], rkey[i]);
-            // heap->fetch_mem_one_sided(addr[i], rkey[i]);
-            // if(addr[i] != -1)
-            //     printf("%lx,  %u\n", addr[i], rkey[i]);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
         char buffer[2][16] = {"aaa", "bbb"};
-        char read_buffer[4];
-        // for(int i = 0; i < 32; i ++){
-        //     // heap->fetch_mem_fast_remote(addr, rkey);
-        //     heap->get_conn()->remote_write(buffer[i%2], 64, addr[i], rkey[i]);
-        //     heap->get_conn()->remote_read(read_buffer, 4, addr[i], rkey[i]);
-        //     // printf("%lx,  %u\n", addr[i], rkey[i]);
-        //     assert(read_buffer[0] == buffer[i%2][0]);
-        // }        
+        char read_buffer[4];  
         uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
-        // uint64_t log10 = 0;
-        // while(time/10 > 0){
-        //     time = time / 10;
-        //     log10 += 1;           
-        // }
-        // record[log10] += 1;
-        // std::stringstream buffer;
-        // buffer << time << std::endl;
         if(time > max_time_) max_time_ = time;
         time = time / 32;
         avg_time_ = (avg_time_*count_ + time)/(count_ + 1);
@@ -112,7 +83,6 @@ int main(int argc, char* argv[]){
         char read_buffer[4];
         while(iter--){
             heap->fetch_mem_class_block(1, addr, rkey);
-            // heap->fetch_mem_block(addr, rkey);
             heap->show_ring_length();
             std::cout << "write addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
             for(int i = 0; i < 64; i++)
@@ -121,10 +91,7 @@ int main(int argc, char* argv[]){
             for(int i = 0; i < 64; i++)
                 heap->get_conn()->remote_read(read_buffer, 4, addr+i*64*1024, rkey);
             printf("alloc: %lx : %u, content: %s\n", addr, rkey, read_buffer);
-            // heap->free_mem_block(addr);
             heap->show_ring_length();
-        // heap->mr_bind_remote(2*1024*1024, addr, rkey, 114514);
-        // std::cout << "addr mw bind success " << std::endl;
         }
         getchar();
         heap->stop();

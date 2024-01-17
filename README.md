@@ -1,12 +1,53 @@
 # LegoAlloc - Main Repo
 
-🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧This repo is under constructing🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧
+> All source codes of LegoHeap and FuDM are avaliable here, while we are still working on complete the documents. And the source code of LegoAlloc-User, LegoAlloc-Swap and LegoAlloc-KV stores at other repos, which we will refer in this repo future.
 
-All source codes of LegoHeap and FuDM are avaliable here, while we are still working on complete the documents. And the source code of LegoAlloc-User, LegoAlloc-Swap and LegoAlloc-KV stores at other repos, which we will add in this repo future.
+> I'm not an expert of C++ or RDMA, but I'll try my best to help anyone who wants to build and run this system. And I'm glad to see any advise or comments about this project. Wish one day we can see DM's large scale deployment on actual cloud enviroments.
 
-Only OFED & Cmake needed, no other libraray requirement.
+🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧This repo is still under constructing🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧
 
-Recommendate running on Cloudlab r650/r6525/c6525
+## Build 
+
+
+* Only `OFED` & `Cmake` needed, no other libraray requirement.
+    * `scripts/install_ofed.sh` can help you quickly build up OFED enviroment on a new cloudlab node
+
+* Recommendate running on `Cloudlab r650/r6525/c6525/d6515
+
+```shell
+> sudo ./scripts/install_ofed.sh
+> mkdir build; cd build
+> cmake ..; make 
+```
+
+## Run
+
+### Memory-side LegoAlloc:
+
+using `ibdev2netdev` to show which RNIC(with status UP) you can use.
+
+```
+> sudo ./scripts/set_2MB_hugepage.sh 200000
+> cd ./build/source
+> ./server mlx_2<available RDMA device name> 10.10.1.1<server RDMA IP> 1234<serverport>
+```
+
+
+### Compute-side LegoHeap:
+
+```
+> cd ./build/source
+> ./client 10.10.1.1<server RDMA IP> 1234<server port>
+```
+
+### Compute-side Microbench:
+
+```
+> cd ./build/microbench
+> ./microbench_common 10.10.1.1<server RDMA IP> 1234<server port> 48<thread number> <the allocator type from "cxl", "fusee", "share"(FuDM), "pool"(LegoHeap), "exclusive"> <the benchmark from "shuffle" and "stage">
+```
+
+## Code content
 
 * If use libmralloc.a, the following libraries are usable:
 
@@ -14,23 +55,23 @@ Recommendate running on Cloudlab r650/r6525/c6525
 
   ./include/msg.h: the RDMA connection settings/RPC packet content defines
   
-  ./include/rdma_conn.h: A single RDMA connector
+  ./include/rdma_conn.h: FuDM communication
   
-  ./include/rdma_conn_manager.h: A multiple RDMA connectors manager
+  ./include/rdma_conn_manager.h: FuDM communication manager
   
-  ./include/free_block_magnaer.h: The remote metadata interface
+  ./include/free_block_magnaer.h: FuDM metadata
   
 
 
 * Important source files:
   
-  ./source/computing_node.cc: Mutitenant shared memory pool, filler and pre-fetcher
+  ./source/computing_node.cc: LegoHeap
   
-  ./source/memory_node.cc: Init and pre-registarion, rkey generate, RPC execution
-  
-  ./source/free_block_manager.cc: The FuDM metadata and local version FuDM funtion
-  
-  ./source/rdma_conn.cc: FuDM protocol
+  ./source/memory_node.cc: LegoAlloc memory server 
+
+  ./source/free_block_manager.cc: FuDM metadata 
+
+  ./source/rdma_conn.cc: FuDM communication
 
 
 * Others:
