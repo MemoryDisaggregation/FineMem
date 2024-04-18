@@ -498,15 +498,24 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
     backup_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
 
     block_class_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
-
-    for(int i = 0; i < block_num_; i++){
-        uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
-        block_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
-        backup_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
-        bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
-        bind_mw(backup_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
-        server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
-        server_block_manager_->set_backup_rkey(i, backup_mw[i]->rkey);
+    
+    // When use global rkey: application not support multiple rkey or evaluation the side-effect of memory window
+    bool use_global_rkey = false;
+    if(use_global_rkey){
+        for(int i = 0; i < block_num_; i++){
+            server_block_manager_->set_block_rkey(i, get_global_rkey());
+            server_block_manager_->set_backup_rkey(i, get_global_rkey());
+        }
+    } else {
+        for(int i = 0; i < block_num_; i++){
+            uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
+            block_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
+            backup_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
+            bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
+            bind_mw(backup_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
+            server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
+            server_block_manager_->set_backup_rkey(i, backup_mw[i]->rkey);  
+        }
     }
 
     printf("bind finished\n");

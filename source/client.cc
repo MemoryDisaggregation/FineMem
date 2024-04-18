@@ -96,6 +96,8 @@ int main(int argc, char* argv[]){
             heap->show_ring_length();
         }
         gettimeofday(&end, NULL);
+        uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
+        printf("time cost on read/write test:%lu\n", time);
         getchar();
         heap->stop();
         delete heap;
