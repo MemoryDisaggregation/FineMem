@@ -74,8 +74,8 @@ get_random_offset (unsigned int *state)
 class test_allocator{
 public:
     test_allocator() {};
-    virtual bool malloc(uint64_t &addr, uint32_t &rkey) {return false;};
-    virtual bool free(uint64_t addr) {return false;};
+    virtual bool malloc(mralloc::mr_rdma_addr &remote_addr) {return false;};
+    virtual bool free(mralloc::mr_rdma_addr remote_addr) {return false;};
     virtual bool print_state() {return false;};
     virtual double get_avg_retry() {return 0;};
     virtual int get_max_retry() {return 0;};
@@ -89,8 +89,8 @@ public:
         current_index_ = start_hint;
     }
     ~cxl_shm_allocator() {};
-    bool malloc(uint64_t &addr, uint32_t &rkey) override {
-        int retry_time = conn_->fetch_block(current_index_, addr, rkey);
+    bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
+        int retry_time = conn_->fetch_block(current_index_, remote_addr.addr, remote_addr.rkey);
         if(retry_time) {
             if(retry_time > max_retry) 
                 max_retry = retry_time;
@@ -101,8 +101,8 @@ public:
             return false;
         }
     };
-    bool free(uint64_t addr) override {
-        return conn_->free_block(addr);
+    bool free(mralloc::mr_rdma_addr remote_addr) override {
+        return conn_->free_block(remote_addr.addr);
     };
     bool print_state() override {printf("%lf, %d\n", avg_retry, max_retry); return true;};
     double get_avg_retry() {return avg_retry;};
@@ -122,12 +122,12 @@ public:
         conn_ = conn;
     }
     ~fusee_allocator() {};
-    bool malloc(uint64_t &addr, uint32_t &rkey) override {
-        while(conn_->remote_fetch_block(addr, rkey)); 
+    bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
+        while(conn_->remote_fetch_block(remote_addr.addr, remote_addr.rkey)); 
 	return true;
     };
-    bool free(uint64_t addr) override {
-        while(conn_->remote_free_block(addr));
+    bool free(mralloc::mr_rdma_addr remote_addr) override {
+        while(conn_->remote_free_block(remote_addr.addr));
 	return true;
     };
     bool print_state() override {return false;};
@@ -141,11 +141,11 @@ public:
         conn_ = conn;
     }
     ~rpc_allocator() {};
-    bool malloc(uint64_t &addr, uint32_t &rkey) override {
-        return !conn_->register_remote_memory(addr, rkey, 4*1024*1024);
+    bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
+        return !conn_->register_remote_memory(remote_addr.addr, remote_addr.rkey, 4*1024*1024);
     };
-    bool free(uint64_t addr) override {
-        return !conn_->unregister_remote_memory(addr);
+    bool free(mralloc::mr_rdma_addr remote_addr) override {
+        return !conn_->unregister_remote_memory(remote_addr.addr);
     };
     bool print_state() override {return false;};
 private:
@@ -161,9 +161,9 @@ public:
         conn_->fetch_region(cache_section, cache_section_index, 0, true, cache_region, cache_region_index);
     }
     ~share_allocator() {};
-    bool malloc(uint64_t &addr, uint32_t &rkey) override {
+    bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
         int retry_time;
-	    while((retry_time = conn_->fetch_region_block(cache_region, addr, rkey, false, cache_region_index)) == 0){
+	    while((retry_time = conn_->fetch_region_block(cache_region, remote_addr.addr, remote_addr.rkey, false, cache_region_index)) == 0){
             while(!conn_->fetch_region(cache_section, cache_section_index, 0, true, cache_region, cache_region_index)){
                 if(!conn_->find_section(0, cache_section, cache_section_index, mralloc::alloc_no_class)){
                     printf("waiting for new section avaliable\n");
@@ -177,9 +177,9 @@ public:
 	    alloc_num ++;
         return true;
     };
-    bool free(uint64_t addr) override {
-        int result = conn_->free_region_block(addr, false);
-        if(result == -2 && conn_->get_addr_region_index(addr) != cache_region_index) {
+    bool free(mralloc::mr_rdma_addr remote_addr) override {
+        int result = conn_->free_region_block(remote_addr.addr, false);
+        if(result == -2 && conn_->get_addr_region_index(remote_addr.addr) != cache_region_index) {
             conn_->set_region_empty(cache_region, cache_region_index);
         }
         return true;
@@ -208,7 +208,7 @@ public:
         region_record[cache_region.index] = cache_region;
     }
     ~exclusive_allocator() {};
-    bool malloc(uint64_t &addr, uint32_t &rkey) override {
+    bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
         int index = 0 ;
         while((index = mralloc::find_free_index_from_bitmap32_tail(cache_region.region.base_map_)) == -1 ){
             bool cache_useful = false;
@@ -231,13 +231,13 @@ public:
             }
         }
         cache_region.region.base_map_ |= 1<<index;
-        addr = conn_->get_region_block_addr(cache_region.index, index);
-        rkey = cache_region.rkey[index];
+        remote_addr.addr = conn_->get_region_block_addr(cache_region.index, index);
+        remote_addr.rkey = cache_region.rkey[index];
         return true;
     };
-    bool free(uint64_t addr) override {
-        uint32_t index = conn_->get_addr_region_index(addr);
-        uint32_t offset = conn_->get_addr_region_offset(addr);
+    bool free(mralloc::mr_rdma_addr remote_addr) override {
+        uint32_t index = conn_->get_addr_region_index(remote_addr.addr);
+        uint32_t offset = conn_->get_addr_region_offset(remote_addr.addr);
         if(index == cache_region.index) {
             cache_region.region.base_map_ &= ~(uint32_t)(1<<offset);
             // conn_->remote_rebind(addr, 0, cache_region.rkey[offset]);
@@ -263,11 +263,11 @@ public:
         cpu_cache_ = new mralloc::cpu_cache(4*1024*1024);
     }
     ~pool_allocator() {};
-    bool malloc(uint64_t &addr, uint32_t &rkey) override {
-        return cpu_cache_->fetch_cache(addr, rkey);
+    bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
+        return cpu_cache_->fetch_cache(remote_addr);
     };
-    bool free(uint64_t addr) override {
-        cpu_cache_->add_free_cache(addr);
+    bool free(mralloc::mr_rdma_addr remote_addr) override {
+        cpu_cache_->add_free_cache(remote_addr);
         return true;
     };
     bool print_state() override {return false;};
@@ -303,7 +303,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
     struct timeval start, end;
     int malloc_record[1000] = {0};
     int free_record[1000] = {0};
-    uint64_t addr[iteration]; uint32_t rkey[iteration];
+    mralloc::mr_rdma_addr remote_addr[iteration];
     uint64_t current_index = 0;
     int rand_iter = iteration;
     for(int j = 0; j < epoch; j ++) {
@@ -311,9 +311,9 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
 	    gettimeofday(&start, NULL);
         int allocated = 0;
         for(int i = 0; i < rand_iter; i ++){
-            if(addr[i] != 0 && rkey[i] != 0) 
+            if(remote_addr[i].addr != 0 && remote_addr[i].addr != 0) 
                 continue;
-            if(!alloc->malloc(addr[i], rkey[i])){
+            if(!alloc->malloc(remote_addr[i])){
                 printf("alloc false\n");
             }
 	    //printf("alloc%p,%u\n",addr[i], rkey[i]);
@@ -359,11 +359,11 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         unsigned int next_idx ;
         for(int i = 0; i < rand_iter; i ++){
             next_idx = get_random_offset(&offset_state);
-            if(rand()%100 > 20 && addr[next_idx] != 0){
-                if(!alloc->free(addr[next_idx]))
+            if(rand()%100 > 20 && remote_addr[next_idx].addr != 0){
+                if(!alloc->free(remote_addr[next_idx]))
                     printf("free error!\n");
-                addr[next_idx] = 0;
-                rkey[next_idx] = 0;
+                remote_addr[next_idx].addr = 0;
+                remote_addr[next_idx].rkey = 0;
                 allocated ++;
             }
         }
@@ -381,8 +381,8 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
             conn->remote_print_alloc_info();
     }
     for(int i = 0; i < rand_iter; i++) {
-	    if(addr[i]!=0)
-		alloc->free(addr[i]);
+	    if(remote_addr[i].addr!=0)
+		alloc->free(remote_addr[i]);
     }
     alloc->print_state();
     for(int i=0;i<1000;i++){
@@ -401,7 +401,8 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
     struct timeval start, end;
     int malloc_record[1000] = {0};
     int free_record[1000] = {0};
-    uint64_t addr[iteration]; uint32_t rkey[iteration];
+    mralloc::mr_rdma_addr remote_addr[iteration];
+    // uint64_t addr[iteration]; uint32_t rkey[iteration];
     uint64_t current_index = 0;
     int rand_iter = iteration;
     if(thread_id % 2 == 0){
@@ -411,9 +412,9 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             gettimeofday(&start, NULL);
             int allocated = 0;
             for(int i = 0; i < rand_iter; i ++){
-                if(addr[i] != 0 && rkey[i] != 0) 
+                if(remote_addr[i].addr != 0 && remote_addr[i].rkey != 0) 
                     continue;
-                if(!alloc->malloc(addr[i], rkey[i]) || addr[i] == 0 || addr[i] == -1){
+                if(!alloc->malloc(remote_addr[i]) || remote_addr[i].addr == 0 || remote_addr[i].addr == -1){
                     printf("alloc false\n");
                 }
                 allocated ++;
@@ -452,11 +453,11 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             allocated = 0;
             for(int i = 0; i < rand_iter; i ++){
                 next_idx = get_random_offset(&offset_state);
-                if(rand()%100 > 20 && addr[next_idx] != 0){
-                    if(!alloc->free(addr[next_idx]))
+                if(rand()%100 > 20 && remote_addr[next_idx].addr != 0){
+                    if(!alloc->free(remote_addr[next_idx]))
                         printf("free error!\n");
-                    addr[next_idx] = 0;
-                    rkey[next_idx] = 0;
+                    remote_addr[next_idx].addr = 0;
+                    remote_addr[next_idx].rkey = 0;
                     allocated++;
                 }
             }
@@ -477,9 +478,9 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
         }
     } else {
         for(int i = 0; i < rand_iter; i ++){
-            if(addr[i] != 0 && rkey[i] != 0) 
+            if(remote_addr[i].addr != 0 && remote_addr[i].rkey != 0) 
                 continue;
-            if(!alloc->malloc(addr[i], rkey[i])|| addr[i] == 0){
+            if(!alloc->malloc(remote_addr[i])|| remote_addr[i].addr == 0){
                 printf("alloc false\n");
             }
         }
@@ -503,11 +504,11 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             int allocated = 0;
             for(int i = 0; i < rand_iter; i ++){
                 next_idx = get_random_offset(&offset_state);
-                if(rand()%100 > 20 && addr[next_idx] != 0){
-                    if(!alloc->free(addr[next_idx]))
+                if(rand()%100 > 20 && remote_addr[next_idx].addr != 0){
+                    if(!alloc->free(remote_addr[next_idx]))
                         printf("free error!\n");
-                    addr[next_idx] = 0;
-                    rkey[next_idx] = 0;
+                    remote_addr[next_idx].addr = 0;
+                    remote_addr[next_idx].rkey = 0;
                     allocated ++;
                 }
             }
@@ -531,9 +532,9 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             gettimeofday(&start, NULL);
             allocated = 0;
             for(int i = 0; i < rand_iter; i ++){
-                if(addr[i] != 0 && rkey[i] != 0) 
+                if(remote_addr[i].addr != 0 && remote_addr[i].rkey != 0) 
                     continue;
-                if(!alloc->malloc(addr[i], rkey[i])|| addr[i] == 0|| addr[i] == -1){
+                if(!alloc->malloc(remote_addr[i])|| remote_addr[i].addr == 0|| remote_addr[i].addr == -1){
                     printf("alloc false\n");
                 }
                 allocated++;
@@ -554,11 +555,11 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         }
         for(int i = 0; i < rand_iter; i ++){
-            if(rand()%100 > 20 && addr[i] != 0){
-                if(!alloc->free(addr[i]))
+            if(rand()%100 > 20 && remote_addr[i].addr != 0){
+                if(!alloc->free(remote_addr[i]))
                     printf("free error!\n");
-                    addr[i] = 0;
-                    rkey[i] = 0;
+                    remote_addr[i].addr = 0;
+                    remote_addr[i].rkey = 0;
         }
     }
     }
@@ -567,8 +568,8 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
         free_record_global[i].fetch_add(free_record[i]);
     }
     for(int i = 0; i < rand_iter; i++) {
-    	if(addr[i]!=0)
-		alloc->free(addr[i]);
+    	if(remote_addr[i].addr!=0)
+		alloc->free(remote_addr[i]);
     }
     alloc->print_state();
     malloc_avg[thread_id] = malloc_avg_time_;
@@ -583,17 +584,17 @@ void short_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
     struct timeval start, end;
     int malloc_record[1000] = {0};
     int free_record[1000] = {0};
-    uint64_t addr; uint32_t rkey;
+    mralloc::mr_rdma_addr remote_addr;
     uint64_t current_index = 0;
     int rand_iter = iteration;
     for(int j = 0; j < epoch; j ++) {
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < rand_iter; i ++){
-            if(!alloc->malloc(addr, rkey)|| addr == 0){
+            if(!alloc->malloc(remote_addr)|| remote_addr.addr == 0){
                 printf("alloc false\n");
             }
-            if(!alloc->free(addr)){
+            if(!alloc->free(remote_addr)){
                 printf("alloc false\n");
             }
         }

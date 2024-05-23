@@ -19,7 +19,7 @@ namespace mralloc {
 
 // TODO: Add rseq support learning from TCMALLOC
 
-const uint32_t nprocs = 144;
+const uint32_t nprocs = 48;
 const uint32_t max_alloc_item = 256;
 const uint32_t max_free_item = 1024;
 const uint32_t max_class_free_item = 512;
@@ -267,21 +267,23 @@ struct mr_rdma_addr_{
 
 class mr_rdma_addr{
 public:
-    mr_rdma_addr() {addr = -1; rkey = -1;}
-    mr_rdma_addr(uint64_t addr, uint32_t rkey): addr(addr), rkey(rkey) {}
+    mr_rdma_addr() {addr = -1; rkey = -1; node = -1;}
+    mr_rdma_addr(uint64_t addr, uint32_t rkey, uint32_t node): addr(addr), rkey(rkey), node(node) {}
     bool operator==(mr_rdma_addr &compare) {
-        return addr == compare.addr && rkey == compare.rkey;
+        return addr == compare.addr && rkey == compare.rkey && node == compare.node;
     }
     bool operator!=(mr_rdma_addr &compare) {
-        return addr != compare.addr && rkey != compare.rkey;
+        return addr != compare.addr && rkey != compare.rkey && node != compare.node;
     }
     mr_rdma_addr& operator=(mr_rdma_addr &value) {
         this->addr = value.addr;
         this->rkey = value.rkey;
+        this->node = value.node;
         return *this;
     }
     uint64_t addr;
     uint32_t rkey;
+    uint32_t node;
 } ;
 
 const uint32_t class_num = 16;
@@ -292,9 +294,9 @@ public:
     struct cpu_cache_storage {
         uint64_t block_size;
         mr_rdma_addr items[nprocs][max_alloc_item];
-        uint64_t free_items[nprocs][max_free_item];
+        mr_rdma_addr free_items[nprocs][max_free_item];
         mr_rdma_addr class_items[class_num][max_alloc_item];
-        uint64_t class_free_items[class_num][max_class_free_item];
+        mr_rdma_addr class_free_items[class_num][max_class_free_item];
 
         uint32_t reader[nprocs];
         std::atomic<uint32_t> class_reader[class_num];
@@ -318,16 +320,16 @@ public:
             cpu_cache_content_ = (cpu_cache_storage*)mmap(NULL, sizeof(cpu_cache_storage), port_flag, mm_flag, fd, 0);
             cache_size_ = cpu_cache_content_->block_size;
             for(int i = 0; i < nprocs; i++) {
-                alloc_ring[i] = new ring_buffer<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->items[i], mr_rdma_addr(-1,-1), 
+                alloc_ring[i] = new ring_buffer<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->items[i], mr_rdma_addr(-1, -1, -1), 
                     &cpu_cache_content_->reader[i], &cpu_cache_content_->writer[i]);
-                free_ring[i] = new ring_buffer<uint64_t>(max_free_item, cpu_cache_content_->free_items[i], -1, 
+                free_ring[i] = new ring_buffer<mr_rdma_addr>(max_free_item, cpu_cache_content_->free_items[i], mr_rdma_addr(-1, -1, -1), 
                     &cpu_cache_content_->free_reader[i], &cpu_cache_content_->free_writer[i]);
                 
             }
             for(int i = 0; i < class_num; i++) {
-                class_ring[i] = new ring_buffer_atomic<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->class_items[i], mr_rdma_addr(-1,-1), 
+                class_ring[i] = new ring_buffer_atomic<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->class_items[i], mr_rdma_addr(-1, -1, -1), 
                     &cpu_cache_content_->class_reader[i], &cpu_cache_content_->class_writer[i]);
-                class_free_ring[i] = new ring_buffer_atomic<uint64_t>(max_class_free_item, cpu_cache_content_->class_free_items[i], -1, 
+                class_free_ring[i] = new ring_buffer_atomic<mr_rdma_addr>(max_class_free_item, cpu_cache_content_->class_free_items[i], mr_rdma_addr(-1, -1, -1), 
                     &cpu_cache_content_->class_free_reader[i], &cpu_cache_content_->class_free_writer[i]);
             }
         }
@@ -345,20 +347,20 @@ public:
             }
             cpu_cache_content_ = (cpu_cache_storage*)mmap(NULL, sizeof(cpu_cache_storage), port_flag, mm_flag, fd, 0);
             for(int i = 0; i < nprocs; i++) {
-                alloc_ring[i] = new ring_buffer<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->items[i], mr_rdma_addr(-1,-1), 
+                alloc_ring[i] = new ring_buffer<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->items[i], mr_rdma_addr(-1, -1, -1), 
                     &cpu_cache_content_->reader[i], &cpu_cache_content_->writer[i]);
                 alloc_ring[i]->clear();
 
-                free_ring[i] = new ring_buffer<uint64_t>(max_free_item, cpu_cache_content_->free_items[i], -1, 
+                free_ring[i] = new ring_buffer<mr_rdma_addr>(max_free_item, cpu_cache_content_->free_items[i], mr_rdma_addr(-1, -1, -1), 
                     &cpu_cache_content_->free_reader[i], &cpu_cache_content_->free_writer[i]);
                 free_ring[i]->clear();
             }
             for(int i = 0; i < class_num; i++) {
-                class_ring[i] = new ring_buffer_atomic<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->class_items[i], mr_rdma_addr(-1,-1), 
+                class_ring[i] = new ring_buffer_atomic<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->class_items[i], mr_rdma_addr(-1, -1, -1), 
                     &cpu_cache_content_->class_reader[i], &cpu_cache_content_->class_writer[i]);
                 class_ring[i]->clear();
 
-                class_free_ring[i] = new ring_buffer_atomic<uint64_t>(max_class_free_item, cpu_cache_content_->class_free_items[i], -1, 
+                class_free_ring[i] = new ring_buffer_atomic<mr_rdma_addr>(max_class_free_item, cpu_cache_content_->class_free_items[i], mr_rdma_addr(-1, -1, -1), 
                     &cpu_cache_content_->class_free_reader[i], &cpu_cache_content_->class_free_writer[i]);
                 class_free_ring[i]->clear();
             }
@@ -369,16 +371,16 @@ public:
             assert(cache_size_ == cpu_cache_content_->block_size);
             cache_size_ = cpu_cache_content_->block_size;
             for(int i = 0; i < nprocs; i++) {
-                alloc_ring[i] = new ring_buffer<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->items[i], mr_rdma_addr(-1,-1), 
+                alloc_ring[i] = new ring_buffer<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->items[i], mr_rdma_addr(-1, -1, -1), 
                     &cpu_cache_content_->reader[i], &cpu_cache_content_->writer[i]);
-                free_ring[i] = new ring_buffer<uint64_t>(max_free_item, cpu_cache_content_->free_items[i], -1, 
+                free_ring[i] = new ring_buffer<mr_rdma_addr>(max_free_item, cpu_cache_content_->free_items[i], mr_rdma_addr(-1, -1, -1), 
                     &cpu_cache_content_->free_reader[i], &cpu_cache_content_->free_writer[i]);
                 
             }
             for(int i = 0; i < class_num; i++) {
-                class_ring[i] = new ring_buffer_atomic<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->class_items[i], mr_rdma_addr(-1,-1), 
+                class_ring[i] = new ring_buffer_atomic<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->class_items[i], mr_rdma_addr(-1, -1, -1), 
                     &cpu_cache_content_->class_reader[i], &cpu_cache_content_->class_writer[i]);
-                class_free_ring[i] = new ring_buffer_atomic<uint64_t>(max_class_free_item, cpu_cache_content_->class_free_items[i], -1, 
+                class_free_ring[i] = new ring_buffer_atomic<mr_rdma_addr>(max_class_free_item, cpu_cache_content_->class_free_items[i], mr_rdma_addr(-1, -1, -1), 
                     &cpu_cache_content_->class_free_reader[i], &cpu_cache_content_->class_free_writer[i]);
             }
         }
@@ -408,47 +410,40 @@ public:
         }
     }
 
-    bool fetch_cache(uint64_t &addr, uint32_t &rkey){
+    bool fetch_cache(mr_rdma_addr &addr){
         // just fetch one block in the current cpu_id --> ring buffer
         unsigned nproc;
         if((nproc = sched_getcpu()) == -1){
             printf("sched_getcpu bad \n");
             return false;
         }
-        mr_rdma_addr result(-1, -1);
-        bool ret = alloc_ring[nproc]->force_fetch_cache(result);
-        addr = result.addr; rkey = result.rkey;
+        bool ret = alloc_ring[nproc]->force_fetch_cache(addr);
         return ret;
     }
 
-    bool fetch_cache(uint32_t nproc, uint64_t &addr, uint32_t &rkey){
+    bool fetch_cache(uint32_t nproc, mr_rdma_addr &addr){
         // just fetch one block in the current cpu_id --> ring buffer
-        mr_rdma_addr result(-1, -1);
-        bool ret = alloc_ring[nproc]->force_fetch_cache(result);
-        addr = result.addr; rkey = result.rkey;
+        bool ret = alloc_ring[nproc]->force_fetch_cache(addr);
         return ret;
     }
 
-    uint64_t fetch_free_cache(uint32_t nproc, uint64_t* addr) {
-        return free_ring[nproc]->try_fetch_batch_all(addr);
+    uint64_t fetch_free_cache(uint32_t nproc, mr_rdma_addr* addr_list) {
+        return free_ring[nproc]->try_fetch_batch_all(addr_list);
     }
 
-    bool fetch_class_cache(uint16_t block_class, uint64_t &addr, uint32_t &rkey){
+    bool fetch_class_cache(uint16_t block_class, mr_rdma_addr &addr){
         // just fetch one block in the current cpu_id --> ring buffer
-        mr_rdma_addr result(-1, -1);
-        bool ret = class_ring[block_class]->force_fetch_cache(result);
-        addr = result.addr; rkey = result.rkey;
+        bool ret = class_ring[block_class]->force_fetch_cache(addr);
         return ret;
     }
 
-    uint64_t fetch_class_free_cache(uint32_t nproc, uint64_t* addr) {
-        return class_free_ring[nproc]->try_fetch_batch_all(addr);
+    uint64_t fetch_class_free_cache(uint32_t nproc, mr_rdma_addr* addr_list) {
+        return class_free_ring[nproc]->try_fetch_batch_all(addr_list);
     }
 
-    void add_cache(uint32_t nproc, uint64_t addr, uint32_t rkey){
+    void add_cache(uint32_t nproc, mr_rdma_addr &addr){
         // host side fill cache, add write pointer
-        mr_rdma_addr result(addr, rkey);
-        alloc_ring[nproc]->add_cache(result);
+        alloc_ring[nproc]->add_cache(addr);
     }
 
     void add_batch(uint32_t nproc, mr_rdma_addr* value, uint64_t num){
@@ -461,7 +456,7 @@ public:
         class_ring[class_]->add_batch(value, num);
     }
 
-    void add_free_cache(uint64_t addr) {
+    void add_free_cache(mr_rdma_addr addr) {
         unsigned nproc;
         if((nproc = sched_getcpu()) == -1){
             printf("sched_getcpu bad \n");
@@ -470,16 +465,15 @@ public:
         free_ring[nproc]->add_cache(addr);
     }
 
-    void add_free_cache(unsigned nproc, uint64_t addr) {
+    void add_free_cache(unsigned nproc, mr_rdma_addr addr) {
         free_ring[nproc]->add_cache(addr);
     }
 
-    void add_class_cache(uint16_t block_class, uint64_t addr, uint32_t rkey) {
-        mr_rdma_addr result(addr, rkey);
-        class_ring[block_class]->add_cache(result);
+    void add_class_cache(uint16_t block_class, mr_rdma_addr addr) {
+        class_ring[block_class]->add_cache(addr);
     }
 
-    void add_class_free_cache(uint16_t block_class, uint64_t addr) {
+    void add_class_free_cache(uint16_t block_class, mr_rdma_addr addr) {
         class_free_ring[block_class]->add_cache(addr);
     }
 
@@ -504,8 +498,8 @@ private:
     uint64_t cache_size_;
     ring_buffer<mr_rdma_addr>* alloc_ring[nprocs];
     ring_buffer_atomic<mr_rdma_addr>* class_ring[nprocs];
-    ring_buffer<uint64_t>* free_ring[nprocs];
-    ring_buffer_atomic<uint64_t>* class_free_ring[nprocs];
+    ring_buffer<mr_rdma_addr>* free_ring[nprocs];
+    ring_buffer_atomic<mr_rdma_addr>* class_free_ring[nprocs];
     mr_rdma_addr_ null;
 };
 

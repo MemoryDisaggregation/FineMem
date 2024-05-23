@@ -51,9 +51,9 @@ class ConnectionManager {
     one_side_info get_one_side_info() {return m_one_side_info_;};
     int register_remote_memory(uint64_t &addr, uint32_t &rkey, uint64_t size);
     int unregister_remote_memory(uint64_t addr);
-    int remote_read(void *ptr, uint32_t size, uint64_t remote_addr,
+    int remote_read(void *ptr, uint64_t size, uint64_t remote_addr,
                     uint32_t rkey);
-    int remote_write(void *ptr, uint32_t size, uint64_t remote_addr,
+    int remote_write(void *ptr, uint64_t size, uint64_t remote_addr,
                     uint32_t rkey);
     bool remote_CAS(uint64_t swap, uint64_t* compare, uint64_t remote_addr, 
                         uint32_t rkey);
@@ -128,6 +128,7 @@ class ConnectionManager {
     };
     
     inline uint32_t get_block_num() {return block_num_;};
+    inline uint64_t get_block_size() {return block_size_;};
 
  private:
     

@@ -112,7 +112,7 @@ bool MemoryNode::start(const std::string addr, const std::string port, const std
     if (!(device_attr.device_cap_flags & IBV_DEVICE_MEM_WINDOW)) {
         printf("do not support memory window\n");
     } else {
-        printf("support %d memory window total\n", device_attr.max_mw);
+        printf("support %d memory window and %d qp total\n", device_attr.max_mw, device_attr.max_qp);
     }
     mw_queue_ = new MWPool(m_pd_);
 

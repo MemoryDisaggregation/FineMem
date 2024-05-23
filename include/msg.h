@@ -34,7 +34,7 @@ enum ConnMethod {CONN_RPC, CONN_ONESIDE, CONN_FUSEE};
 struct PData {
     uint64_t buf_addr;
     uint32_t buf_rkey;
-    uint32_t size;
+    uint64_t size;
     uint16_t id;
     uint64_t block_size_;
     uint64_t block_num_;
@@ -72,7 +72,7 @@ class FetchBlockResponse : public ResponseMsg {
 public:
     uint64_t addr;
     uint32_t rkey;
-    uint32_t size;
+    uint64_t size;
 };
 
 class FreeFastRequest : public RequestsMsg{
@@ -137,7 +137,7 @@ public:
     uint64_t newkey;
     uint64_t addr;
     uint32_t rkey;
-    uint32_t size;
+    uint64_t size;
 };
 CHECK_RDMA_MSG_SIZE(MWbindRequest);
 
@@ -151,7 +151,7 @@ CHECK_RDMA_MSG_SIZE(MWbindRequest);
 
 class FetchRequest : public RequestsMsg {
 public:
-    uint32_t size;
+    uint64_t size;
 };
 CHECK_RDMA_MSG_SIZE(MWbindRequest);
 
