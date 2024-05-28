@@ -1,7 +1,7 @@
 include_directories(${PROJECT_SOURCE_DIR}/include)
 
 set(BASE_SOURCE
-    rdma_conn_manager.cc rdma_conn.cc free_block_manager.cc memory_node.cc computing_node.cc
+    rdma_conn_manager.cc rdma_conn.cc free_block_manager.cc memory_node.cc computing_node.cc legoalloc.cc mr_utils.cc
     )
 
 add_library(mralloc STATIC ${BASE_SOURCE})

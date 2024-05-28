@@ -82,6 +82,7 @@ struct region_with_rkey {
     region_e region;
     uint32_t index;
     uint32_t rkey[block_per_region];
+    uint32_t node;
 };
 
 

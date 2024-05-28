@@ -12,6 +12,7 @@
 #include <string>
 #include <iostream>
 #include "computing_node.h"
+#include "mr_utils.h"
 #include <sys/mman.h>
 #include <sys/time.h>
 
@@ -25,6 +26,8 @@ pthread_mutex_t file_lock;
 std::atomic<int> record_global[10];
 std::atomic<uint64_t> avg;
 
+uint64_t default_node_num = 2;
+
 void* fetch_mem(void* arg) {
     uint64_t avg_time_ = 0;
     uint64_t count_ = 0;
@@ -33,13 +36,13 @@ void* fetch_mem(void* arg) {
     struct timeval start, end;
     mralloc::ComputingNode* heap = (mralloc::ComputingNode*)arg;
     int record[10] = {0};
-    uint64_t addr[32]; uint32_t rkey[32];
+    mralloc::mr_rdma_addr addr[32];
     
     for(int j = 0; j < 4; j ++) {
         pthread_barrier_wait(&start_barrier);
         gettimeofday(&start, NULL);
         for(int i = 0; i < 32; i ++){
-            heap->fetch_mem_block_nocached(addr[i], rkey[i]);
+            heap->fetch_mem_block_nocached(addr[i], i%default_node_num);
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
@@ -62,36 +65,40 @@ void* fetch_mem(void* arg) {
 
 int main(int argc, char* argv[]){
 
-    if(argc < 3){
-        printf("Usage: %s <ip> <port>\n", argv[0]);
+    if(argc < 2){
+        printf("Usage: %s <config path>\n", argv[0]);
         return 0;
     }
 
-    std::string ip = argv[1];
-    std::string port = argv[2];
-
+    mralloc::GlobalConfig config;
+    mralloc::load_config(argv[1], &config);
+    std::string ip[16], port[16];
+    for(int i = 0; i < config.memory_node_num; i++){
+        ip[i] = std::string(config.memory_ips[i]);
+        port[i] = std::to_string(config.rdma_cm_port);
+    }
     bool multitest = false;
     if(!multitest) {
         mralloc::ComputingNode* heap = new mralloc::ComputingNode(true, true, true);
-        heap->start(ip, port);
+        heap->start(ip, port, config.memory_node_num);
 
+        // before the real client running, make a test of iter times allocation
         // << single thread, local test, fetch remote memory >>
         int iter = 10000;
-        uint64_t addr;
-        uint32_t rkey=0;
+        mralloc::mr_rdma_addr addr;
         char buffer[2][64*1024] = {"aaa", "bbb"};
         char read_buffer[4];
         struct timeval start, end;
         gettimeofday(&start, NULL);
-        heap->fetch_mem_block(addr, rkey);
+        heap->fetch_mem_block(addr);
         while(iter--){
             heap->show_ring_length();
             // std::cout << "write addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
             for(int i = 0; i < 64; i++)
-                heap->get_conn()->remote_write(buffer[iter%2], 64*1024, addr+i*64*1024, rkey);
+                heap->get_conn(addr.node)->remote_write(buffer[iter%2], 64*1024, addr.addr+i*64*1024, addr.rkey);
             // std::cout << "read addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
             for(int i = 0; i < 64; i++)
-                heap->get_conn()->remote_read(read_buffer, 4, addr+i*64*1024, rkey);
+                heap->get_conn(addr.node)->remote_read(read_buffer, 4, addr.addr+i*64*1024, addr.rkey);
             // printf("alloc: %lx : %u, content: %s\n", addr, rkey, read_buffer);
             heap->show_ring_length();
         }
@@ -117,7 +124,7 @@ int main(int argc, char* argv[]){
         pthread_t running_thread[thread_num];
         for(int i = 0; i < thread_num; i++) {
             client[i] = new mralloc::ComputingNode(false, false, true);
-            client[i]->start(ip, port);
+            client[i]->start(ip, port, config.memory_node_num);
             printf("thread %d\n init success\n", i);
             pthread_create(&running_thread[i], NULL, fetch_mem, client[i]);
         }

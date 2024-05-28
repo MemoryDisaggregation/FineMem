@@ -128,6 +128,7 @@ class ConnectionManager {
     };
     
     inline uint32_t get_block_num() {return block_num_;};
+    inline uint64_t get_block_size() {return block_size_;};
 
  private:
     

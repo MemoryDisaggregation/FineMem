@@ -1,4 +1,6 @@
 
+#define BOOST_BIND_GLOBAL_PLACEHOLDERS
+
 #include <fstream>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
@@ -7,7 +9,7 @@
 
 namespace mralloc {
 
-int load_config(const char * fname, struct GlobalConfig * config) {
+int load_config(const char* fname, struct GlobalConfig* config) {
     std::fstream config_fs(fname);
 
     boost::property_tree::ptree pt;
@@ -18,7 +20,7 @@ int load_config(const char * fname, struct GlobalConfig * config) {
     }
 
     try {
-        config->server_id = pt.get<uint32_t>("server_id");
+        // config->server_id = pt.get<uint32_t>("server_id");
         config->rdma_cm_port  = pt.get<uint16_t>("rdma_cm_port");
         config->memory_node_num = pt.get<uint16_t>("memory_node_num");
 
@@ -29,10 +31,10 @@ int load_config(const char * fname, struct GlobalConfig * config) {
             i ++;
         }
         
-        std::string server_base_addr_str = pt.get<std::string>("mem_pool_base_addr");
-        sscanf(server_base_addr_str.c_str(), "0x%lx", &config->mem_pool_base_addr);
-        config->mem_pool_size   = pt.get<uint64_t>("mem_pool_size");
-        config->block_size        = pt.get<uint64_t>("block_size");
+        // std::string server_base_addr_str = pt.get<std::string>("mem_pool_base_addr");
+        // sscanf(server_base_addr_str.c_str(), "0x%lx", &config->mem_pool_base_addr);
+        // config->mem_pool_size   = pt.get<uint64_t>("mem_pool_size");
+        // config->block_size        = pt.get<uint64_t>("block_size");
     } catch (boost::property_tree::ptree_error & e) {
         return -1;
     }

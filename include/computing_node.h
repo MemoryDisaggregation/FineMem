@@ -33,6 +33,41 @@ namespace mralloc {
 const uint32_t ring_buffer_size = 40000;
 const uint32_t class_ring_buffer_size = 2048;
 
+struct node_info {
+    node_info(one_side_info m_one_side_info_){
+        block_size_ = m_one_side_info_.block_size_;
+        block_num_ = m_one_side_info_.block_num_;
+        region_size_ = block_size_ * block_per_region;
+        region_num_ = block_num_ / block_per_region;
+        section_size_ = region_size_ * region_per_section;
+        section_num_ = region_num_ / region_per_section;
+
+        section_header_ = m_one_side_info_.section_header_;
+        section_class_header_ = (uint64_t)((section_e*)section_header_ + section_num_);
+        region_header_ = (uint64_t)((section_class_e*)section_class_header_+ block_class_num*section_num_);
+        block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
+        class_block_rkey_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
+        block_header_ = (uint64_t)((uint32_t*)class_block_rkey_ + block_num_);
+        backup_rkey_ = (uint64_t)((uint64_t*)block_header_ + block_num_);            
+        heap_start_ = m_one_side_info_.heap_start_;
+    }
+    uint64_t block_size_;
+    uint64_t block_num_;
+    uint64_t region_size_;
+    uint64_t region_num_;
+    uint64_t section_size_;
+    uint64_t section_num_;
+
+    // info before heap segment
+    uint64_t section_header_;
+    uint64_t section_class_header_;
+    uint64_t region_header_;
+    uint64_t block_rkey_;
+    uint64_t class_block_rkey_;
+    uint64_t heap_start_;
+    uint64_t block_header_;
+    uint64_t backup_rkey_;
+};
 
 class ComputingNode {
 public:
@@ -43,15 +78,15 @@ public:
 
     ComputingNode(bool heap_enabled, bool cache_enabled, bool one_side_enabled): heap_enabled_(heap_enabled), cpu_cache_enabled_(cache_enabled), one_side_enabled_(one_side_enabled) {
         if(cpu_cache_enabled_)  assert(heap_enabled_);
-        ring_cache = new ring_buffer_atomic<mr_rdma_addr>(ring_buffer_size, ring_cache_content, mr_rdma_addr(-1, -1), &reader, &writer);
+        ring_cache = new ring_buffer_atomic<mr_rdma_addr>(ring_buffer_size, ring_cache_content, mr_rdma_addr(-1, -1, -1), &reader, &writer);
         ring_cache->clear();
         for(int i = 0; i<class_num; i++) {
-            ring_class_cache[i] = new ring_buffer_atomic<mr_rdma_addr>(class_ring_buffer_size, ring_class_cache_content[i], mr_rdma_addr(-1, -1), &class_reader[i], &class_writer[i]);
+            ring_class_cache[i] = new ring_buffer_atomic<mr_rdma_addr>(class_ring_buffer_size, ring_class_cache_content[i], mr_rdma_addr(-1, -1, -1), &class_reader[i], &class_writer[i]);
             ring_class_cache[i]->clear();
         }
     }
 
-    bool start(const std::string addr, const std::string port) ;
+    bool start(std::string* addr, std::string* port, uint32_t node_num) ;
 
     void stop() ;
 
@@ -75,39 +110,51 @@ public:
     void increase_watermark(int &upper_bound);
     void decrease_watermark(int &upper_bound);
 
-    inline uint64_t get_region_block_addr(uint32_t region_index, uint32_t block_offset) {return heap_start_ + region_index * region_size_ + block_offset * block_size_;} ;
-    bool new_cache_section(uint32_t block_class, alloc_advise advise);
+    inline uint64_t get_region_block_addr(uint32_t region_index, uint32_t block_offset, uint32_t node) {
+        return node_info_[node].heap_start_ + region_index * node_info_[node].region_size_ 
+            + block_offset * node_info_[node].block_size_;
+    }
+    bool new_cache_section(uint32_t block_class, alloc_advise advise, uint32_t node);
+    bool new_backup_section(uint32_t node);
     bool new_cache_region(uint32_t block_class);
     bool new_backup_region();
-    bool new_backup_section();
     bool fill_cache_block(uint32_t block_class);
 
-    bool fetch_mem_block_nocached(uint64_t &addr, uint32_t &rkey);
-    bool fetch_mem_block(uint64_t &addr, uint32_t &rkey);
-    bool free_mem_block(uint64_t addr);
-    bool free_mem_block_slow(uint64_t addr);
-    bool free_mem_batch(uint32_t region_offset, uint32_t free_map);
-    bool free_mem_block_fast_batch(uint64_t *addr);
+    bool fetch_mem_block_nocached(mr_rdma_addr &remote_addr, uint32_t node);
+    bool fetch_mem_block(mr_rdma_addr &remote_addr);
+    bool free_mem_block(mr_rdma_addr remote_addr);
+    bool free_mem_block_slow(mr_rdma_addr remote_addr);
+    bool free_mem_batch(uint32_t region_offset, uint32_t free_map, uint32_t node);
+    // bool free_mem_block_fast_batch(mr_rdma_addr *remote_addr);
 
-    bool fetch_mem_class_block(uint16_t block_class, uint64_t &addr, uint32_t &rkey);
+    bool fetch_mem_class_block(uint16_t block_class, mr_rdma_addr &remote_addr);
 
     // << RPC block fetch >>
-    bool fetch_mem_block_remote(uint64_t &addr, uint32_t &rkey);
+    bool fetch_mem_block_remote(mr_rdma_addr &remote_addr, uint32_t node);
 
     // << local heap/cache fetch >>
-    void fetch_cache(uint8_t nproc, uint64_t &addr, uint32_t &rkey);
+    void fetch_cache(uint8_t nproc, mr_rdma_addr &remote_addr);
 
     // UNUSED
-    bool mr_bind_remote(uint64_t size, uint64_t addr, uint32_t rkey, uint32_t &newkey);
+    bool mr_bind_remote(uint64_t size, mr_rdma_addr remote_addr, uint32_t &newkey);
 
-    ConnectionManager* get_conn(){return m_rdma_conn_;};
+    ConnectionManager* get_conn(uint32_t node){return m_rdma_conn_[node];};
 
-    void set_global_rkey(uint32_t rkey) {
-        global_rkey_ = rkey;
+    void set_global_rkey(uint32_t rkey, uint32_t node) {
+        while(node > global_rkey_.size()){
+            global_rkey_.push_back(0);
+        }
+        if(node == global_rkey_.size())
+            global_rkey_.push_back(rkey);
+        else
+            global_rkey_[node] = rkey;
     }
 
-    uint32_t get_global_rkey() {
-        return global_rkey_;
+    uint32_t get_global_rkey(uint32_t node) {
+        if(node >= global_rkey_.size()){
+            return 0;
+        }
+        return global_rkey_[node];
     }
 
 private:
@@ -116,36 +163,26 @@ private:
     FreeBlockManager *free_queue_manager;
     uint8_t running;
     bool use_global_rkey_;
-    uint32_t global_rkey_;
+    uint32_t node_num_;
+    std::vector<uint32_t> global_rkey_;
     
     pthread_t pre_fetch_thread_;
     pthread_t cache_fill_thread_;
     pthread_t recycle_thread_;
 
-    uint64_t block_size_;
-    uint64_t block_num_;
-    uint64_t region_size_;
-    uint64_t region_num_;
-    uint64_t section_size_;
-    uint64_t section_num_;
+    std::vector<node_info> node_info_;
     uint64_t fill_counter = 0;
 
-    // info before heap segment
-    uint64_t section_header_;
-    uint64_t section_class_header_;
-    uint64_t region_header_;
-    uint64_t block_rkey_;
-    uint64_t class_block_rkey_;
-    uint64_t heap_start_;
-    uint64_t block_header_;
-    uint64_t backup_rkey_;
-
-    // << allocation metadata >>
-    one_side_info m_one_side_info_;
+    // TODO: important node selection policy
+    uint32_t current_node_ = 0;
+    uint32_t backup_node_ = 0;
     section_e current_section_;
     uint32_t current_section_index_;
+    // a pointer to current region(only one)
     region_with_rkey* current_region_;
-    region_with_rkey* exclusive_region_;
+    // different nodes' region cache, not only exclusive region, but only used when exclusive
+    std::vector<region_with_rkey*> exclusive_region_;
+    // free regions, a set
     std::set<region_with_rkey*> free_region_;
     section_e backup_section_;
     uint32_t backup_section_index_;
@@ -153,6 +190,10 @@ private:
     uint32_t backup_region_index_;
     int backup_counter = 0;
     int backup_cycle = -1;
+
+    uint32_t current_class_node_[16];
+    section_e current_class_section_[16];
+    uint32_t current_class_section_index_[16];
     region_e current_class_region_[16];
     uint32_t current_class_region_index_[16];
 
@@ -188,7 +229,7 @@ private:
     uint32_t* rkey_list;
     uint64_t last_alloc_;
     uint64_t hint_ = 0;
-    ConnectionManager *m_rdma_conn_;
+    std::vector<ConnectionManager*> m_rdma_conn_;
     std::vector<rdma_mem_t> m_used_mem_; /* the used mem */
     std::mutex m_mutex_;                 /* used for concurrent mem allocation */
 

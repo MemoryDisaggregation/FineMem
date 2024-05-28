@@ -76,7 +76,7 @@ public:
         struct ibv_cq *cq;
     };    
     MemoryNode(bool one_sided_enabled): one_sided_enabled_(one_sided_enabled) {
-        ring_cache = new ring_buffer_atomic<mr_rdma_addr>(cache_length, ring_cache_content, mr_rdma_addr(-1, -1), &reader, &writer);
+        ring_cache = new ring_buffer_atomic<mr_rdma_addr>(cache_length, ring_cache_content, mr_rdma_addr(-1, -1, -1), &reader, &writer);
         ring_cache -> clear();
     };
     ~MemoryNode(){};
