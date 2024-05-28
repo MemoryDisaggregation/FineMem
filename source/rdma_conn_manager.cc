@@ -70,7 +70,7 @@ int ConnectionManager::unregister_remote_memory(uint64_t addr) {
     return ret;
 }
 
-int ConnectionManager::remote_read(void *ptr, uint32_t size,
+int ConnectionManager::remote_read(void *ptr, uint64_t size,
                                    uint64_t remote_addr, uint32_t rkey) {
   RDMAConnection *conn = m_one_sided_conn_queue_->dequeue();
   assert(conn != nullptr);
@@ -79,7 +79,7 @@ int ConnectionManager::remote_read(void *ptr, uint32_t size,
   return ret;
 }
 
-int ConnectionManager::remote_write(void *ptr, uint32_t size,
+int ConnectionManager::remote_write(void *ptr, uint64_t size,
                                     uint64_t remote_addr, uint32_t rkey) {
   RDMAConnection *conn = m_one_sided_conn_queue_->dequeue();
   assert(conn != nullptr);

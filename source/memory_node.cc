@@ -33,7 +33,7 @@
 // #define REMOTE_MEM_SIZE 4096
 // #define REMOTE_MEM_SIZE 131072
 
-#define INIT_MEM_SIZE ((uint64_t)232*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)100*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 
@@ -108,11 +108,17 @@ bool MemoryNode::start(const std::string addr, const std::string port, const std
     }
 
     struct ibv_device_attr device_attr;
+    struct ibv_device_attr_ex device_attr_ex;
+    struct ibv_query_device_ex_input input;
     ibv_query_device(m_context_, & device_attr);
     if (!(device_attr.device_cap_flags & IBV_DEVICE_MEM_WINDOW)) {
         printf("do not support memory window\n");
     } else {
-        printf("support %d memory window total\n", device_attr.max_mw);
+        printf("support %d memory window and %d qp total\n", device_attr.max_mw, device_attr.max_qp);
+    }
+    ibv_query_device_ex(m_context_, NULL, &device_attr_ex);
+    if(!(device_attr_ex.odp_caps.general_caps & IBV_ODP_SUPPORT)){
+        printf("Not support odp!\n");
     }
     mw_queue_ = new MWPool(m_pd_);
 
@@ -271,17 +277,20 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
     // assert(size == init_size_ - SERVER_BASE_ADDR + init_addr_); 
     heap_total_size_ = init_size_raw; heap_start_addr_ = init_addr_raw;
     
-    global_mr_ = rdma_register_memory((void*)server_base_addr, init_addr_ + init_size_ - server_base_addr);
+    ibv_mr* heap_mr_ = rdma_register_memory((void*)server_base_addr, init_addr_raw - server_base_addr);
+    global_mr_ =
+        ibv_reg_mr(m_pd_, (void*)init_addr_raw, init_size_raw,
+                    IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
+                        IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND | IBV_ACCESS_ON_DEMAND);
     if(fusee_enable)
-        rpc_fusee_ = new RPC_Fusee(server_base_addr, server_base_addr + META_AREA_LEN, global_mr_->rkey);
-
-    set_global_rkey(global_mr_->rkey);
+        rpc_fusee_ = new RPC_Fusee(server_base_addr, server_base_addr + META_AREA_LEN, heap_mr_->rkey);
+    set_global_rkey(heap_mr_->rkey);
 
     m_mw_handler = (ibv_mw**)malloc(size / base_block_size * sizeof(ibv_mw*));
 
     mw_binded = false;
 
-    if(!server_block_manager_->init((uint64_t)init_addr, init_addr_raw, init_size_raw, global_mr_->rkey)) {
+    if(!server_block_manager_->init((uint64_t)init_addr, init_addr_raw, init_size_raw, heap_mr_->rkey)) {
         perror("init free queue manager fail"); 
         return false;
     }
@@ -471,6 +480,8 @@ int MemoryNode::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
     conn_param.responder_resources = 16;
     conn_param.initiator_depth = 16;
     conn_param.private_data = &rep_pdata;
+    conn_param.retry_count = 7;
+    conn_param.rnr_retry_count = 7;
     conn_param.private_data_len = sizeof(rep_pdata);
 
     if (rdma_accept(cm_id, &conn_param)) {
