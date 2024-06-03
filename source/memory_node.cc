@@ -281,7 +281,7 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
     global_mr_ =
         ibv_reg_mr(m_pd_, (void*)init_addr_raw, init_size_raw,
                     IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
-                        IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND | IBV_ACCESS_ON_DEMAND);
+                        IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND);
     if(fusee_enable)
         rpc_fusee_ = new RPC_Fusee(server_base_addr, server_base_addr + META_AREA_LEN, heap_mr_->rkey);
     set_global_rkey(heap_mr_->rkey);

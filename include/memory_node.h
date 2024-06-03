@@ -110,7 +110,7 @@ public:
     uint32_t get_global_rkey() {
       return global_rkey_;
     }
-
+    
 private:
 
     bool init_memory_heap(uint64_t size);

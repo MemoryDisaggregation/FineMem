@@ -116,7 +116,8 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
     conn_param.private_data = &access_type_;
     conn_param.private_data_len = sizeof(access_type_);
     conn_param.initiator_depth = 16;
-    conn_param.retry_count = 6;
+    conn_param.retry_count = 7;
+    conn_param.rnr_retry_count = 7;
     if (rdma_connect(m_cm_id_, &conn_param)) {
         perror("rdma_connect fail");
         return -1;

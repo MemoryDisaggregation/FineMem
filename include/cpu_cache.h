@@ -17,7 +17,9 @@
 
 namespace mralloc {
 
-// TODO: Add rseq support learning from TCMALLOC
+// TODO: Add rseq support
+// TODO: change to fifo pipe?
+// TODO:
 
 const uint32_t nprocs = 48;
 const uint32_t max_alloc_item = 256;

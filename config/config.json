@@ -1,8 +1,7 @@
 {
     "rdma_cm_port":1145,
-    "memory_node_num":2,
+    "memory_node_num":1,
     "memory_ips":[
-        "10.10.1.2",
-        "10.10.1.3"
+        "10.10.1.2"
     ]
 }
