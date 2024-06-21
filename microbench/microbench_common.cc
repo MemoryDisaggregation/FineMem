@@ -173,13 +173,13 @@ public:
         conn_ = conn;
         cache_region_index = start_hint;
         conn_->find_section(cache_section, cache_section_index, mralloc::alloc_light);
-        conn_->fetch_region(cache_section, cache_section_index, 1, true, cache_region, cache_region_index);
+        conn_->fetch_region(cache_section, cache_section_index, true, cache_region, cache_region_index);
     }
     ~share_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
         int retry_time;
 	    while((retry_time = conn_->fetch_region_block(cache_section, cache_region, remote_addr.addr, remote_addr.rkey, false, cache_region_index)) == 0){
-            while(!conn_->fetch_region(cache_section, cache_section_index, 1, true, cache_region, cache_region_index)){
+            while(!conn_->fetch_region(cache_section, cache_section_index, true, cache_region, cache_region_index)){
                 if(!conn_->find_section(cache_section, cache_section_index, mralloc::alloc_light)){
                     printf("waiting for new section avaliable\n");
 			//return false;
@@ -218,7 +218,7 @@ public:
     exclusive_allocator(mralloc::ConnectionManager* conn) {
         conn_ = conn;
         conn->find_section(cache_section, cache_section_index, mralloc::alloc_empty);
-        conn->fetch_region(cache_section, cache_section_index, 1, false, cache_region.region, cache_region.index);
+        conn->fetch_region(cache_section, cache_section_index, false, cache_region.region, cache_region.index);
         conn->fetch_exclusive_region_rkey(cache_region.index, cache_region.rkey);
         region_record[cache_region.index] = cache_region;
     }
@@ -236,7 +236,7 @@ public:
                 }
             }
             if(!cache_useful) {
-                while(!conn_->fetch_region(cache_section, cache_section_index, 1, false, cache_region.region, cache_region.index)){
+                while(!conn_->fetch_region(cache_section, cache_section_index, false, cache_region.region, cache_region.index)){
                     if(!conn_->find_section(cache_section, cache_section_index, mralloc::alloc_empty)) {
                         return false;
                     }

@@ -78,13 +78,11 @@ class ConnectionManager {
     bool force_update_region_state(region_e &alloc_region, uint32_t region_index, bool is_exclusive, bool on_use);
     bool find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
 
-    bool fetch_varaint_regions(section_e &alloc_section, uint32_t section_offset, uint64_t region_length, uint64_t &addr) ;
     bool fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, region_e &alloc_region, uint32_t &region_index) ;
 
     int fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) ;
     int fetch_region_batch(section_e &alloc_section, region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive, uint32_t region_index);
-    int fetch_region_variant_blocks(uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) ;
-
+    
     int fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
     int free_block(uint64_t addr) ;
     int free_region_batch(uint32_t region_offset, uint32_t free_bitmap, bool is_exclusive);
@@ -134,7 +132,6 @@ class ConnectionManager {
 
     // info before heap segment
     uint64_t section_header_;
-    uint64_t flength_header_;
     uint64_t region_header_;
     uint64_t block_rkey_;
     uint64_t heap_start_;

@@ -81,23 +81,9 @@ public:
 };
 CHECK_RDMA_MSG_SIZE(FreeFastRequest);
 
-class ClassBindRequest : public RequestsMsg{
-public:
-    uint32_t region_offset;
-    uint16_t block_length;
-};
-CHECK_RDMA_MSG_SIZE(ClassBindRequest);
-
-class ClassBindResponse : public ResponseMsg {
-public:
-    uint32_t rkey;
-};
-CHECK_RDMA_MSG_SIZE(ClassBindResponse);
-
 class RebindBlockRequest : public RequestsMsg{
 public:
     uint64_t addr;
-    uint16_t block_length;
 };
 CHECK_RDMA_MSG_SIZE(RebindBlockRequest);
 

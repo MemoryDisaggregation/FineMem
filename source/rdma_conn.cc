@@ -156,11 +156,9 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
     section_num_ = region_num_ / region_per_section;
 
     section_header_ = server_pdata.section_header_;
-    flength_header_ = (uint64_t)((section_e*)section_header_ + section_num_);
-    region_header_ = (uint64_t)((flength_e*)flength_header_ + section_num_);
+    region_header_ = (uint64_t)((section_e*)section_header_ + section_num_);
     block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
-    class_block_rkey_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
-    block_header_ = (uint64_t)((uint32_t*)class_block_rkey_ + block_num_);
+    block_header_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
     backup_rkey_ = (uint64_t)((uint64_t*)block_header_ + block_num_);
     
     heap_start_ = server_pdata.heap_start_;
@@ -563,7 +561,7 @@ int RDMAConnection::remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint3
       return 0;
 }
 
-int RDMAConnection::remote_rebind(uint64_t addr, uint32_t block_length, uint32_t &newkey){
+int RDMAConnection::remote_rebind(uint64_t addr, uint32_t &newkey){
     memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
     memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));
     m_cmd_resp_->notify = NOTIFY_IDLE;
@@ -573,7 +571,6 @@ int RDMAConnection::remote_rebind(uint64_t addr, uint32_t block_length, uint32_t
     request->id = conn_id_;
     request->type = MSG_MW_REBIND;
     request->addr = addr;
-    request->block_length = block_length;
     m_cmd_msg_->notify = NOTIFY_WORK;
 
     /* send a request to sever */
@@ -641,45 +638,6 @@ int RDMAConnection::remote_rebind_batch(uint64_t *addr, uint32_t *newkey){
     for(int i = 0; i < 32; i++) {
         newkey[i] = resp_msg->rkey[i];
     }
-    return 0;
-}
-
-int RDMAConnection::remote_class_bind(uint32_t region_offset, uint16_t block_length){
-    memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
-    memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));
-    m_cmd_resp_->notify = NOTIFY_IDLE;
-    ClassBindRequest *request = (ClassBindRequest *)m_cmd_msg_;
-    request->resp_addr = (uint64_t)m_cmd_resp_;
-    request->resp_rkey = m_resp_mr_->rkey;
-    request->id = conn_id_;
-    request->type = MSG_MW_CLASS_BIND;
-    request->region_offset = region_offset;
-    request->block_length = block_length;
-    m_cmd_msg_->notify = NOTIFY_WORK;
-
-    /* send a request to sever */
-    int ret = rdma_remote_write((uint64_t)m_cmd_msg_, m_msg_mr_->lkey,
-                                sizeof(CmdMsgBlock), m_server_cmd_msg_,
-                                m_server_cmd_rkey_);
-    if (ret) {
-        printf("fail to send requests\n");
-        return ret;
-    }
-
-    /* wait for response */
-    auto start = TIME_NOW;
-    while (m_cmd_resp_->notify == NOTIFY_IDLE) {
-        if (TIME_DURATION_US(start, TIME_NOW) > RDMA_TIMEOUT_US) {
-        printf("wait for request completion timeout\n");
-        return -1;
-        }
-    }
-    ClassBindResponse *resp_msg = (ClassBindResponse *)m_cmd_resp_;
-    if (resp_msg->status != RES_OK) {
-        printf("mem window bind fail\n");
-        return -1;
-    }
-
     return 0;
 }
 
@@ -949,22 +907,6 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
     return false;
 }
 
-bool RDMAConnection::force_update_flength_state(uint32_t region_index, uint8_t ratio) {
-    uint64_t section_offset = region_index/region_per_section;
-    uint64_t region_offset = region_index%region_per_section;
-    flength_e alloc_flength, flength_new;
-    remote_read(&alloc_flength, sizeof(alloc_flength), flength_metadata_addr(section_offset), global_rkey_);
-    uint8_t ratio_old = (alloc_flength >> region_index*2)%4;
-    if (ratio_old == ratio) {
-        return true;
-    }
-    do{
-        flength_new = alloc_flength;
-        flength_new &= (bitmap64)ratio << (region_offset*2);
-    }while(!remote_CAS(*(uint64_t*)&flength_new, (uint64_t*)&alloc_flength, flength_metadata_addr(section_offset), global_rkey_));
-    return true;
-}
-
 // find a new section avaliable for an allocation with advise(usually alloc_full)
 bool RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
     section_e section[8] = {0,0};
@@ -1003,8 +945,8 @@ bool RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_of
     return false;
 }
 
-// find an avalible region, exclusive, single, or varaint
-bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_offset, uint32_t block_length, bool shared, region_e &alloc_region, uint32_t &region_index) {
+// find an avalible region, exclusive, single
+bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, region_e &alloc_region, uint32_t &region_index) {
     if(shared == true) {
         // both variant and single allocation with exclusive will fetch a full empty block and full use it
         section_e new_section;
@@ -1035,7 +977,7 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         region_old = region_new;
         alloc_region = region_old;
         return true;
-    } else if(block_length == 1) {
+    } else {
         bool on_empty = false;
         section_e new_section;
         uint32_t empty_map, chance_map, normal_map;
@@ -1079,101 +1021,6 @@ bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_off
         }
         return true;
     }
-    // variant length allocation with a shared region
-    // the region must have long enough avaliable free-chunk to alloc
-    // this region should be used immediately at variant allocation
-    // or this function should not be called if no follwoing allocation
-    // 00: 16-32, full empty
-    // 01: 8-16, at least 16 avalible
-    // 10: 1-8, at least 8 avaliable
-    // 11: no length
-    else {
-        bool on_empty = false;
-        section_e new_section;
-        uint32_t empty_map, chance_map, normal_map;
-        int index;
-        // skip a read, only read at CAS failed
-        remote_read(&alloc_section, sizeof(section_e), section_metadata_addr(section_offset), global_rkey_);
-        do {
-            empty_map = alloc_section.frag_map_ | alloc_section.alloc_map_;
-            chance_map = ~alloc_section.frag_map_ | alloc_section.alloc_map_;
-            normal_map = alloc_section.frag_map_ | ~alloc_section.alloc_map_;
-            if( block_length < 16 && (index = find_free_index_from_bitmap32_tail(normal_map)) != -1 ){
-                // no modify on map status
-                new_section = alloc_section;
-            } else if( block_length < 8 &&  (index = find_free_index_from_bitmap32_tail(chance_map)) != -1 ){
-                // mark the chance map to full
-                new_section = alloc_section;
-                raise_bit(new_section.alloc_map_, new_section.frag_map_, index);
-            } else if( (index = find_free_index_from_bitmap32_tail(empty_map)) != -1 ){
-                // mark the empty map to allocated
-                new_section = alloc_section;
-                raise_bit(new_section.alloc_map_, new_section.frag_map_, index);    
-                on_empty = true;
-            } else {
-                return false;
-            }
-        } while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_));
-        region_e region_new;
-        alloc_section = new_section;
-        region_index = section_offset*region_per_section+index;
-        // read region info
-        remote_read(&alloc_region, sizeof(region_e), region_metadata_addr(region_index), global_rkey_);
-        if (on_empty) {
-            do {
-                region_new = alloc_region;
-                if(region_new.on_use_ == 1) {
-                    printf("impossible problem: on_use is already set\n");
-                    return false;
-                }
-                region_new.on_use_ = 1;
-            }while(!remote_CAS(*(uint64_t*)&region_new, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_));
-        }
-        return true;
-    }
-    return false;
-}
-
-// fetch varaint free regions in a section
-bool RDMAConnection::fetch_varaint_regions(section_e &alloc_section, uint32_t section_offset, uint64_t region_length, uint64_t &addr) {
-    bitmap32 free_map = alloc_section.alloc_map_ | alloc_section.frag_map_;
-    // Double check whether there is a long enough free space in this section
-    if(max_longbit(free_map) < region_length) {
-        remote_read((uint64_t*)&alloc_section, sizeof(section_e), section_metadata_addr(section_offset), global_rkey_);
-        free_map = alloc_section.alloc_map_ | alloc_section.frag_map_;
-        if(max_longbit(free_map) < region_length) {
-            return false;
-        }
-    }
-    int free_length = 0;
-    // each section has 32 items
-    for(int i = 0; i < 32; i++) {
-        // a free space
-        if(free_map%2 == 0) {
-            free_length += 1;
-            // length enough
-            if(free_length == region_length) {
-                section_e section_new = alloc_section;
-                bitmap32 mask = 0;
-                for(int j = i-free_length+1; j <= i; j++) {
-                    mask |= 1 << j;
-                }
-                section_new.alloc_map_ |= mask;
-                section_new.frag_map_ |= mask;
-                // find the section header changed
-                if(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_)){
-                    i = 0; free_length = 0; free_map = alloc_section.alloc_map_ | alloc_section.frag_map_;
-                    continue;
-                }
-                alloc_section = section_new;
-                addr = get_section_region_addr(section_offset, i-free_length+1);
-                return true;
-            }
-        } else {
-            free_length = 0;
-        }
-        free_map >>= 1;
-    } 
     return false;
 }
 
@@ -1244,15 +1091,6 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
         force_update_section_state(alloc_section, region_index, alloc_heavy);
     }
     
-    // // length state update, will async it in the future
-    // if(old_length >= 8 && new_length < 8 ) {
-    //     force_update_flength_state(region_index, 3);
-    // } else if(old_length >= 16 && new_length < 16) {
-    //     force_update_flength_state(region_index, 2);
-    // } else if(old_length >= 24 && new_length < 24) {
-    //     force_update_flength_state(region_index, 1);
-    // }
-    
     return retry_time;
 }
 
@@ -1294,111 +1132,7 @@ int RDMAConnection::fetch_region_batch(section_e &alloc_section, region_e &alloc
     if(alloc_region.base_map_ == bitmap32_filled) {
         force_update_section_state(alloc_section, region_index, alloc_full);
     }
-
-    // length state update, will async it in the future
-    if(old_length >= 8 && new_length < 8 ) {
-        force_update_flength_state(region_index, 3);
-    } else if(old_length >= 16 && new_length < 16) {
-        force_update_flength_state(region_index, 2);
-    } else if(old_length >= 24 && new_length < 24) {
-        force_update_flength_state(region_index, 1);
-    }
-
     return free_item;
-}
-
-int RDMAConnection::find_flength(flength_e &alloc_flength, section_e &alloc_section, uint32_t &section_offset, uint32_t block_length) {
-    flength_e flength[8];
-    section_e section[8];
-    int offset = section_offset%section_num_;
-    int remain = section_num_, fetch = (offset + 8) > section_num_ ? (section_num_ - offset):8, index = offset;
-    while(remain > 0) {
-        remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
-        for(int j = 0; j < fetch; j ++) {
-            for(int k = 0; k < 32; k++) {
-                if(flength[j]%4 == (2-(block_length-1)/8)){
-                    alloc_section = section[j];
-                    section_offset = offset + j;
-                    return true;
-                }
-            }
-        }
-        index = (index + fetch)%section_num_; remain -= fetch; fetch = (index + 8) > section_num_ ? (section_num_ - index):8;
-    }
-}
-
-int RDMAConnection::fetch_region_variant(flength_e &alloc_flength, section_e &alloc_section, uint32_t section_offset, uint32_t block_length, region_e &alloc_region, uint32_t &region_index){
-
-}
-
-int RDMAConnection::fetch_region_variant_blocks(uint32_t block_length, uint64_t &addr, uint32_t &rkey) {
-    int index; region_e new_region;
-    flength_e alloc_flength;
-    section_e alloc_section; uint32_t section_offset = 0;
-    region_e alloc_region; uint32_t region_index;
-    uint8_t old_length, new_length;
-    find_flength(alloc_flength, alloc_section, block_length, section_offset);
-    fetch_region(alloc_section, section_offset, block_length, true, alloc_region, region_index);
-    while(alloc_region.exclusive_ != 0 || alloc_region.on_use_ != 1 || alloc_region.max_length_ < block_length) {
-        while(!fetch_region(alloc_section, section_offset, block_length, true, alloc_region, region_index)){
-            while(!find_flength(alloc_flength, alloc_section, block_length, section_offset)){
-                printf("no avaliable flength\n");
-            }
-        }
-    }
-
-    int free_length = 0;
-    bitmap32 free_map = alloc_region.base_map_;
-    // each section has 32 items
-    for(int i = 0; i < 32; i++) {
-        // a free space
-        if(free_map%2 == 0) {
-            free_length += 1;
-            // length enough
-            if(free_length == block_length) {
-                new_region = alloc_region;
-                bitmap32 mask = 0;
-                index = i-free_length+1;
-                for(int j = i-free_length+1; j <= i; j++) {
-                    mask |= 1 << j;
-                }
-                new_region.base_map_ |= mask;
-                // find the section header changed
-                // update the max length info
-                old_length = new_region.max_length_;
-                new_length = max_longbit(new_region.base_map_);
-                new_region.max_length_ = new_length;
-                alloc_region = new_region;
-                if(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_)){
-                    i = 0; free_length = 0; free_map = alloc_region.base_map_;
-                    continue;
-                }
-
-                break;
-            }
-        } else {
-            free_length = 0;
-        }
-        free_map >>= 1;
-    } 
-    addr = get_region_block_addr(region_index, index);
-    rkey = get_region_block_rkey(region_index, index);
-    
-    // batch not see CAS competition as a critical problem
-    if(alloc_region.base_map_ == bitmap32_filled) {
-        force_update_section_state(alloc_section, region_index, alloc_full);
-    }
-
-    // length state update, will async it in the future
-    if(old_length >= 8 && new_length < 8 ) {
-        force_update_flength_state(region_index, 3);
-    } else if(old_length >= 16 && new_length < 16) {
-        force_update_flength_state(region_index, 2);
-    } else if(old_length >= 24 && new_length < 24) {
-        force_update_flength_state(region_index, 1);
-    }
-
-    return true;
 }
 
 int RDMAConnection::free_region_batch(uint32_t region_offset, uint32_t free_bitmap, bool is_exclusive) {
@@ -1522,71 +1256,12 @@ int RDMAConnection::fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &
     return retry_time;
 }
 
-bool RDMAConnection::fetch_block(uint16_t block_length, uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) {
-    uint64_t block_headers[block_length + 1]; 
-    bool restart = false;
-    uint64_t old_header = 0, new_header = 1, hint = block_hint % block_num_;
-    do{
-        int recorder = -1;
-        if(hint + block_length>= block_num_) {
-            hint = 0;
-            if(restart)
-                return false;
-            restart = true;
-        }
-        remote_read(block_headers, (block_length) * sizeof(uint64_t), block_header_ + hint * sizeof(uint64_t), global_rkey_);
-        for(int i = 0; i < block_length; i++) {
-            if(block_headers[i] != 0) {
-                recorder = i;
-            }
-        }
-        if(recorder == -1) {
-            for(int i = 0; i < block_length; i++) {
-                new_header = 1; old_header = 0;
-                if(!remote_CAS(*(uint64_t*)&new_header, (uint64_t*)&old_header, block_header_ + (hint+i) * sizeof(uint64_t), global_rkey_)){
-                    recorder = i;
-                    break;
-                }      
-            }
-            if(recorder != -1) {
-                for(int i = 0; i < recorder; i ++) {
-                    new_header = 0; old_header = 1;
-                    if(!remote_CAS(*(uint64_t*)&new_header, (uint64_t*)&old_header, block_header_ + (hint+i) * sizeof(uint64_t), global_rkey_)){
-                        printf("roll back failed\n");
-                        return false;
-                    }
-                }
-            } else {
-                addr = get_block_addr(hint);
-                rkey = get_block_rkey(hint);
-                block_hint = hint + block_num_ + 1;
-                return true;
-            }
-        }
-        hint = hint + recorder + 1;
-    } while(!(restart && hint >= block_hint));
-    block_hint = hint;
-    return false;
-}
-
-bool RDMAConnection::free_block(uint64_t addr) {
+int RDMAConnection::free_block(uint64_t addr) {
     uint64_t old_header = 1, new_header = 0;
     uint64_t index = (addr - heap_start_) / block_size_;
     if(!remote_CAS(*(uint64_t*)&new_header, (uint64_t*)&old_header, block_header_ + index * sizeof(uint64_t), global_rkey_)){
         return false;
     };
-    return true;
-}
-
-bool RDMAConnection::free_block(uint16_t block_length, uint64_t addr) {
-    uint64_t old_header = 1, new_header = 0;
-    uint64_t index = (addr - heap_start_) / block_size_;
-    for(int i = 0; i < block_length; i++) {
-        old_header = 1; new_header = 0;
-        if(!remote_CAS(*(uint64_t*)&new_header, (uint64_t*)&old_header, block_header_ + (index+i) * sizeof(uint64_t), global_rkey_)){
-            return false;
-        };
-    }
     return true;
 }
 

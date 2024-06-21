@@ -60,10 +60,6 @@ struct section_e {
 };
 typedef std::atomic<section_e> section;
 
-// free length for variant allocation
-typedef bitmap64 flength_e;
-typedef std::atomic<flength_e> flength;
-
 struct region_e {
     bitmap32 base_map_;
     // max_length, 1~32 
@@ -209,10 +205,9 @@ public:
 
     uint64_t cal_header_size() {
         uint64_t section_header_size = max_region_num/region_per_section * sizeof(section);
-        uint64_t section_flength_size = max_region_num/region_per_section * sizeof(flength);
         uint64_t region_header_size = max_region_num * sizeof(region);
         uint64_t block_rkey_size = max_region_num * block_per_region * sizeof(uint32_t);
-        return section_header_size + section_flength_size + region_header_size + block_rkey_size;
+        return section_header_size + region_header_size + block_rkey_size;
     };
 
     bool init(uint64_t meta_addr, uint64_t addr, uint64_t size, uint32_t rkey);
@@ -250,9 +245,8 @@ public:
     bool force_update_region_state(region_e &alloc_region, uint32_t region_index, bool is_exclusive, bool on_use);
     bool find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
 
-    bool fetch_varaint_regions(section_e &alloc_section, uint32_t section_offset, uint64_t region_length, uint64_t &addr) ;
     bool fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, region_e &alloc_region, uint32_t &region_index) ;
-   int free_region_block(uint64_t addr, bool is_exclusive);
+    int free_region_block(uint64_t addr, bool is_exclusive);
 
     inline uint64_t get_section_region_addr(uint32_t section_offset, uint32_t region_offset) {return heap_start_ + section_offset*section_size_ + region_offset * region_size_ ;};
     inline uint64_t get_region_addr(uint32_t region_index) {return heap_start_ + region_index * region_size_;};
@@ -260,7 +254,6 @@ public:
     inline uint32_t get_region_block_rkey(uint32_t region_index, uint32_t block_offset) {return block_rkey_[region_index*block_per_region + block_offset];};
 
     bool fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) ;
-    bool fetch_region_variant_blocks(uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) ;
 
     inline bool set_block_rkey(uint64_t index, uint32_t rkey) {block_rkey_[index] = rkey; return true;};
     inline bool set_backup_rkey(uint64_t index, uint32_t rkey) {backup_rkey_[index] = rkey; return true;};
@@ -306,7 +299,6 @@ private:
 
     // info before heap segment
     section* section_header_;
-    flength* flength_header_;
     region* region_header_;
     uint32_t* block_rkey_;
     uint64_t* block_header_;

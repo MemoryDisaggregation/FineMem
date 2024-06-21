@@ -48,7 +48,7 @@ public:
     int remote_fetch_block(uint64_t &addr, uint32_t &rkey);
     int remote_free_block(uint64_t addr);
     int remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, uint32_t &newkey);
-    int remote_rebind(uint64_t addr, uint32_t block_length, uint32_t &newkey);
+    int remote_rebind(uint64_t addr, uint32_t &newkey);
     int remote_rebind_batch(uint64_t *addr, uint32_t *newkey);
     int remote_memzero(uint64_t addr, uint64_t size);
     int remote_fusee_alloc(uint64_t &addr, uint32_t &rkey);
@@ -63,18 +63,15 @@ public:
     // << one-sided fetch API >>
 
     inline uint64_t section_metadata_addr(uint64_t section_offset) {return (uint64_t)((section_e*)section_header_ + section_offset);};
-    inline uint64_t flength_metadata_addr(uint64_t flength_offset) {return (uint64_t)((flength_e*)flength_header_ + flength_offset);};
     inline uint64_t region_metadata_addr(uint64_t region_offset) {return (uint64_t)((region_e*)region_header_ + region_offset);};
 
     uint64_t get_heap_start() {return heap_start_;};
     inline bool check_section(section_e alloc_section, alloc_advise advise, uint32_t offset);
     bool force_update_section_state(section_e &section, uint32_t region_index, alloc_advise advise);
-    bool force_update_flength_state(uint32_t region_index, uint8_t ration);
     bool force_update_region_state(region_e &alloc_region, uint32_t region_index, bool is_exclusive, bool on_use);
     bool find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
 
-    bool fetch_varaint_regions(section_e &alloc_section, uint32_t section_offset, uint64_t region_length, uint64_t &addr) ;
-    bool fetch_region(section_e &alloc_section, uint32_t section_offset, uint32_t block_length, bool shared, region_e &alloc_region, uint32_t &region_index) ;
+    bool fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, region_e &alloc_region, uint32_t &region_index) ;
     bool fetch_exclusive_region_rkey(uint32_t region_index, uint32_t* rkey_list) {
         // uint32_t new_rkey[block_per_region];
         // memset(new_rkey, (uint32_t)-1, sizeof(uint32_t)*block_per_region);
@@ -105,16 +102,11 @@ public:
     
     int fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) ;
     int fetch_region_batch(section_e &alloc_section, region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive, uint32_t region_index) ;
-    int find_flength(flength_e &alloc_flength, section_e &alloc_section, uint32_t &section_offset, uint32_t block_length);
-    int fetch_region_variant(flength_e &alloc_flength, section_e &alloc_section, uint32_t section_offset, uint32_t block_length, region_e &alloc_region, uint32_t &region_index);
-    int fetch_region_variant_blocks(uint32_t block_length, uint64_t &addr, uint32_t &rkey) ;
     int free_region_block(uint64_t addr, bool is_exclusive) ;
     int free_region_batch(uint32_t region_offset, uint32_t free_bitmap, bool is_exclusive);
 
     int fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
-    bool fetch_block(uint16_t block_length, uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
-    bool free_block(uint64_t addr) ;
-    bool free_block(uint16_t block_length, uint64_t addr) ;
+    int free_block(uint64_t addr) ;
 
     private:
 
@@ -157,7 +149,6 @@ public:
 
     // info before heap segment
     uint64_t section_header_;
-    uint64_t flength_header_;
     uint64_t region_header_;
     uint64_t block_rkey_;
     uint64_t heap_start_;

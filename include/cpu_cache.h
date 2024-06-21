@@ -24,7 +24,6 @@ namespace mralloc {
 const uint32_t nprocs = 48;
 const uint32_t max_alloc_item = 256;
 const uint32_t max_free_item = 1024;
-const uint32_t max_class_free_item = 512;
 
 template <typename T>
 class ring_buffer{

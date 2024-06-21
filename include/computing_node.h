@@ -31,7 +31,6 @@
 namespace mralloc {
 
 const uint32_t ring_buffer_size = 40000;
-const uint32_t class_ring_buffer_size = 2048;
 
 struct node_info {
     node_info(one_side_info m_one_side_info_){
@@ -43,12 +42,10 @@ struct node_info {
         section_num_ = region_num_ / region_per_section;
 
         section_header_ = m_one_side_info_.section_header_;
-        flength_header_ = (uint64_t)((section_e*)section_header_ + section_num_);
 
-        region_header_ = (uint64_t)((flength_e*)flength_header_ + section_num_);
+        region_header_ = (uint64_t)((section_e*)section_header_ + section_num_);
         block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
-        class_block_rkey_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
-        block_header_ = (uint64_t)((uint32_t*)class_block_rkey_ + block_num_);
+        block_header_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
         backup_rkey_ = (uint64_t)((uint64_t*)block_header_ + block_num_);            
         heap_start_ = m_one_side_info_.heap_start_;
     }
@@ -61,10 +58,8 @@ struct node_info {
 
     // info before heap segment
     uint64_t section_header_;
-    uint64_t flength_header_;
     uint64_t region_header_;
     uint64_t block_rkey_;
-    uint64_t class_block_rkey_;
     uint64_t heap_start_;
     uint64_t block_header_;
     uint64_t backup_rkey_;
@@ -191,7 +186,6 @@ private:
     float cache_watermark_low;
     float cache_watermark_high;
     int cache_upper_bound;
-    // rdma_mem_t ring_class_cache[16][class_ring_buffer_size];
     int cpu_cache_watermark[nprocs];
 
     // << function enabled >>

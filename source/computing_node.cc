@@ -346,7 +346,7 @@ bool ComputingNode::new_cache_region() {
 
 bool ComputingNode::new_backup_region() {
         // exclusive, and fetch rkey must
-    while(!m_rdma_conn_[backup_node_]->fetch_region(backup_section_, backup_section_index_, 1, true, backup_region_, backup_region_index_) ) {
+    while(!m_rdma_conn_[backup_node_]->fetch_region(backup_section_, backup_section_index_, true, backup_region_, backup_region_index_) ) {
         if(!new_backup_section(backup_node_)){
             backup_node_ = (backup_node_+1) % node_num_;
             printf("[cache backup region] try to scan next node %d\n", backup_node_);
@@ -457,20 +457,6 @@ bool ComputingNode::free_mem_batch(uint32_t region_offset, uint32_t free_map, ui
             printf("Free the remote metadata failed\n");
             return false;
         }
-        // if(exclusive_region_[node][region_offset].region.on_use_ != 0 && free_class == -2) {
-        //     if(region_offset == current_class_region_index_[exclusive_region_[node][region_offset].region.block_class_]) {
-        //         printf("try to full empty\n");
-        //         m_rdma_conn_[node]->set_region_empty(current_class_region_[exclusive_region_[node][region_offset].region.block_class_], region_offset);
-        //         new_cache_region(exclusive_region_[node][region_offset].region.block_class_);
-        //         exclusive_region_[node][region_offset].region.block_class_ = 0;
-        //         exclusive_region_[node][region_offset].region.exclusive_ = 0;
-        //     }
-        // }
-        // if(free_class == -2 && region_offset != backup_region_index_){
-        //     m_rdma_conn_[node]->force_update_region_state(backup_region_, region_offset, false, true);
-        //     section_e empty_section;
-        //     m_rdma_conn_[node]->force_update_section_state(empty_section, region_offset, alloc_empty);
-        // } else 
         if(region_offset == backup_region_index_) {
             backup_region_.base_map_ &= free_map;  
         }
@@ -580,7 +566,7 @@ bool ComputingNode::free_mem_block(mr_rdma_addr remote_addr){
     uint64_t region_offset = (addr - node_info_[node].heap_start_) / node_info_[node].region_size_;
     uint64_t region_block_offset = (addr - node_info_[node].heap_start_) % node_info_[node].region_size_ / node_info_[node].block_size_;
     region_with_rkey* region; 
-    m_rdma_conn_[node]->remote_rebind(addr, 1, exclusive_region_[node][region_offset].rkey[region_block_offset]);
+    m_rdma_conn_[node]->remote_rebind(addr, exclusive_region_[node][region_offset].rkey[region_block_offset]);
     if(exclusive_region_[node][region_offset].region.exclusive_ == 1 && ring_cache->get_length() < 200*block_per_region) {
         mr_rdma_addr result; 
         result.addr = addr; 

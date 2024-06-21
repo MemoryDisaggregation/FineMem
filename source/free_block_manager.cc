@@ -17,11 +17,9 @@ namespace mralloc {
         global_rkey_ = rkey;
 
         section_header_ = (section*)meta_addr;
-        flength_header_ = (flength*)(section_header_ + section_num_);
-        region_header_ = (region*)(flength_header_+ section_num_); 
+        region_header_ = (region*)(section_header_ + section_num_);
         block_rkey_ = (uint32_t*)(region_header_ + region_num_);
-        class_block_rkey_ = (uint32_t*)(block_rkey_ + block_num_);
-        block_header_ = (uint64_t*)(class_block_rkey_ + block_num_);
+        block_header_ = (uint64_t*)(block_rkey_ + block_num_);
         backup_rkey_ = (uint32_t*)(block_header_ + block_num_);
         
         heap_start_ = addr;
@@ -38,9 +36,6 @@ namespace mralloc {
         for(int i = 0; i < section_num_; i++) {
             section_header_[i].store(init_section_header);
         }
-        for(int i = 0; i < section_num_; i++) {
-            flength_header_[i].store(0);
-        }
         
         for(int i = 0; i < region_num_; i++) {
             init_region_header.exclusive_ = 0;
@@ -49,7 +44,6 @@ namespace mralloc {
 
         for(int i = 0; i < block_num_; i++) {
             block_rkey_[i] = 0;
-            class_block_rkey_[i] = 0;
             block_header_[i] = 0;
         }
 
@@ -146,7 +140,7 @@ namespace mralloc {
         }
     }
 
-    bool ServerBlockManager::fetch_region(section_e &alloc_section, uint32_t section_offset, uint32_t block_length, bool shared, region_e &alloc_region, uint32_t &region_index) {
+    bool ServerBlockManager::fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, region_e &alloc_region, uint32_t &region_index) {
         if(shared == true) {
             // force use unclassed one to alloc single block
             section_e new_section;
@@ -177,7 +171,7 @@ namespace mralloc {
             region_old = region_new;
             alloc_region = region_old;
             return true;
-        } else if(block_length == 1) {
+        } else {
         bool on_empty = false;
         section_e new_section;
         uint32_t empty_map, chance_map, normal_map;
@@ -218,44 +212,6 @@ namespace mralloc {
             }
             return true;
         }
-        // varaint alloc
-        else {
-            printf("not support varaint length allocation\n");
-        }
-        return false;
-    }
-
-    bool ServerBlockManager::fetch_varaint_regions(section_e &alloc_section, uint32_t section_offset, uint64_t region_length, uint64_t &addr) {
-        bitmap32 free_map = alloc_section.alloc_map_ | alloc_section.frag_map_;
-        int free_length = 0;
-        // each section has 32 items
-        for(int i = 0; i < 32; i++) {
-            // a free space
-            if(free_map%2 == 0) {
-                free_length += 1;
-                // length enough
-                if(free_length == region_length) {
-                    section_e section_new = alloc_section;
-                    bitmap32 mask = 0;
-                    for(int j = i-free_length+1; j <= i; j++) {
-                        mask |= (uint32_t)1 << j;
-                    }
-                    section_new.alloc_map_ |= mask;
-                    section_new.frag_map_ |= mask;
-                    // find the section header changed
-                    if(!section_header_[section_offset].compare_exchange_strong(alloc_section, section_new)){
-                        i = 0; free_length = 0; free_map = alloc_section.alloc_map_ | alloc_section.frag_map_;
-                        continue;
-                    }
-                    alloc_section = section_new;
-                    addr = get_section_region_addr(section_offset, i-free_length+1);
-                    return true;
-                }
-            } else {
-                free_length = 0;
-            }
-            free_map >>= 1;
-        } 
         return false;
     }
 
@@ -299,52 +255,27 @@ namespace mralloc {
         addr = get_region_block_addr(region_index, index);
         rkey = get_region_block_rkey(region_index, index);
         
-    // retry counter for least 3 time allocation
-    uint16_t old_retry = (retry_counter_.retry_num[0] + retry_counter_.retry_num[1] + retry_counter_.retry_num[2]) / 3;
-    retry_counter_.retry_num[retry_counter_.retry_iter] = retry_time;
-    retry_counter_.retry_iter = (retry_counter_.retry_iter + 1) % 3;
-    uint16_t avg_retry = (retry_counter_.retry_num[0] + retry_counter_.retry_num[1] + retry_counter_.retry_num[2]) / 3;
-    
-    // concurrency state update, will async it in the future
-    if(alloc_region.base_map_ == bitmap32_filled) {
-        force_update_section_state(alloc_section, region_index, alloc_full);
-    } else if(old_retry < 10 && avg_retry >= 10) {
-        force_update_section_state(alloc_section, region_index, alloc_full);
-    } else if(old_retry < 3 && avg_retry >= 3) {
-        force_update_section_state(alloc_section, region_index, alloc_heavy);
-    } else if(old_retry >= 3 && avg_retry < 3) {
-        force_update_section_state(alloc_section, region_index, alloc_light);
-    } else if(old_retry >= 10 && avg_retry < 10) {
-        force_update_section_state(alloc_section, region_index, alloc_heavy);
+        // retry counter for least 3 time allocation
+        uint16_t old_retry = (retry_counter_.retry_num[0] + retry_counter_.retry_num[1] + retry_counter_.retry_num[2]) / 3;
+        retry_counter_.retry_num[retry_counter_.retry_iter] = retry_time;
+        retry_counter_.retry_iter = (retry_counter_.retry_iter + 1) % 3;
+        uint16_t avg_retry = (retry_counter_.retry_num[0] + retry_counter_.retry_num[1] + retry_counter_.retry_num[2]) / 3;
+        
+        // concurrency state update, will async it in the future
+        if(alloc_region.base_map_ == bitmap32_filled) {
+            force_update_section_state(alloc_section, region_index, alloc_full);
+        } else if(old_retry < 10 && avg_retry >= 10) {
+            force_update_section_state(alloc_section, region_index, alloc_full);
+        } else if(old_retry < 3 && avg_retry >= 3) {
+            force_update_section_state(alloc_section, region_index, alloc_heavy);
+        } else if(old_retry >= 3 && avg_retry < 3) {
+            force_update_section_state(alloc_section, region_index, alloc_light);
+        } else if(old_retry >= 10 && avg_retry < 10) {
+            force_update_section_state(alloc_section, region_index, alloc_heavy);
+        }
+        
+        return retry_time;
     }
-    
-    return retry_time;
-}
-
-    // bool ServerBlockManager::fetch_region_variant_blocks(uint32_t block_length, uint64_t &addr, uint32_t &rkey, 
-    //                                                                 bool is_exclusive, uint32_t region_index) {
-    //    int index; region_e new_region;
-    //     do {
-    //         if(alloc_region.exclusive_ != is_exclusive || alloc_region.block_class_ == 0) {
-    //             printf("already exclusive\n");
-    //             return false;
-    //         } 
-    //         new_region = alloc_region;
-    //         if((index = find_free_index_from_bitmap16_tail(alloc_region.frag_map_)) == -1) {
-    //             return false;
-    //         }
-    //         uint32_t mask = 0;
-    //         for(int i = 0;i < block_length + 1;i++) {
-    //             mask |= (uint32_t)1<<(index*(block_length + 1)+i);
-    //         }
-    //         new_region.base_map_ |= mask;
-    //         new_region.frag_map_ |= (uint16_t)1<<index;
-    //     }while(!region_header_[region_index].compare_exchange_strong(alloc_region, new_region));
-    //     alloc_region = new_region;
-    //     addr = get_region_block_addr(region_index, index*(block_length + 1));
-    //     rkey = get_region_class_block_rkey(region_index, index*(block_length + 1));
-    //     return true;
-    // }
 
     int ServerBlockManager::free_region_block(uint64_t addr, bool is_exclusive) {
         uint32_t region_offset = (addr - heap_start_) / region_size_;
