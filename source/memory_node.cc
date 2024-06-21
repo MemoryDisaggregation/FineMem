@@ -177,51 +177,44 @@ void MemoryNode::rebinder() {
     }
 }
 
-bool MemoryNode::new_cache_section(uint32_t block_class){
-    alloc_advise advise = (block_class == 0?alloc_no_class:alloc_class);
-    if(!server_block_manager_->find_section(block_class, current_section_, current_section_index_, advise) ) {
+bool MemoryNode::new_cache_section(uint32_t block_length){
+    alloc_advise advise = alloc_light;
+    if(!server_block_manager_->find_section(current_section_, current_section_index_, advise) ) {
         printf("cannot find avaliable section\n");
         return false;
     }
     return true;
 }
 
-bool MemoryNode::new_cache_region(uint32_t block_class) {
-    if(block_class == 0){
-        while(!server_block_manager_->fetch_region(current_section_, current_section_index_, block_class, true, current_region_, current_region_index_) ) {
-            if(!new_cache_section(block_class))
+bool MemoryNode::new_cache_region(uint32_t block_length) {
+    if(block_length == 1){
+        while(!server_block_manager_->fetch_region(current_section_, current_section_index_, block_length, true, current_region_, current_region_index_) ) {
+            if(!new_cache_section(block_length))
                 return false;
         }
     } else {
         while(!server_block_manager_->fetch_region(current_section_, 
-                current_section_index_, block_class, true, current_class_region_[block_class], current_class_region_index_[block_class]) ) {
-            if(!new_cache_section(block_class))
+                current_section_index_, block_length, true, current_class_region_[block_length], current_class_region_index_[block_length]) ) {
+            if(!new_cache_section(block_length))
                 return false;
         }
     }
     return true;
 }
 
-bool MemoryNode::fill_cache_block(uint32_t block_class){
-    if(block_class == 0){
+bool MemoryNode::fill_cache_block(uint32_t block_length){
+    if(block_length == 1){
         uint32_t length = ring_cache->get_length();
         for(int i = 0; i<simple_cache_watermark - length; i++){
             mr_rdma_addr addr;
-            while(!server_block_manager_->fetch_region_block(current_region_, addr.addr, addr.rkey, false, current_region_index_)) {
+            while(!server_block_manager_->fetch_region_block(current_section_, current_region_, addr.addr, addr.rkey, false, current_region_index_)) {
                 // fetch new region
-                new_cache_region(block_class);
+                new_cache_region(block_length);
             }
             ring_cache->add_cache(addr);
         }
     } else {
-        for(int i = 0; i<simple_class_cache_watermark[block_class]; i++){
-            while(!server_block_manager_->fetch_region_class_block(current_class_region_[block_class], block_class, simple_class_cache_addr[block_class][i], 
-                simple_class_cache_rkey[block_class][i], false, simple_class_cache_index[block_class][i])) {
-                // fetch new region
-                new_cache_region(block_class);
-            }
-            if(global_rkey) simple_class_cache_rkey[block_class][i] = get_global_rkey();
-        }
+        printf("Cache for variant length is depracted\n");
     }
     return true;
 }
@@ -534,8 +527,8 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
     return true;
 }
 
-bool MemoryNode::init_class_mw(uint32_t region_offset, uint16_t block_class, ibv_qp* qp, ibv_cq *cq) {
-    uint32_t class_size = block_class + 1;
+bool MemoryNode::init_class_mw(uint32_t region_offset, uint16_t block_length, ibv_qp* qp, ibv_cq *cq) {
+    uint32_t class_size = block_length;
     uint32_t block_offset = region_offset * block_per_region;
     for(int i = 0; i < block_per_region/class_size; i++){
         uint64_t block_addr_ = server_block_manager_->get_block_addr(block_offset + i*class_size);
@@ -760,7 +753,7 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
         } else if (request->type == MSG_MW_CLASS_BIND) {
             ClassBindRequest *reg_req = (ClassBindRequest *)request;
             ClassBindResponse *resp_msg = (ClassBindResponse *)cmd_resp;
-            if (!init_class_mw(reg_req->region_offset, reg_req->block_class, one_side_qp_[request->id], one_side_cq_[request->id])) {
+            if (!init_class_mw(reg_req->region_offset, reg_req->block_length, one_side_qp_[request->id], one_side_cq_[request->id])) {
                 resp_msg->status = RES_FAIL;
             } else {
                 resp_msg->status = RES_OK;
@@ -774,7 +767,7 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
             RebindBlockRequest *reg_req = (RebindBlockRequest *)request;
             RebindBlockResponse *resp_msg = (RebindBlockResponse *)cmd_resp;
             uint32_t block_id = (reg_req->addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
-            if(reg_req->block_class == 0) {
+            if(reg_req->block_length == 1) {
                 uint32_t rkey = server_block_manager_->get_backup_rkey(block_id);
                 if(rkey != -1){
                     resp_msg->rkey = rkey;
@@ -790,7 +783,7 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
                     resp_msg->status = RES_OK;
                 }
             } else {
-                if (!bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_class+1)*server_block_manager_->get_block_size(), one_side_qp_[request->id], one_side_cq_[request->id])) {
+                if (!bind_mw(block_class_mw[block_id], reg_req->addr, (reg_req->block_length)*server_block_manager_->get_block_size(), one_side_qp_[request->id], one_side_cq_[request->id])) {
                     resp_msg->status = RES_FAIL;
                 } else {
                     server_block_manager_->set_class_block_rkey(block_id, block_class_mw[block_id]->rkey);

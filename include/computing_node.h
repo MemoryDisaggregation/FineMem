@@ -43,8 +43,9 @@ struct node_info {
         section_num_ = region_num_ / region_per_section;
 
         section_header_ = m_one_side_info_.section_header_;
-        section_class_header_ = (uint64_t)((section_e*)section_header_ + section_num_);
-        region_header_ = (uint64_t)((section_class_e*)section_class_header_+ block_class_num*section_num_);
+        flength_header_ = (uint64_t)((section_e*)section_header_ + section_num_);
+
+        region_header_ = (uint64_t)((flength_e*)flength_header_ + section_num_);
         block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
         class_block_rkey_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
         block_header_ = (uint64_t)((uint32_t*)class_block_rkey_ + block_num_);
@@ -60,7 +61,7 @@ struct node_info {
 
     // info before heap segment
     uint64_t section_header_;
-    uint64_t section_class_header_;
+    uint64_t flength_header_;
     uint64_t region_header_;
     uint64_t block_rkey_;
     uint64_t class_block_rkey_;
@@ -80,10 +81,6 @@ public:
         if(cpu_cache_enabled_)  assert(heap_enabled_);
         ring_cache = new ring_buffer_atomic<mr_rdma_addr>(ring_buffer_size, ring_cache_content, mr_rdma_addr(-1, -1, -1), &reader, &writer);
         ring_cache->clear();
-        for(int i = 0; i<class_num; i++) {
-            ring_class_cache[i] = new ring_buffer_atomic<mr_rdma_addr>(class_ring_buffer_size, ring_class_cache_content[i], mr_rdma_addr(-1, -1, -1), &class_reader[i], &class_writer[i]);
-            ring_class_cache[i]->clear();
-        }
     }
 
     bool start(std::string* addr, std::string* port, uint32_t node_num) ;
@@ -105,8 +102,6 @@ public:
         printf("ring length:%u\n", ring_cache->get_length());
         return ;
     }
-    void increase_class_watermark(uint16_t block_class, int &upper_bound);
-    void decrease_class_watermark(uint16_t block_class, int &upper_bound);
     void increase_watermark(int &upper_bound);
     void decrease_watermark(int &upper_bound);
 
@@ -114,20 +109,17 @@ public:
         return node_info_[node].heap_start_ + region_index * node_info_[node].region_size_ 
             + block_offset * node_info_[node].block_size_;
     }
-    bool new_cache_section(uint32_t block_class, alloc_advise advise, uint32_t node);
+    bool new_cache_section(alloc_advise advise, uint32_t node);
     bool new_backup_section(uint32_t node);
-    bool new_cache_region(uint32_t block_class);
+    bool new_cache_region();
     bool new_backup_region();
-    bool fill_cache_block(uint32_t block_class);
+    bool fill_cache_block();
 
     bool fetch_mem_block_nocached(mr_rdma_addr &remote_addr, uint32_t node);
     bool fetch_mem_block(mr_rdma_addr &remote_addr);
     bool free_mem_block(mr_rdma_addr remote_addr);
     bool free_mem_block_slow(mr_rdma_addr remote_addr);
     bool free_mem_batch(uint32_t region_offset, uint32_t free_map, uint32_t node);
-    // bool free_mem_block_fast_batch(mr_rdma_addr *remote_addr);
-
-    bool fetch_mem_class_block(uint16_t block_class, mr_rdma_addr &remote_addr);
 
     // << RPC block fetch >>
     bool fetch_mem_block_remote(mr_rdma_addr &remote_addr, uint32_t node);
@@ -191,27 +183,16 @@ private:
     int backup_counter = 0;
     int backup_cycle = -1;
 
-    uint32_t current_class_node_[16];
-    section_e current_class_section_[16];
-    uint32_t current_class_section_index_[16];
-    region_e current_class_region_[16];
-    uint32_t current_class_region_index_[16];
-
     // << reserved block cache>>
     ring_buffer_atomic<mr_rdma_addr>* ring_cache;
-    ring_buffer_atomic<mr_rdma_addr>* ring_class_cache[16];
     mr_rdma_addr ring_cache_content[ring_buffer_size];
-    mr_rdma_addr ring_class_cache_content[16][class_ring_buffer_size];
     // rdma_mem_t ring_cache[ring_buffer_size];
     std::atomic<uint32_t> reader, writer;
     float cache_watermark_low;
     float cache_watermark_high;
     int cache_upper_bound;
     // rdma_mem_t ring_class_cache[16][class_ring_buffer_size];
-    int class_cache_upper_bound[16];
-    std::atomic<uint32_t> class_reader[16], class_writer[16];
     int cpu_cache_watermark[nprocs];
-    int cpu_class_watermark[class_num];
 
     // << function enabled >>
     bool heap_enabled_;
@@ -222,8 +203,6 @@ private:
     cpu_cache* cpu_cache_;
     std::atomic<uint8_t> heap_worker_id_;
     uint8_t heap_worker_num_;
-
-    // << one-side metadata >>
 
     block_header_e* header_list;
     uint32_t* rkey_list;

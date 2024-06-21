@@ -86,19 +86,17 @@ public:
     bool alive();
     void rebinder();
 
-    bool new_cache_section(uint32_t block_class);
-    bool new_cache_region(uint32_t block_class);
-    bool fill_cache_block(uint32_t block_class);
+    bool new_cache_section();
+    bool new_cache_region();
+    bool fill_cache_block();
 
     bool fetch_mem_block(uint64_t &addr, uint32_t &rkey);
-    bool fetch_mem_class_block(uint64_t &addr, uint32_t &rkey);
     bool free_mem_block(uint64_t addr);
 
 
     void print_alloc_info();
 
     bool init_mw(ibv_qp* qp, ibv_cq *cq);
-    bool init_class_mw(uint32_t region_offset, uint16_t block_class, ibv_qp* qp, ibv_cq *cq);
     bool bind_mw(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq *cq);
     bool bind_mw_type2(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq *cq);
     bool unbind_mw_type2(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq *cq);
@@ -136,8 +134,6 @@ private:
     uint32_t current_section_index_;
     region_e current_region_;
     uint32_t current_region_index_;
-    region_e current_class_region_[16];
-    uint32_t current_class_region_index_[16];
 
     // << reserved block cache>>
     ring_buffer_atomic<mr_rdma_addr>* ring_cache;
@@ -146,10 +142,6 @@ private:
     uint64_t simple_cache_addr[32];
     uint32_t simple_cache_rkey[32];
     uint64_t simple_cache_watermark;
-    uint64_t simple_class_cache_addr[16][4];
-    uint32_t simple_class_cache_rkey[16][4];
-    uint32_t simple_class_cache_index[16][4];
-    uint64_t simple_class_cache_watermark[16];
 
     // << function enabled >>
     bool one_sided_enabled_;
@@ -180,7 +172,6 @@ private:
     // << memory window? >>
     ibv_mw** block_mw;
     ibv_mw** backup_mw;
-    ibv_mw** block_class_mw;
     ServerBlockManager *server_block_manager_;
     uint8_t running;
     uint32_t global_rkey_;

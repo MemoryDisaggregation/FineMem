@@ -17,8 +17,8 @@ namespace mralloc {
         global_rkey_ = rkey;
 
         section_header_ = (section*)meta_addr;
-        section_class_header_ = (section_class*)(section_header_+ section_num_); 
-        region_header_ = (region*)(section_class_header_ + block_class_num*section_num_);
+        flength_header_ = (flength*)(section_header_ + section_num_);
+        region_header_ = (region*)(flength_header_+ section_num_); 
         block_rkey_ = (uint32_t*)(region_header_ + region_num_);
         class_block_rkey_ = (uint32_t*)(block_rkey_ + block_num_);
         block_header_ = (uint64_t*)(class_block_rkey_ + block_num_);
@@ -38,11 +38,8 @@ namespace mralloc {
         for(int i = 0; i < section_num_; i++) {
             section_header_[i].store(init_section_header);
         }
-        section_class_e null_class = {bitmap32_filled, bitmap32_filled};
-        for(int i = 0; i < section_num_ ; i++) {
-            for(int j = 0; j < block_class_num; j++) {
-                section_class_header_[i*block_class_num + j].store(null_class);
-            }
+        for(int i = 0; i < section_num_; i++) {
+            flength_header_[i].store(0);
         }
         
         for(int i = 0; i < region_num_; i++) {
@@ -62,149 +59,112 @@ namespace mralloc {
     inline bool ServerBlockManager::check_section(section_e alloc_section, alloc_advise advise, uint32_t offset) {
         switch (advise) {
         case alloc_empty:
-            return ((~alloc_section.alloc_map_ & ~alloc_section.class_map_) & 1<< offset) != 0;
-        case alloc_no_class:
-            return ((alloc_section.alloc_map_ & ~alloc_section.class_map_) & 1<< offset) != 0;
-        case alloc_class:
-            return ((~alloc_section.alloc_map_ & alloc_section.class_map_) & 1<< offset) != 0;
-        case alloc_exclusive:
-            return ((alloc_section.alloc_map_ & alloc_section.class_map_) & 1<< offset) != 0;
+            return ((~alloc_section.alloc_map_ & ~alloc_section.frag_map_) & 1<< offset) != 0;
+        case alloc_light:
+            return ((alloc_section.alloc_map_ & ~alloc_section.frag_map_) & 1<< offset) != 0;
+        case alloc_heavy:
+            return ((~alloc_section.alloc_map_ & alloc_section.frag_map_) & 1<< offset) != 0;
+        case alloc_full:
+            return ((alloc_section.alloc_map_ & alloc_section.frag_map_) & 1<< offset) != 0;
         }   
         return false;
     }
 
-    bool ServerBlockManager::update_section(uint32_t region_index, alloc_advise advise, alloc_advise compare) {
+    bool ServerBlockManager::force_update_section_state(section_e &section, uint32_t region_index, alloc_advise advise) {
         uint64_t section_offset = region_index/region_per_section;
         uint64_t region_offset = region_index%region_per_section;
-        section_e section_old = section_header_[section_offset].load();
-        section_e section_new = section_old;
-        if(advise == alloc_exclusive) {
+        section = section_header_[section_offset].load();
+        section_e section_new = section;
+        if(check_section(section, advise, region_offset)){
+            return true;
+        } else if (check_section(section, alloc_empty, region_offset)){
+            // Error: from empty --> allocated
+            return false;
+        }
+        if(advise == alloc_full) {
             do{
-                if(!check_section(section_old, compare, region_offset)){
-                    return false;
-                }
+                section_new = section;
                 section_new.alloc_map_ |= (uint32_t)1 << region_offset;
-                section_new.class_map_ |= (uint32_t)1 << region_offset;
-            }while(!section_header_[section_offset].compare_exchange_strong(section_old, section_new));
+                section_new.frag_map_ |= (uint32_t)1 << region_offset;
+            }while(!section_header_[section_offset].compare_exchange_strong(section, section_new));
             return true;
         } else if(advise == alloc_empty) {
             do{
-                if(!check_section(section_old, compare, region_offset)){
-                    return false;
-                }
+                section_new = section;
                 section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
-                section_new.class_map_ &= ~((bitmap32)1 << region_offset);
-            }while(!section_header_[section_offset].compare_exchange_strong(section_old, section_new));
+                section_new.frag_map_ &= ~((bitmap32)1 << region_offset);
+            }while(!section_header_[section_offset].compare_exchange_strong(section, section_new));
             return true;
-        } else if(advise == alloc_no_class) {
+        } else if(advise == alloc_light) {
             do{
-                if(!check_section(section_old, compare, region_offset)){
-                    return false;
-                }
-                section_new.class_map_ &= ~((bitmap32)1 << region_offset);
+                section_new = section;
+                section_new.frag_map_ &= ~((bitmap32)1 << region_offset);
                 section_new.alloc_map_ |= (uint32_t)1 << region_offset;
-            }while(!section_header_[section_offset].compare_exchange_strong(section_old, section_new));
+            }while(!section_header_[section_offset].compare_exchange_strong(section, section_new));
             return true;
-        } else if(advise == alloc_class) {
+        } else if(advise == alloc_heavy) {
             do{
-                if(!check_section(section_old, compare, region_offset)){
-                    return false;
-                }
-                section_new.class_map_ |= (uint32_t)1 << region_offset;
+                section_new = section;
+                section_new.frag_map_ |= (uint32_t)1 << region_offset;
                 section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
-            }while(!section_header_[section_offset].compare_exchange_strong(section_old, section_new));
+            }while(!section_header_[section_offset].compare_exchange_strong(section, section_new));
             return true;
         }
         return false;
     }
 
-    bool ServerBlockManager::find_section(uint16_t block_class, section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
-        section_e section;
-        if(advise == alloc_class) {
-            section_class_e section_class_header;
-            for(int i = 0; i < section_num_; i++) {
-                section = section_header_[i].load();
-                if((section.class_map_ | section.alloc_map_) != ~(uint32_t)0){
-                    alloc_section = section;
-                    section_offset = i;
-                    return true;
+    bool ServerBlockManager::find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
+        section_e section = {0,0};
+        int offset = section_offset % section_num_;
+
+        if(advise != alloc_empty) {
+            int remain = section_num_, fetch = (offset + 8) > section_num_ ? (section_num_ - offset):8, index = offset;
+            while(remain > 0) {
+                for(int j = 0; j < fetch; j++) {
+                    section = section_header_[index+j].load();
+                    if((section.frag_map_ & section.alloc_map_) != ~(uint32_t)0){
+                        alloc_section = section;
+                        section_offset = index + j;
+                        return true;
+                    }
+                    index = (index + fetch)%section_num_; remain -= fetch; fetch = (index + 8) > section_num_ ? (section_num_ - index):8;
                 }
             }
-            for(int i = 0; i < section_num_; i++) {
-                uint32_t fast_index = get_section_class_index(i, block_class);
-                section_class_header = section_class_header_[fast_index].load();
-                if((section_class_header.class_map_ & section_class_header.alloc_map_) != ~(uint32_t)0){
-                    alloc_section = section_header_[i].load();
-                    section_offset = i;
-                    return true;
+        } else {
+            int remain = section_num_, fetch = (offset + 8) > section_num_ ? (section_num_ - offset):8, index = offset;
+            while(remain > 0) {
+                for(int j = 0; j < fetch; j++) {
+                    section = section_header_[index+j].load();
+                    if((section.frag_map_ | section.alloc_map_) != ~(uint32_t)0){
+                        alloc_section = section;
+                        section_offset = index + j;
+                        return true;
+                    }
+                    index = (index + fetch)%section_num_; remain -= fetch; fetch = (index + 8) > section_num_ ? (section_num_ - index):8;
                 }
             }
-        } else if(advise == alloc_no_class) {
-            for(int i = 0; i < section_num_; i++) {
-                section = section_header_[i].load();
-                if((section.class_map_ & section.alloc_map_)  != ~(uint32_t)0){
-                    alloc_section = section;
-                    section_offset = i;
-                    return true;
-                }
-            }
-        } else if (advise == alloc_empty) {
-            for(int i = 0; i < section_num_; i++) {
-                section = section_header_[i].load();
-                if((section.class_map_ | section.alloc_map_ ) != ~(uint32_t)0){
-                    alloc_section = section;
-                    section_offset = i;
-                    return true;
-                }
-            }
-        } else { return false; }
-        return false;
+        }
     }
 
-    bool ServerBlockManager::fetch_region(section_e &alloc_section, uint32_t section_offset, uint32_t block_class, bool shared, region_e &alloc_region, uint32_t &region_index) {
-        if(block_class == 0 && shared == true) {
+    bool ServerBlockManager::fetch_region(section_e &alloc_section, uint32_t section_offset, uint32_t block_length, bool shared, region_e &alloc_region, uint32_t &region_index) {
+        if(shared == true) {
             // force use unclassed one to alloc single block
             section_e new_section;
             uint32_t free_map;
             int index;
             do {
-                free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
-                if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
-                    free_map = alloc_section.class_map_;
-                    if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
-                        return false;
-                    }
-                }
-                // if first alloc, do state update
-                if(((alloc_section.alloc_map_>>index) & 1) != 0) {
-                    break;
-                }
-                new_section = alloc_section;
-                new_section.alloc_map_ |= ((uint32_t)1<<index);
-            }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
-            alloc_section = new_section;
-            region_index = section_offset*region_per_section+index;
-            alloc_region = region_header_[region_index].load();
-            return true;
-        }
-        else if(block_class == 0 && shared == false) {
-            section_e new_section;
-            uint32_t free_map;
-            int index;
-            do {
-                free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
-                // search exclusive block, from the tail
+                free_map = alloc_section.frag_map_ | alloc_section.alloc_map_;
                 if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
                     return false;
                 }
                 new_section = alloc_section;
                 new_section.alloc_map_ |= ((uint32_t)1<<index);
-                new_section.class_map_ |= ((uint32_t)1<<index);
+                new_section.frag_map_ |= ((uint32_t)1<<index);
             }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
             alloc_section = new_section;
+            region_e region_new, region_old;
             region_index = section_offset*region_per_section+index;
-            region_e region_old= region_header_[region_index].load();
-            region_e region_new;
+            alloc_region = region_header_[region_index].load();
             do {
                 region_new = region_old;
                 if(region_new.exclusive_ == 1) {
@@ -212,107 +172,61 @@ namespace mralloc {
                     return false;
                 }
                 region_new.exclusive_ = 1;
-            } while (!region_header_[region_index].compare_exchange_strong(region_old, region_new));
+                region_new.on_use_ = 1;
+            }while(!region_header_[region_index].compare_exchange_strong(region_old, region_new));
             region_old = region_new;
             alloc_region = region_old;
             return true;
-        }
-        // class alloc, shared
-        else if (shared == true) {
-            int index; bool has_free = true;
-            uint32_t fast_index = get_section_class_index(section_offset, block_class);
-            region_e region_new, region_old;
-            section_class_e section_class_header = section_class_header_[fast_index].load();
-            section_class_e new_section_class_header = section_class_header;
-            uint32_t class_map = section_class_header.class_map_ & section_class_header.alloc_map_;
+        } else if(block_length == 1) {
+        bool on_empty = false;
+        section_e new_section;
+        uint32_t empty_map, chance_map, normal_map;
+        int index;
             do {
-                if( (index = find_free_index_from_bitmap32_tail(class_map)) == -1 ){
-                    has_free = false;
-                    break;
+                empty_map = alloc_section.frag_map_ | alloc_section.alloc_map_;
+                chance_map = ~alloc_section.frag_map_ | alloc_section.alloc_map_;
+                normal_map = alloc_section.frag_map_ | ~alloc_section.alloc_map_;
+                if( (index = find_free_index_from_bitmap32_tail(normal_map)) != -1 ){
+                    // no modify on map status
+                    new_section = alloc_section;
+                } else if( (index = find_free_index_from_bitmap32_tail(chance_map)) != -1 ){
+                    // mark the chance map to full
+                    new_section = alloc_section;
+                    raise_bit(new_section.alloc_map_, new_section.frag_map_, index);
+                } else if( (index = find_free_index_from_bitmap32_tail(empty_map)) != -1 ){
+                    // mark the empty map to allocated
+                    new_section = alloc_section;
+                    raise_bit(new_section.alloc_map_, new_section.frag_map_, index);    
+                    on_empty = true;
+                } else {
+                    return false;
                 }
-                raise_bit(new_section_class_header.alloc_map_, new_section_class_header.class_map_, index);
-            } while(!section_class_header_[fast_index].compare_exchange_strong(section_class_header, new_section_class_header));
-            if(has_free) {
-                alloc_region = region_header_[section_offset * region_per_section + index].load();
-                return true;
+            }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
+            region_e region_new;
+            alloc_section = new_section;
+            region_index = section_offset*region_per_section+index;
+            alloc_region = region_header_[region_index].load();
+            if(on_empty){
+                do {
+                    region_new = alloc_region;
+                    if(region_new.on_use_ == 1) {
+                        printf("impossible problem: exclusive is already set\n");
+                        return false;
+                    }
+                    region_new.on_use_ = 1;
+                } while (!region_header_[region_index].compare_exchange_strong(alloc_region, region_new));
             }
-            uint32_t free_map;
-            section_e new_section;
-            do {
-                free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
-                // search class block, from the tail
-                if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
-                    return false;
-                }
-                new_section = alloc_section;
-                new_section.class_map_ |= ((uint32_t)1<<index);
-                new_section.alloc_map_ |= ((uint32_t)1<<index);
-            }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
-            alloc_section = new_section;
-            region_index = section_offset*region_per_section+index;
-            region_old= region_header_[region_index].load();
-            init_region_class(region_old, block_class, 0, region_index);
-            try_add_section_class(section_offset, block_class, region_old, region_index);
-            do{
-                new_section_class_header = section_class_header;
-                if(new_section_class_header.alloc_map_ & new_section_class_header.class_map_ >> index != 1) {
-                    break;
-                }
-                new_section_class_header.alloc_map_ &= ~(uint32_t)(1<<index);
-                new_section_class_header.class_map_ &= ~(uint32_t)(1<<index);
-            } while (!section_class_header_[fast_index].compare_exchange_strong(section_class_header, new_section_class_header));
-            alloc_region = region_old;
             return true;
         }
-        // class alloc, and exclusive
+        // varaint alloc
         else {
-            int index;
-            region_e region_old, region_new;
-            uint32_t free_map;
-            section_e new_section;
-            do {
-                free_map = alloc_section.class_map_ | alloc_section.alloc_map_;
-                // search class block, from the tail
-                if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
-                    return false;
-                }
-                new_section = alloc_section;
-                new_section.class_map_ |= ((uint32_t)1<<index);
-                new_section.alloc_map_ |= ((uint32_t)1<<index);
-            }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
-            alloc_section = new_section;
-            region_index = section_offset*region_per_section+index;
-            region_old= region_header_[region_index].load();
-            init_region_class(region_old, block_class, 1, region_index);
-            alloc_region = region_old;
-            return true;
+            printf("not support varaint length allocation\n");
         }
         return false;
     }
 
-    bool ServerBlockManager::try_add_section_class(uint32_t section_offset, uint32_t block_class, region_e &alloc_region, uint32_t region_index){
-        bool recycle = false;
-        uint32_t fast_index = get_section_class_index(section_offset, block_class);
-        uint32_t region_index_ = region_index % region_per_section;
-        section_class_e old_section_class = section_class_header_[fast_index].load();
-        section_class_e new_section_class = old_section_class;
-        do{
-            new_section_class = old_section_class;
-            if(new_section_class.alloc_map_ | new_section_class.class_map_ >> region_index_ % 2 == 0) {
-                new_section_class.alloc_map_ |= 1<< region_index_;
-                new_section_class.class_map_ |= 1<< region_index_;
-                recycle = true;
-            } else
-                down_bit(new_section_class.alloc_map_, new_section_class.class_map_, region_index_);
-        } while (!section_class_header_[fast_index].compare_exchange_strong(old_section_class, new_section_class));
-        if(recycle) {
-            set_region_empty(alloc_region, region_index_);
-        }
-        return true;
-    }
-
-    bool ServerBlockManager::fetch_large_region(section_e &alloc_section, uint32_t section_offset, uint64_t region_num, uint64_t &addr) {
-        bitmap32 free_map = alloc_section.alloc_map_ | alloc_section.class_map_;
+    bool ServerBlockManager::fetch_varaint_regions(section_e &alloc_section, uint32_t section_offset, uint64_t region_length, uint64_t &addr) {
+        bitmap32 free_map = alloc_section.alloc_map_ | alloc_section.frag_map_;
         int free_length = 0;
         // each section has 32 items
         for(int i = 0; i < 32; i++) {
@@ -320,17 +234,17 @@ namespace mralloc {
             if(free_map%2 == 0) {
                 free_length += 1;
                 // length enough
-                if(free_length == region_num) {
+                if(free_length == region_length) {
                     section_e section_new = alloc_section;
                     bitmap32 mask = 0;
                     for(int j = i-free_length+1; j <= i; j++) {
                         mask |= (uint32_t)1 << j;
                     }
                     section_new.alloc_map_ |= mask;
-                    section_new.class_map_ |= mask;
+                    section_new.frag_map_ |= mask;
                     // find the section header changed
                     if(!section_header_[section_offset].compare_exchange_strong(alloc_section, section_new)){
-                        i = 0; free_length = 0; free_map = alloc_section.alloc_map_ | alloc_section.class_map_;
+                        i = 0; free_length = 0; free_map = alloc_section.alloc_map_ | alloc_section.frag_map_;
                         continue;
                     }
                     alloc_section = section_new;
@@ -345,14 +259,11 @@ namespace mralloc {
         return false;
     }
 
-    bool ServerBlockManager::set_region_exclusive(region_e &alloc_region, uint32_t region_index) {
-        if(!update_section(region_index, alloc_exclusive, alloc_empty)){
-            return false;
-        }
+    bool ServerBlockManager::force_update_region_state(region_e &alloc_region, uint32_t region_index, bool is_exclusive, bool on_use) {
         region_e new_region;
         do {
             new_region = alloc_region;
-            if(new_region.exclusive_ == 1) {
+            if(new_region.exclusive_ == is_exclusive) {
                 printf("impossible situation: exclusive has already been set\n");
                 return false;
             }
@@ -361,56 +272,14 @@ namespace mralloc {
         alloc_region = new_region;
         return true;
     }
-    bool ServerBlockManager::set_region_empty(region_e &alloc_region, uint32_t region_index) {
-        if(alloc_region.exclusive_ != 1) {
-            if(!set_region_exclusive(alloc_region, region_index))
-                return false;
-        }
-        region_e new_region;
-        do {
-            new_region = alloc_region;
-            if(new_region.base_map_ != 0) {
-                printf("wait for free\n");
-                return false;
-            }
-            new_region.exclusive_ = 0;
-            new_region.block_class_ = 0;
-        } while(!region_header_[region_index].compare_exchange_strong(alloc_region, new_region));
-        alloc_region = new_region;
-        if(!update_section(region_index, alloc_empty, alloc_exclusive)){
-            return false;
-        }
-        return true;
-    }
 
-    bool ServerBlockManager::init_region_class(region_e &alloc_region, uint32_t block_class, bool is_exclusive, uint32_t region_index) {
-        // suppose the section has already set!
-        region_e new_region;
-        do {
-            new_region = alloc_region;
-            if((alloc_region.block_class_ != 0 && alloc_region.block_class_ != block_class) || alloc_region.exclusive_ != is_exclusive)  {
-                return false;
-            } 
-            uint16_t mask = 0;
-            uint32_t reader = new_region.base_map_;
-            uint32_t tail = (uint32_t)1<<(block_class+1);
-            for(int i = 0; i < block_per_region/(block_class+1); i++ ) {
-                if(reader%tail == 0)
-                    mask |= (uint16_t)1<<i;
-                reader >>= block_class+1;
-            }
-            new_region.class_map_ = ~mask;
-            new_region.block_class_ = block_class;
-        } while (!region_header_[region_index].compare_exchange_strong(alloc_region, new_region));
-        alloc_region = new_region;
-        return true;
-    }
-
-    bool ServerBlockManager::fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
-        int index; region_e new_region;
+    bool ServerBlockManager::fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
+        int index, retry_time =0; region_e new_region;
+        uint8_t old_length, new_length;
         do{
-            if(alloc_region.exclusive_ != is_exclusive || alloc_region.block_class_ != 0) {
-                printf("state wrong\n");
+            retry_time++;
+            if(alloc_region.exclusive_ != is_exclusive || alloc_region.on_use_ != 1) {
+                printf("Region not avaliable, addr = %lx, exclusive = %d, free_length = %u\n", get_region_addr(region_index), alloc_region.exclusive_, alloc_region.max_length_);
                 return false;
             } 
             new_region = alloc_region;
@@ -418,90 +287,113 @@ namespace mralloc {
                 return false;
             }
             new_region.base_map_ |= (uint32_t)1<<index;
+
+            // update the max length info
+            old_length = new_region.max_length_;
+            new_length = max_longbit(new_region.base_map_);
+            new_region.max_length_ = new_length;
+
         } while (!region_header_[region_index].compare_exchange_strong(alloc_region, new_region));
+        
         alloc_region = new_region;
         addr = get_region_block_addr(region_index, index);
         rkey = get_region_block_rkey(region_index, index);
-        if(alloc_region.base_map_ == bitmap32_filled) {
-            update_section(region_index, alloc_exclusive, alloc_no_class);
-        }
-        return true;
+        
+    // retry counter for least 3 time allocation
+    uint16_t old_retry = (retry_counter_.retry_num[0] + retry_counter_.retry_num[1] + retry_counter_.retry_num[2]) / 3;
+    retry_counter_.retry_num[retry_counter_.retry_iter] = retry_time;
+    retry_counter_.retry_iter = (retry_counter_.retry_iter + 1) % 3;
+    uint16_t avg_retry = (retry_counter_.retry_num[0] + retry_counter_.retry_num[1] + retry_counter_.retry_num[2]) / 3;
+    
+    // concurrency state update, will async it in the future
+    if(alloc_region.base_map_ == bitmap32_filled) {
+        force_update_section_state(alloc_section, region_index, alloc_full);
+    } else if(old_retry < 10 && avg_retry >= 10) {
+        force_update_section_state(alloc_section, region_index, alloc_full);
+    } else if(old_retry < 3 && avg_retry >= 3) {
+        force_update_section_state(alloc_section, region_index, alloc_heavy);
+    } else if(old_retry >= 3 && avg_retry < 3) {
+        force_update_section_state(alloc_section, region_index, alloc_light);
+    } else if(old_retry >= 10 && avg_retry < 10) {
+        force_update_section_state(alloc_section, region_index, alloc_heavy);
     }
+    
+    return retry_time;
+}
 
-    bool ServerBlockManager::fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
-        int index; region_e new_region;
-        do {
-            if(alloc_region.exclusive_ != is_exclusive || alloc_region.block_class_ == 0) {
-                printf("already exclusive\n");
-                return false;
-            } 
-            new_region = alloc_region;
-            if((index = find_free_index_from_bitmap16_tail(alloc_region.class_map_)) == -1) {
-                return false;
-            }
-            uint32_t mask = 0;
-            for(int i = 0;i < block_class + 1;i++) {
-                mask |= (uint32_t)1<<(index*(block_class + 1)+i);
-            }
-            new_region.base_map_ |= mask;
-            new_region.class_map_ |= (uint16_t)1<<index;
-        }while(!region_header_[region_index].compare_exchange_strong(alloc_region, new_region));
-        alloc_region = new_region;
-        addr = get_region_block_addr(region_index, index*(block_class + 1));
-        rkey = get_region_class_block_rkey(region_index, index*(block_class + 1));
-        return true;
-    }
+    // bool ServerBlockManager::fetch_region_variant_blocks(uint32_t block_length, uint64_t &addr, uint32_t &rkey, 
+    //                                                                 bool is_exclusive, uint32_t region_index) {
+    //    int index; region_e new_region;
+    //     do {
+    //         if(alloc_region.exclusive_ != is_exclusive || alloc_region.block_class_ == 0) {
+    //             printf("already exclusive\n");
+    //             return false;
+    //         } 
+    //         new_region = alloc_region;
+    //         if((index = find_free_index_from_bitmap16_tail(alloc_region.frag_map_)) == -1) {
+    //             return false;
+    //         }
+    //         uint32_t mask = 0;
+    //         for(int i = 0;i < block_length + 1;i++) {
+    //             mask |= (uint32_t)1<<(index*(block_length + 1)+i);
+    //         }
+    //         new_region.base_map_ |= mask;
+    //         new_region.frag_map_ |= (uint16_t)1<<index;
+    //     }while(!region_header_[region_index].compare_exchange_strong(alloc_region, new_region));
+    //     alloc_region = new_region;
+    //     addr = get_region_block_addr(region_index, index*(block_length + 1));
+    //     rkey = get_region_class_block_rkey(region_index, index*(block_length + 1));
+    //     return true;
+    // }
 
     int ServerBlockManager::free_region_block(uint64_t addr, bool is_exclusive) {
         uint32_t region_offset = (addr - heap_start_) / region_size_;
         uint32_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
-        region_e region = region_header_[region_offset].load();
+        region_e new_region, region = region_header_[region_offset].load();
+        int retry_time = 0;
 
         if(!region.exclusive_ && is_exclusive) {
             printf("exclusive error, the actual block is shared\n");
             return -1;
         }
+        uint32_t new_rkey;
         if((region.base_map_ & ((uint32_t)1<<region_block_offset)) == 0) {
             printf("already freed\n");
             return -1;
         }
-        uint32_t new_rkey;
-        if(region.block_class_ == 0) {
-            region_e new_region;
-            do{
-                new_region = region;
-                new_region.base_map_ &= ~(uint32_t)(1<<region_block_offset);
-            } while(!region_header_[region_offset].compare_exchange_strong(region, new_region));
-            if(!is_exclusive && free_bit_in_bitmap32(new_region.base_map_) > block_per_region/2 && free_bit_in_bitmap32(region.base_map_) <= block_per_region/2){
-                update_section(region_offset, alloc_no_class, alloc_exclusive);
+        do{
+            retry_time++;
+            new_region = region;
+            new_region.base_map_ &= ~(uint32_t)(1<<region_block_offset);
+            if(new_region.base_map_ == (bitmap32)0) {
+                new_region.on_use_ = 0;
+                new_region.exclusive_ = 0;
             }
-            region = new_region;
-            return 0;
-        } else {
-            region_e new_region;
-            uint16_t block_class = region.block_class_;
-            do{
-                new_region = region;
-                uint32_t mask = 0; 
-                for(int i = 0;i < block_class + 1;i++) {
-                    mask |= (uint32_t)1<<(region_block_offset+i);
-                }
-                new_region.base_map_ &= ~mask;
-                new_region.class_map_ &= ~(uint16_t)(1<<region_block_offset/(block_class+1));
-            } while(!region_header_[region_offset].compare_exchange_strong(region, new_region));
-            if(free_bit_in_bitmap16(new_region.class_map_) == block_per_region/(block_class+1)) {
-                try_add_section_class(region_offset/region_per_section, block_class, new_region, region_offset);
-            } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > block_per_region/(block_class+1)/2 && free_bit_in_bitmap16(region.class_map_) <= block_per_region/(block_class+1)/2){
-                try_add_section_class(region_offset/region_per_section, block_class, new_region, region_offset);
-            } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > 3*block_per_region/(block_class+1)/4 && free_bit_in_bitmap16(region.class_map_) <= 3*block_per_region/(block_class+1)/4){
-                try_add_section_class(region_offset/region_per_section, block_class, new_region, region_offset);
-            } else if(!is_exclusive && free_bit_in_bitmap16(new_region.class_map_) > block_per_region/(block_class+1)/4 && free_bit_in_bitmap16(region.class_map_) <= block_per_region/(block_class+1)/4){
-                try_add_section_class(region_offset/region_per_section, block_class, new_region, region_offset);
-            }
-            region = new_region;
-            return block_class;
+        } while(!region_header_[region_offset].compare_exchange_strong(region, new_region));
+
+        // retry counter for least 3 time allocation
+        uint16_t old_retry = (retry_counter_.retry_num[0] + retry_counter_.retry_num[1] + retry_counter_.retry_num[2]) / 3;
+        retry_counter_.retry_num[retry_counter_.retry_iter] = retry_time;
+        retry_counter_.retry_iter = (retry_counter_.retry_iter + 1) % 3;
+        uint16_t avg_retry = (retry_counter_.retry_num[0] + retry_counter_.retry_num[1] + retry_counter_.retry_num[2]) / 3;
+        
+        // concurrency state update, will async it in the future
+        section_e alloc_section;
+        if(!is_exclusive && new_region.base_map_ == (bitmap32)0 ){
+            force_update_section_state(alloc_section, region_offset, alloc_empty); 
+            return -2;
+        } else if(old_retry < 10 && avg_retry >= 10) {
+            force_update_section_state(alloc_section, region_offset, alloc_full);
+        } else if(old_retry < 3 && avg_retry >= 3) {
+            force_update_section_state(alloc_section, region_offset, alloc_heavy);
+        } else if(old_retry >= 3 && avg_retry < 3) {
+            force_update_section_state(alloc_section, region_offset, alloc_light);
+        } else if(old_retry >= 10 && avg_retry < 10) {
+            force_update_section_state(alloc_section, region_offset, alloc_heavy);
         }
-        return -1;
+
+        region = new_region;
+        return 0;
     }
 
     bool ClientBlockManager::init(uint64_t addr, uint64_t size, uint32_t rkey){
@@ -556,33 +448,33 @@ namespace mralloc {
     }
 
     bool ServerBlockManagerv2::init(uint64_t meta_addr, uint64_t addr, uint64_t size, uint32_t rkey) {
-        uint64_t align = block_size_*large_block_items < 1024*1024*2 ? 1024*1024*2 : block_size_*large_block_items;
-        uint64_t base_align = block_size_ < 1024*1024*2 ? 1024*1024*2 : block_size_;
-        assert(meta_addr % base_align == 0 && addr % base_align == 0 && size % align == 0);
-        large_block_num = size/align;
-        block_info = (large_block*)meta_addr;
-        heap_start = addr;
-        heap_size = size;
-        global_rkey = rkey;
-        block_header_e header_; 
-        header_.alloc_history = 0;
-        header_.max_length = block_size_/base_size;
-        header_.flag &= (uint32_t)0;
-        header_.bitmap &= (uint32_t)0;
-        free_list.store(nullptr);
-        for(int i = large_block_num-1; i >= 0; i--){
-            uint64_t bitmap_init = (uint64_t)0;
-            block_info[i].bitmap.store(bitmap_init);
-            for(int j = 0; j < large_block_items; j++){
-                block_info[i].header[j].store(header_);
-                block_info[i].rkey[j] = 0;
-            }
-            block_info[i].next = free_list.load();
-            while(!free_list.compare_exchange_strong(block_info[i].next, &block_info[i]));
-            block_info[i].offset = i;
-        }
-        last_alloc = 0;
-        return true;
+        // uint64_t align = block_size_*large_block_items < 1024*1024*2 ? 1024*1024*2 : block_size_*large_block_items;
+        // uint64_t base_align = block_size_ < 1024*1024*2 ? 1024*1024*2 : block_size_;
+        // assert(meta_addr % base_align == 0 && addr % base_align == 0 && size % align == 0);
+        // large_block_num = size/align;
+        // block_info = (large_block*)meta_addr;
+        // heap_start = addr;
+        // heap_size = size;
+        // global_rkey = rkey;
+        // block_header_e header_; 
+        // header_.alloc_history = 0;
+        // header_.max_length = block_size_/base_size;
+        // header_.flag &= (uint32_t)0;
+        // header_.bitmap &= (uint32_t)0;
+        // free_list.store(nullptr);
+        // for(int i = large_block_num-1; i >= 0; i--){
+        //     uint64_t bitmap_init = (uint64_t)0;
+        //     block_info[i].bitmap.store(bitmap_init);
+        //     for(int j = 0; j < large_block_items; j++){
+        //         block_info[i].header[j].store(header_);
+        //         block_info[i].rkey[j] = 0;
+        //     }
+        //     block_info[i].next = free_list.load();
+        //     while(!free_list.compare_exchange_strong(block_info[i].next, &block_info[i]));
+        //     block_info[i].offset = i;
+        // }
+        // last_alloc = 0;
+        // return true;
     }
 
     uint64_t find_free_index_from_bitmap(uint64_t bitmap) {
@@ -590,75 +482,75 @@ namespace mralloc {
     }
 
     bool ServerBlockManagerv2::fetch_block(uint64_t &addr, uint32_t &rkey) {
-        uint64_t block_index, free_index;
-        block_header_e header_old, header_new;
-        large_block* free = free_list.load();
-        while(free != nullptr) {
-            uint64_t bitmap_, bitmap_new_;
-            if(free->offset >= user_start && (bitmap_ = free->bitmap.load()) !=  ~(uint64_t)0) {
-                do{
-                    bitmap_new_ = bitmap_;
-                    free_index = find_free_index_from_bitmap(bitmap_);
-                    bitmap_new_ |= (uint64_t)1<<free_index;
-                } while (!free->bitmap.compare_exchange_strong(bitmap_, bitmap_new_) && (bitmap_) != ~(uint64_t)0);
-                if(bitmap_ != ~(uint64_t)0) {
-                    addr = heap_start + (free->offset*large_block_items + free_index)*block_size_;
-                    rkey = free->rkey[free_index];
-                    return true;
-                }
-            }
-            free_list.compare_exchange_strong(free, free->next);
-        }
-        printf("freelist failed!\n");
-        for(int i = 0;i < large_block_num; i++){
-            block_index = (i + last_alloc ) % large_block_num;  
-            // load bitmap, and check if there are valid bit
-            while((free_index = find_free_index_from_bitmap(block_info[block_index].bitmap.load())) != 64) {
-                // find valid bit, try to allocate
-                header_old = block_info[block_index].header[free_index].load();
-                if(header_old.flag % 2 == 1)
-                    continue;
-                header_new = header_old; header_new.flag |= 1;
-                if(!block_info[block_index].header[free_index].compare_exchange_strong(header_old, header_new)){
-                    continue;
-                }
-                last_alloc = block_index;
-                block_info[block_index].bitmap.fetch_or((uint64_t)1<<free_index);
-                addr = heap_start + (block_index*large_block_items + free_index)*block_size_;
-                rkey = block_info[block_index].rkey[free_index];
-                return true;
-            }
-        }
-        return false;
+        // uint64_t block_index, free_index;
+        // block_header_e header_old, header_new;
+        // large_block* free = free_list.load();
+        // while(free != nullptr) {
+        //     uint64_t bitmap_, bitmap_new_;
+        //     if(free->offset >= user_start && (bitmap_ = free->bitmap.load()) !=  ~(uint64_t)0) {
+        //         do{
+        //             bitmap_new_ = bitmap_;
+        //             free_index = find_free_index_from_bitmap(bitmap_);
+        //             bitmap_new_ |= (uint64_t)1<<free_index;
+        //         } while (!free->bitmap.compare_exchange_strong(bitmap_, bitmap_new_) && (bitmap_) != ~(uint64_t)0);
+        //         if(bitmap_ != ~(uint64_t)0) {
+        //             addr = heap_start + (free->offset*large_block_items + free_index)*block_size_;
+        //             rkey = free->rkey[free_index];
+        //             return true;
+        //         }
+        //     }
+        //     free_list.compare_exchange_strong(free, free->next);
+        // }
+        // printf("freelist failed!\n");
+        // for(int i = 0;i < large_block_num; i++){
+        //     block_index = (i + last_alloc ) % large_block_num;  
+        //     // load bitmap, and check if there are valid bit
+        //     while((free_index = find_free_index_from_bitmap(block_info[block_index].bitmap.load())) != 64) {
+        //         // find valid bit, try to allocate
+        //         header_old = block_info[block_index].header[free_index].load();
+        //         if(header_old.flag % 2 == 1)
+        //             continue;
+        //         header_new = header_old; header_new.flag |= 1;
+        //         if(!block_info[block_index].header[free_index].compare_exchange_strong(header_old, header_new)){
+        //             continue;
+        //         }
+        //         last_alloc = block_index;
+        //         block_info[block_index].bitmap.fetch_or((uint64_t)1<<free_index);
+        //         addr = heap_start + (block_index*large_block_items + free_index)*block_size_;
+        //         rkey = block_info[block_index].rkey[free_index];
+        //         return true;
+        //     }
+        // }
+        // return false;
     }
 
     bool ServerBlockManagerv2::fetch(uint64_t start_addr, uint64_t size, uint64_t &addr, uint32_t &rkey) {
-        uint64_t start_index = get_block_index(start_addr);
-        uint64_t end_index = get_block_index(start_addr + size - 1);
-        for (int i = start_index; i <= end_index; i++) {
-            block_header_e header_old = block_info[i/64].header[i%64].load();
-            if (header_old.flag % 2 == 1 || (header_old.bitmap | (uint32_t)0) != 0){
-                printf("Fixed start addr align malloc failed!\n");
-                return false;
-            }
-        }
-        std::unique_lock<std::mutex> lock(m_mutex_);
-        for (int i = start_index; i <= end_index; i++) {
-            block_header_e header_old = block_info[i/64].header[i%64].load();
-            block_header_e header_new = header_old;
-            assert(header_old.flag % 2 == 0);
-            header_new.flag |= (uint64_t)1;
-            if (!block_info[i/64].header[i%64].compare_exchange_strong(header_old, header_new)){
-                printf("malloc failed!\n");
-                return false;
-            }
-            block_info[i/64].bitmap.fetch_or((uint64_t)1<<(i%64));
-        }
-        rkey = global_rkey;
-        addr = get_block_addr(start_index);
-        user_start = end_index/64 + 1;
-        printf("last alloc:%lu\n", last_alloc);
-        return true;
+        // uint64_t start_index = get_block_index(start_addr);
+        // uint64_t end_index = get_block_index(start_addr + size - 1);
+        // for (int i = start_index; i <= end_index; i++) {
+        //     block_header_e header_old = block_info[i/64].header[i%64].load();
+        //     if (header_old.flag % 2 == 1 || (header_old.bitmap | (uint32_t)0) != 0){
+        //         printf("Fixed start addr align malloc failed!\n");
+        //         return false;
+        //     }
+        // }
+        // std::unique_lock<std::mutex> lock(m_mutex_);
+        // for (int i = start_index; i <= end_index; i++) {
+        //     block_header_e header_old = block_info[i/64].header[i%64].load();
+        //     block_header_e header_new = header_old;
+        //     assert(header_old.flag % 2 == 0);
+        //     header_new.flag |= (uint64_t)1;
+        //     if (!block_info[i/64].header[i%64].compare_exchange_strong(header_old, header_new)){
+        //         printf("malloc failed!\n");
+        //         return false;
+        //     }
+        //     block_info[i/64].bitmap.fetch_or((uint64_t)1<<(i%64));
+        // }
+        // rkey = global_rkey;
+        // addr = get_block_addr(start_index);
+        // user_start = end_index/64 + 1;
+        // printf("last alloc:%lu\n", last_alloc);
+        // return true;
         
     }
 
