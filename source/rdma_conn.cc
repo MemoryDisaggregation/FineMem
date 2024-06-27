@@ -947,7 +947,7 @@ bool RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_of
 
 // find an avalible region, exclusive, single
 bool RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, region_e &alloc_region, uint32_t &region_index) {
-    if(shared == true) {
+    if(shared == false) {
         // both variant and single allocation with exclusive will fetch a full empty block and full use it
         section_e new_section;
         uint32_t free_map;

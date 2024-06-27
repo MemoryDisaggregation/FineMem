@@ -33,7 +33,7 @@
 // #define REMOTE_MEM_SIZE 4096
 // #define REMOTE_MEM_SIZE 131072
 
-#define INIT_MEM_SIZE ((uint64_t)100*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)50*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 

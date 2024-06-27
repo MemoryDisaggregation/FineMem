@@ -31,7 +31,7 @@ namespace mralloc {
         }
 
         section_e init_section_header = {0,0};
-        region_e init_region_header = {0, 0, 0, 0};
+        region_e init_region_header = {0, 0, 0, 0, 0};
 
         for(int i = 0; i < section_num_; i++) {
             section_header_[i].store(init_section_header);
@@ -141,7 +141,7 @@ namespace mralloc {
     }
 
     bool ServerBlockManager::fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, region_e &alloc_region, uint32_t &region_index) {
-        if(shared == true) {
+        if(shared == false) {
             // force use unclassed one to alloc single block
             section_e new_section;
             uint32_t free_map;
