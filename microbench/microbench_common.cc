@@ -11,10 +11,12 @@
 #include "rdma_conn_manager.h"
 #include "cpu_cache.h"
 #include <sys/time.h>
+#include <gperftools/profiler.h>
+#include <random>
 
-const int iteration = 15000;
-const int free_num = 10000;
-const int epoch = 5000;
+const int iteration = 600;
+const int free_num = 600;
+const int epoch = 100;
 
 enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc };
 
@@ -56,14 +58,14 @@ init_random_values (unsigned int* random_offsets)
 }
 
 static void
-random_values (unsigned int* random_offsets)
+random_values (unsigned int* random_offsets, std::random_device &e)
 {
     time_t t;
-    srand((unsigned) time(&t));
+    // srand((unsigned) time(&t));
     size_t x,y;
     unsigned int swap;
     for(size_t i = 0; i < 10*iteration; i++) {
-        x = rand () % iteration; y = rand () % iteration;
+        x = e() % iteration; y = e() % iteration;
         swap = random_offsets[x];
         random_offsets[x] = random_offsets[y];
         random_offsets[y] = swap;
@@ -105,6 +107,7 @@ public:
     }
     ~cxl_shm_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
+        // current_index_ += e();
         int retry_time = conn_->fetch_block(current_index_, remote_addr.addr, remote_addr.rkey);
         if(retry_time) {
             if(retry_time > max_retry) 
@@ -129,6 +132,7 @@ private:
     int max_retry=0;
     uint64_t current_index_;
     mralloc::ConnectionManager* conn_;
+    std::random_device e;
 };
 
 class fusee_allocator : test_allocator{
@@ -173,21 +177,58 @@ public:
         conn_ = conn;
         cache_region_index = start_hint;
         conn_->find_section(cache_section, cache_section_index, mralloc::alloc_light);
-        conn_->fetch_region(cache_section, cache_section_index, true, cache_region, cache_region_index);
+        conn_->fetch_region(cache_section, cache_section_index, true, false, cache_region, cache_region_index);
     }
     ~share_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
-        int retry_time;
-	    while((retry_time = conn_->fetch_region_block(cache_section, cache_region, remote_addr.addr, remote_addr.rkey, false, cache_region_index)) == 0){
-            while(!conn_->fetch_region(cache_section, cache_section_index, true, cache_region, cache_region_index)){
-                if(!conn_->find_section(cache_section, cache_section_index, mralloc::alloc_light)){
-                    printf("waiting for new section avaliable\n");
-			//return false;
+        int retry_time = 0, cas_time = 0, section_time = 0, region_time = 0, result;
+        bool slow_path = false;
+        while((result = conn_->fetch_region_block(cache_section, cache_region, remote_addr.addr, remote_addr.rkey, false, cache_region_index)) < 0){
+            cas_time += (-1)*result;
+            if(!slow_path){
+                while((result = conn_->fetch_region(cache_section, cache_section_index, true, false, cache_region, cache_region_index)) < 0){
+                    region_time += (-1)*result;
+                    if((result = conn_->find_section(cache_section, cache_section_index, mralloc::alloc_light)) < 0){
+                        slow_path = true;
+                        section_time += (-1)*result;
+                        break;
+			        }else section_time += result;
                 }
+                region_time += result;
+            } else {
+                while((result = conn_->fetch_region(cache_section, cache_section_index, true, true, cache_region, cache_region_index)) < 0){
+                    region_time += (-1)*result;
+                    if((result = conn_->find_section(cache_section, cache_section_index, mralloc::alloc_heavy)) < 0){
+                        section_time += (-1)*result;
+                        printf("waiting for new section avaliable\n");
+			        }
+                    else section_time += result;
+                }  
+                region_time += result;
             }
         }
-        if(retry_time > max_retry) 
+        cas_time += result;
+        if(cas_time > 2 && !slow_path) {
+            if((result = conn_->find_section(cache_section, cache_section_index, mralloc::alloc_light)) < 0){
+                slow_path = true;
+                section_time += (-1)*result;
+			}else section_time += result;
+            while((result = conn_->fetch_region(cache_section, cache_section_index, true, false, cache_region, cache_region_index)) < 0){
+                region_time += (-1)*result;
+                if((result = conn_->find_section(cache_section, cache_section_index, mralloc::alloc_light)) < 0){
+                    slow_path = true;
+                    section_time += (-1)*result;
+                    break;
+			    }else section_time += result;
+            }
+        }
+        retry_time = cas_time + section_time + region_time;
+        if(retry_time > max_retry){ 
             max_retry = retry_time;
+            max_cas = cas_time;
+            max_section = section_time;
+            max_region = region_time;
+        }
 	    avg_retry = (avg_retry*alloc_num + retry_time)/(alloc_num+1);
 	    alloc_num ++;
         return true;
@@ -199,13 +240,13 @@ public:
         // }
         return true;
     };
-    bool print_state() override {printf("%lf, %d\n", avg_retry, max_retry);return false;};
+    bool print_state() override {printf("%lf, %d, cas %d, region %d, section %d\n", avg_retry, max_retry, max_cas, max_region, max_section);return false;};
     double get_avg_retry() {return avg_retry;};
     int get_max_retry() {return max_retry;};
 private:
     double avg_retry=0;
     int alloc_num = 0;
-    int max_retry = 0;
+    int max_retry = 0, max_cas = 0, max_section = 0, max_region = 0;
     uint32_t cache_section_index;
     uint32_t cache_region_index;
     mralloc::section_e cache_section;
@@ -218,7 +259,7 @@ public:
     exclusive_allocator(mralloc::ConnectionManager* conn) {
         conn_ = conn;
         conn->find_section(cache_section, cache_section_index, mralloc::alloc_empty);
-        conn->fetch_region(cache_section, cache_section_index, false, cache_region.region, cache_region.index);
+        conn->fetch_region(cache_section, cache_section_index, false, false, cache_region.region, cache_region.index);
         conn->fetch_exclusive_region_rkey(cache_region.index, cache_region.rkey);
         region_record[cache_region.index] = cache_region;
     }
@@ -236,7 +277,7 @@ public:
                 }
             }
             if(!cache_useful) {
-                while(!conn_->fetch_region(cache_section, cache_section_index, false, cache_region.region, cache_region.index)){
+                while(!conn_->fetch_region(cache_section, cache_section_index, false, false, cache_region.region, cache_region.index)){
                     if(!conn_->find_section(cache_section, cache_section_index, mralloc::alloc_empty)) {
                         return false;
                     }
@@ -598,6 +639,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
 }
 
 void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_t thread_id) {
+    std::random_device rand_val;
     unsigned int random_offsets[iteration];
     uint64_t time_record[iteration];
     init_random_values(random_offsets);
@@ -610,12 +652,6 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
     mralloc::mr_rdma_addr remote_addr[iteration];
     uint64_t current_index = 0;
     int rand_iter = iteration;
-    // int free_num = iteration*0.5;
-    // if(thread_id % 2 == 1){
-    //     pthread_barrier_wait(&start_barrier);
-    //     rand_iter = iteration/5;
-    //     free_num = rand_iter;
-    // }
     for(int j = 0; j < epoch; j ++) {
         pthread_barrier_wait(&start_barrier);
         int allocated = 0;
@@ -646,9 +682,18 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
             for(int i = 0; i < rand_iter; i ++){
                 if(remote_addr[i].addr != -1 && remote_addr[i].rkey != -1) 
                     continue;
+                gettimeofday(&start, NULL);
                 if(!alloc->malloc(remote_addr[i]) || remote_addr[i].addr == 0 || remote_addr[i].addr == -1){
                     printf("alloc false\n");
                 }
+                gettimeofday(&end, NULL);
+                time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
+                time_record[i] = time;
+                malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
+                if(time >= 100000) time = 99999;
+                if(time < 1) time  = 1;
+                malloc_record[(int)(time)] += 1;
+                malloc_count_ += 1;
                 allocated ++;
             }
         }
@@ -666,7 +711,7 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
         printf("thread %d, epoch %d, malloc time %lf\n", thread_id, j, malloc_avg_time_);
         // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         // free
-        random_values(random_offsets);
+        random_values(random_offsets, rand_val);
         gettimeofday(&start, NULL);
         int result;        
         unsigned int offset_state = 0;
@@ -805,7 +850,7 @@ void* worker(void* arg) {
         alloc = (test_allocator*)new rpc_allocator(conn);
         break;
     case share_alloc:
-        alloc = (test_allocator*)new share_allocator(conn, rand()%55);
+        alloc = (test_allocator*)new share_allocator(conn, rand()%12);
         break;
     case exclusive_alloc:
         alloc = (test_allocator*)new exclusive_allocator(conn);
@@ -850,6 +895,7 @@ int main(int argc, char* argv[]) {
         printf("Usage: %s <ip> <port> <thread> <allocator> <trace>\n", argv[0]);
         return 0;
     }
+    ProfilerStart("test.prof");
     // init_random_values(random_offsets);
     std::string ip = argv[1];
     std::string port = argv[2];
@@ -944,4 +990,5 @@ int main(int argc, char* argv[]) {
     result << "max cas :" << cas_max_final << std::endl;
     result.close();
     result_detail.close();
+    ProfilerStop();
 }

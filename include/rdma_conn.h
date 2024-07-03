@@ -17,6 +17,7 @@
 #include "msg.h"
 #include "free_block_manager.h"
 #include "cpu_cache.h"
+#include <random>
 
 namespace mralloc {
 
@@ -68,10 +69,11 @@ public:
     uint64_t get_heap_start() {return heap_start_;};
     inline bool check_section(section_e alloc_section, alloc_advise advise, uint32_t offset);
     bool force_update_section_state(section_e &section, uint32_t region_index, alloc_advise advise);
+    bool force_update_section_state(section_e &section, uint32_t region_index, alloc_advise advise, alloc_advise compare);
     bool force_update_region_state(region_e &alloc_region, uint32_t region_index, bool is_exclusive, bool on_use);
-    bool find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
+    int find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
 
-    bool fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, region_e &alloc_region, uint32_t &region_index) ;
+    int fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index) ;
     bool fetch_exclusive_region_rkey(uint32_t region_index, uint32_t* rkey_list) {
         // uint32_t new_rkey[block_per_region];
         // memset(new_rkey, (uint32_t)-1, sizeof(uint32_t)*block_per_region);
@@ -155,8 +157,8 @@ public:
     uint64_t block_header_;
     uint64_t backup_rkey_;
 
-    retry_counter retry_counter_;
-
+    uint64_t retry_counter_;
+    std::random_device e;
 };
 
 

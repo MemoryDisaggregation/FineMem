@@ -63,7 +63,7 @@ typedef std::atomic<section_e> section;
 struct region_e {
     bitmap32 base_map_;
     // max_length, 1~32 
-    uint16_t max_length_ : 5;
+    uint16_t retry_ : 5;
     // if exclusive_ = 0, this whole 1GB region is exclusive to some client
     // or it is used by an allocation of multiple GB memory
     uint16_t exclusive_ : 1;

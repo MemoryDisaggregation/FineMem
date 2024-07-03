@@ -231,11 +231,11 @@ namespace mralloc {
 
     bool ServerBlockManager::fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
         int index, retry_time =0; region_e new_region;
-        uint8_t old_length, new_length;
+        // uint8_t old_length, new_length;
         do{
             retry_time++;
             if(alloc_region.exclusive_ != is_exclusive || alloc_region.on_use_ != 1) {
-                printf("Region not avaliable, addr = %lx, exclusive = %d, free_length = %u\n", get_region_addr(region_index), alloc_region.exclusive_, alloc_region.max_length_);
+                printf("Region not avaliable, addr = %lx, exclusive = %d\n", get_region_addr(region_index), alloc_region.exclusive_);
                 return false;
             } 
             new_region = alloc_region;
@@ -245,9 +245,9 @@ namespace mralloc {
             new_region.base_map_ |= (uint32_t)1<<index;
 
             // update the max length info
-            old_length = new_region.max_length_;
-            new_length = max_longbit(new_region.base_map_);
-            new_region.max_length_ = new_length;
+            // old_length = new_region.max_length_;
+            // new_length = max_longbit(new_region.base_map_);
+            // new_region.max_length_ = new_length;
 
         } while (!region_header_[region_index].compare_exchange_strong(alloc_region, new_region));
         

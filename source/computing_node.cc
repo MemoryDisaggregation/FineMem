@@ -331,7 +331,7 @@ bool ComputingNode::new_backup_section(uint32_t node){
 bool ComputingNode::new_cache_region() {
     // exclusive, and fetch rkey must
     region_e new_region; uint32_t new_region_index;
-    while(!m_rdma_conn_[current_node_]->fetch_region(current_section_, current_section_index_, false, new_region, new_region_index) ) {
+    while(!m_rdma_conn_[current_node_]->fetch_region(current_section_, current_section_index_, false, false, new_region, new_region_index) ) {
         if(!new_cache_section(alloc_empty, current_node_)){
             current_node_ = (current_node_+1) % node_num_;
             printf("[cache single region] try to scan next node %d\n", current_node_);
@@ -346,7 +346,7 @@ bool ComputingNode::new_cache_region() {
 
 bool ComputingNode::new_backup_region() {
         // exclusive, and fetch rkey must
-    while(!m_rdma_conn_[backup_node_]->fetch_region(backup_section_, backup_section_index_, true, backup_region_, backup_region_index_) ) {
+    while(!m_rdma_conn_[backup_node_]->fetch_region(backup_section_, backup_section_index_, true, true, backup_region_, backup_region_index_) ) {
         if(!new_backup_section(backup_node_)){
             backup_node_ = (backup_node_+1) % node_num_;
             printf("[cache backup region] try to scan next node %d\n", backup_node_);

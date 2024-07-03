@@ -3,15 +3,16 @@ import matplotlib.pyplot as plt
 
 
 # 读取csv文件
-data_1 = pd.read_csv("/users/X1aoyang/LegoAlloc/build/microbench/detail_result_1_cxl_frag_1718361757_.csv").T.values.tolist()
-data_2 = pd.read_csv("/users/X1aoyang/LegoAlloc/build/microbench/detail_result_2_cxl_frag_1718360559_.csv").T.values.tolist()
-data_4 = pd.read_csv("/users/X1aoyang/LegoAlloc/build/microbench/detail_result_4_cxl_frag_1718359997_.csv").T.values.tolist()
-data_8 = pd.read_csv("/users/X1aoyang/LegoAlloc/build/microbench/detail_result_8_cxl_frag_1718359684_.csv").T.values.tolist()
+# data_1 = pd.read_csv("/users/X1aoyang/LegoAlloc/build/microbench/detail_result_1_cxl_frag_1718361757_.csv").T.values.tolist()
+# data_2 = pd.read_csv("/users/X1aoyang/LegoAlloc/build/microbench/detail_result_2_cxl_frag_1718360559_.csv").T.values.tolist()
+# data_4 = pd.read_csv("/users/X1aoyang/LegoAlloc/build/microbench/detail_result_4_cxl_frag_1718359997_.csv").T.values.tolist()
+# data_8 = pd.read_csv("/users/X1aoyang/LegoAlloc/build/microbench/detail_result_8_cxl_frag_1718359684_.csv").T.values.tolist()
 
-data = data_1 + data_2 + data_4 + data_8
+data = pd.read_csv("/users/X1aoyang/LegoAlloc/build/microbench/detail_result_20_share_frag_1719992441_.csv").T.values.tolist()
 # print(data)
 
-labels = ['1', '2', '4', '8']
+labels = ['1']
+# labels = ['1', '2', '4', '8']
 
 fig, ax = plt.subplots()
 

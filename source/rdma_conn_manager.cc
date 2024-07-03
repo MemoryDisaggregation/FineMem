@@ -142,18 +142,18 @@ bool ConnectionManager::force_update_section_state(section_e &section, uint32_t 
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }
-bool ConnectionManager::find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
+int ConnectionManager::find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    bool ret = conn->find_section(alloc_section, section_offset, advise);
+    int ret = conn->find_section(alloc_section, section_offset, advise);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }
 
-bool ConnectionManager::fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, region_e &alloc_region, uint32_t &region_index) {
+int ConnectionManager::fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    bool ret = conn->fetch_region(alloc_section, section_offset, shared, alloc_region, region_index);
+    int ret = conn->fetch_region(alloc_section, section_offset, shared, use_chance, alloc_region, region_index);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }
