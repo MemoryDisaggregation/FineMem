@@ -1172,7 +1172,7 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
         } 
         new_region = alloc_region;
         if((index = find_free_index_from_bitmap32_tail(alloc_region.base_map_)) == -1) {
-            // force_update_section_state(alloc_section, region_index, alloc_full);
+            force_update_section_state(alloc_section, region_index, alloc_full);
             return retry_time*(-1);
         }
         new_region.base_map_ |= (uint32_t)1<<index;
@@ -1195,7 +1195,7 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
     
     // concurrency state update, will async it in the future
     if(alloc_region.base_map_ == bitmap32_filled) {
-        while(!force_update_section_state(alloc_section, region_index, alloc_full));
+        force_update_section_state(alloc_section, region_index, alloc_full);
     } 
     // else if(old_retry < 10 && avg_retry >= 10) {
     //     force_update_section_state(alloc_section, region_index, alloc_full);
@@ -1300,6 +1300,9 @@ int RDMAConnection::free_region_batch(uint32_t region_offset, uint32_t free_bitm
         force_update_section_state(alloc_section, region_offset, alloc_light, alloc_heavy);
         // printf("make region %d light\n", region_offset);
     } 
+    else {
+        force_update_section_state(alloc_section, region_offset, alloc_light, alloc_full);
+    }
     // else if(old_retry >= 10 && avg_retry < 10) {
     //     force_update_section_state(alloc_section, region_offset, alloc_heavy);
     // }
@@ -1348,9 +1351,10 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
         return -2;
     } 
     else if(full) {
-        while(!force_update_section_state(alloc_section, region_offset, alloc_light, alloc_full)){
-            printf("make region %d light failed\n", region_offset);
-        }
+        force_update_section_state(alloc_section, region_offset, alloc_light, alloc_full);
+        // while(!force_update_section_state(alloc_section, region_offset, alloc_light, alloc_full)){
+        //     printf("make region %d light failed\n", region_offset);
+        // }
     }
     // else if(old_retry < 10 && avg_retry >= 10) {
     //     force_update_section_state(alloc_section, region_offset, alloc_full);
@@ -1363,6 +1367,9 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
         force_update_section_state(alloc_section, region_offset, alloc_light, alloc_heavy);
         // printf("make region %d light\n", region_offset);
     } 
+    else {
+        force_update_section_state(alloc_section, region_offset, alloc_light, alloc_full);
+    }
     // else if(old_retry >= 10 && avg_retry < 10) {
     //     force_update_section_state(alloc_section, region_offset, alloc_heavy);
     // } 
@@ -1372,6 +1379,7 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
     return 0;
 }
 
+// CXL-SHM: using CAS to fetch memory block directly
 int RDMAConnection::fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) {
     uint64_t old_header = 0, new_header = 1, hint = block_hint % block_num_;
     uint16_t counter = 0;

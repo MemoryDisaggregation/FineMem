@@ -70,7 +70,8 @@ struct region_e {
     uint16_t exclusive_ : 1;
     // on use to check whether it has been freed
     uint16_t on_use_ : 1;
-    uint16_t reserved_ : 9;
+    uint16_t last_modify_ : 1;
+    uint16_t reserved_ : 8;
     uint16_t last_modify_id_;
 };
 
