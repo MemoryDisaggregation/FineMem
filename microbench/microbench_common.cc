@@ -15,7 +15,7 @@
 #include <random>
 
 const int iteration = 600;
-const int free_num = 600;
+const int free_num = 20;
 const int epoch = 100;
 
 enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc };
@@ -58,7 +58,7 @@ init_random_values (unsigned int* random_offsets)
 }
 
 static void
-random_values (unsigned int* random_offsets, std::random_device &e)
+random_values (unsigned int* random_offsets, std::mt19937 &e)
 {
     time_t t;
     // srand((unsigned) time(&t));
@@ -104,10 +104,12 @@ public:
     cxl_shm_allocator(mralloc::ConnectionManager* conn, uint64_t start_hint) {
         conn_ = conn;
         current_index_ = start_hint;
+        std::random_device e;
+        mt.seed(e());
     }
     ~cxl_shm_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
-        // current_index_ += e();
+        // current_index_ += mt();
         int retry_time = conn_->fetch_block(current_index_, remote_addr.addr, remote_addr.rkey);
         if(retry_time) {
             if(retry_time > max_retry) 
@@ -132,7 +134,7 @@ private:
     int max_retry=0;
     uint64_t current_index_;
     mralloc::ConnectionManager* conn_;
-    std::random_device e;
+    std::mt19937 mt;
 };
 
 class fusee_allocator : test_allocator{
@@ -639,7 +641,8 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
 }
 
 void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_t thread_id) {
-    std::random_device rand_val;
+    std::random_device r;
+    std::mt19937 rand_val(r());
     unsigned int random_offsets[iteration];
     uint64_t time_record[iteration];
     init_random_values(random_offsets);

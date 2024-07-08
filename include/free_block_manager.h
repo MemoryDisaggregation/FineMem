@@ -9,6 +9,7 @@
 #include <queue>
 #include <mutex>
 #include <fstream>
+#include <random>
 
 namespace mralloc {
 
@@ -242,10 +243,11 @@ public:
     inline bool check_section(section_e alloc_section, alloc_advise advise, uint32_t offset);
     uint64_t get_heap_start() {return heap_start_;};
     bool force_update_section_state(section_e &section, uint32_t region_index, alloc_advise advise);
+    bool force_update_section_state(section_e &section, uint32_t region_index, alloc_advise advise, alloc_advise compare);
     bool force_update_region_state(region_e &alloc_region, uint32_t region_index, bool is_exclusive, bool on_use);
-    bool find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
+    int find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
 
-    bool fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, region_e &alloc_region, uint32_t &region_index) ;
+    int fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index) ;
     int free_region_block(uint64_t addr, bool is_exclusive);
 
     inline uint64_t get_section_region_addr(uint32_t section_offset, uint32_t region_offset) {return heap_start_ + section_offset*section_size_ + region_offset * region_size_ ;};
@@ -253,7 +255,7 @@ public:
     inline uint64_t get_region_block_addr(uint32_t region_index, uint32_t block_offset) {return heap_start_ + region_index * region_size_ + block_offset * block_size_;} ;
     inline uint32_t get_region_block_rkey(uint32_t region_index, uint32_t block_offset) {return block_rkey_[region_index*block_per_region + block_offset];};
 
-    bool fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) ;
+    int fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) ;
 
     inline bool set_block_rkey(uint64_t index, uint32_t rkey) {block_rkey_[index] = rkey; return true;};
     inline bool set_backup_rkey(uint64_t index, uint32_t rkey) {backup_rkey_[index] = rkey; return true;};
@@ -315,7 +317,8 @@ private:
         section section_cache_;  
     } cache_info_;
 
-    retry_counter retry_counter_;
+    uint64_t retry_counter_;
+    std::mt19937 mt;
     
 };
 

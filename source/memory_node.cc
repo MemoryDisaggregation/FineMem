@@ -187,7 +187,7 @@ bool MemoryNode::new_cache_section(){
 }
 
 bool MemoryNode::new_cache_region() {
-    while(!server_block_manager_->fetch_region(current_section_, current_section_index_, true, current_region_, current_region_index_) ) {
+    while(!server_block_manager_->fetch_region(current_section_, current_section_index_, true, true, current_region_, current_region_index_) ) {
         if(!new_cache_section())
             return false;
     }

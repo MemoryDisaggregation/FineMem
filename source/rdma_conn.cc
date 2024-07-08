@@ -14,7 +14,8 @@ const int retry_threshold = 3;
 
 int RDMAConnection::init(const std::string ip, const std::string port, uint8_t access_type) {
     time_t time_; time(&time_); srand(time_);
-
+    std::random_device e;
+    mt.seed(e());
     m_cm_channel_ = rdma_create_event_channel();
     if (!m_cm_channel_) {
         perror("rdma_create_event_channel fail");
@@ -989,7 +990,7 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
 int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
     int retry_time = 0;
     section_e section[8] = {0,0};
-    int offset = (section_offset+e())%section_num_;
+    int offset = (section_offset+mt())%section_num_;
     // each epoch fetch 8 sections, 8*8B = 64Byte
     if (advise == alloc_heavy) {
         int remain = section_num_, fetch = (offset + 8) > section_num_ ? (section_num_ - offset):8, index = offset;
@@ -1087,7 +1088,7 @@ int RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_offs
         // remote_read(&alloc_section, sizeof(section_e), section_metadata_addr(section_offset), global_rkey_);
         do {
             retry_time++;
-            int rand_val = e()%32;
+            int rand_val = mt()%32;
             uint32_t random_frag = (alloc_section.frag_map_ >> (32 - rand_val) | (alloc_section.frag_map_ << rand_val));
             uint32_t random_alloc = (alloc_section.alloc_map_ >> (32 - rand_val) | (alloc_section.alloc_map_ << rand_val));
             empty_map = random_frag | random_alloc;

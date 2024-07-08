@@ -158,7 +158,7 @@ public:
     uint64_t backup_rkey_;
 
     uint64_t retry_counter_;
-    std::random_device e;
+    std::mt19937 mt;
 };
 
 
