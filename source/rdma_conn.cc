@@ -1162,9 +1162,23 @@ bool RDMAConnection::force_update_region_state(region_e &alloc_region, uint32_t 
 int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
     int index, retry_time = 0; region_e new_region;
     
+    // [Stage 0] flush log
+    remote_read(&alloc_region, sizeof(region_e), region_metadata_addr(region_index), global_rkey_);
+    if(alloc_region.last_modify_id_ != 0){
+        block_e old_block = {0, alloc_region.last_timestamp_ - 1};
+        block_e new_block = {conn_id_, alloc_region.last_timestamp_};
+        bool out_date = false;
+        do {
+            if(old_block.client_id_ != 0 || old_block.timestamp_ != old_block.timestamp_ + 1){
+                // out-of-date update, skip
+                out_date = true;
+                break;
+            }
+        } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_index, global_rkey_));
+    }
+
     // [Stage 1] region allocation
     do{
-        // TODO: check if someone has not flush log
         retry_time++;
         if(alloc_region.exclusive_ != is_exclusive || alloc_region.on_use_ != 1) {
             // printf("Region not avaliable, addr = %lx, exclusive = %d, free_length = %u\n", get_region_addr(region_index), alloc_region.exclusive_, alloc_region.max_length_);
@@ -1183,7 +1197,6 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
         new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 128;
         // TODO: a new cliennt id mechanism
         new_region.last_modify_id_ = conn_id_;
-    
     } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_));
     
     alloc_region = new_region;
@@ -1207,8 +1220,23 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
     } 
     
     // [Stage 3] Flush log, will async it in the future
-    
-
+    block_e old_block = {0, alloc_region.last_timestamp_ - 1};
+    block_e new_block = {conn_id_, alloc_region.last_timestamp_};
+    bool out_date = false;
+    do {
+        if(old_block.client_id_ != 0 || old_block.timestamp_ != old_block.timestamp_ + 1){
+            // out-of-date update, skip
+            out_date = true;
+            break;
+        }
+    } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_index, global_rkey_));
+    if(!out_date){
+        new_region = alloc_region;
+        new_region.last_modify_id_ = 0;
+        // no matter true or false, no retry
+        // if false, someone other must have done persistence, then do nothing 
+        remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_);
+    }
 
     return retry_time;
 }
