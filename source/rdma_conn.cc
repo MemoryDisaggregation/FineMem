@@ -1161,9 +1161,10 @@ bool RDMAConnection::force_update_region_state(region_e &alloc_region, uint32_t 
 // the user must check the state if CAS failed, and must update state if some condition occurs
 int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
     int index, retry_time = 0; region_e new_region;
-    // uint8_t old_length, new_length;
+    
+    // [Stage 1] region allocation
     do{
-	
+        // TODO: check if someone has not flush log
         retry_time++;
         if(alloc_region.exclusive_ != is_exclusive || alloc_region.on_use_ != 1) {
             // printf("Region not avaliable, addr = %lx, exclusive = %d, free_length = %u\n", get_region_addr(region_index), alloc_region.exclusive_, alloc_region.max_length_);
@@ -1178,10 +1179,10 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
         new_region.base_map_ |= (uint32_t)1<<index;
         retry_counter_ = new_region.retry_+1;
         new_region.retry_ = retry_time-1;
-        // update the max length info
-        // old_length = new_region.max_length_;
-        // new_length = max_longbit(new_region.base_map_);
-        // new_region.max_length_ = new_length;
+        new_region.last_offset_ = index;
+        new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 128;
+        // TODO: a new cliennt id mechanism
+        new_region.last_modify_id_ = conn_id_;
     
     } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_));
     
@@ -1193,31 +1194,27 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
     uint64_t old_retry = retry_counter_;
     retry_counter_ = retry_time;
     
-    // concurrency state update, will async it in the future
+    // [Stage 2] state update, will async it in the future
     if(alloc_region.base_map_ == bitmap32_filled) {
         force_update_section_state(alloc_section, region_index, alloc_full);
     } 
-    // else if(old_retry < 10 && avg_retry >= 10) {
-    //     force_update_section_state(alloc_section, region_index, alloc_full);
-    // } 
+
     else if(old_retry >= retry_threshold && retry_time < retry_threshold) {
         force_update_section_state(alloc_section, region_index, alloc_heavy, alloc_light);
-        // printf("make region %d heavy\n", region_index);
     } 
     else if(old_retry < retry_threshold && retry_time >= retry_threshold) {
         force_update_section_state(alloc_section, region_index, alloc_light, alloc_heavy);
-        // printf("make region %d light\n", region_index);
     } 
-    // else if(old_retry >= 10 && avg_retry < 10) {
-    //     force_update_section_state(alloc_section, region_index, alloc_heavy);
-    // }
     
+    // [Stage 3] Flush log, will async it in the future
+    
+
+
     return retry_time;
 }
 
 int RDMAConnection::fetch_region_batch(section_e &alloc_section, region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive, uint32_t region_index) {
     int index; region_e new_region;
-    // uint8_t old_length, new_length;
     uint64_t free_item = 0;
     do{
         if(alloc_region.exclusive_ != is_exclusive || alloc_region.on_use_ != 1) {

@@ -64,18 +64,25 @@ typedef std::atomic<section_e> section;
 struct region_e {
     bitmap32 base_map_;
     // max_length, 1~32 
-    uint16_t retry_ : 5;
+    uint16_t retry_ : 2;
     // if exclusive_ = 0, this whole 1GB region is exclusive to some client
     // or it is used by an allocation of multiple GB memory
     uint16_t exclusive_ : 1;
     // on use to check whether it has been freed
     uint16_t on_use_ : 1;
-    uint16_t last_modify_ : 1;
-    uint16_t reserved_ : 8;
+    uint16_t last_offset_ : 5;
+    uint16_t last_timestamp_ : 7;
     uint16_t last_modify_id_;
 };
 
 typedef std::atomic<region_e> region;
+
+struct block_e {
+    uint64_t client_id_ : 16;
+    uint64_t timestamp_ : 48;
+};
+
+typedef std::atomic<block_e> block;
 
 struct region_with_rkey {
     region_e region;

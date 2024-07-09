@@ -15,7 +15,7 @@
 #include <random>
 
 const int iteration = 600;
-const int free_num = 20;
+const int free_num = 600;
 const int epoch = 100;
 
 enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc };
