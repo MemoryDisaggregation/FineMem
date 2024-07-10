@@ -1159,24 +1159,33 @@ bool RDMAConnection::force_update_region_state(region_e &alloc_region, uint32_t 
 
 // the core function of fetch a single block from a region
 // the user must check the state if CAS failed, and must update state if some condition occurs
+// I know this is ugly to convert client id as conn_id_+1 (why +1? because server give the number from 0, and I don't want to modify the RPC framework anymore :( 
 int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
     int index, retry_time = 0; region_e new_region;
     
     // [Stage 0] flush log
     remote_read(&alloc_region, sizeof(region_e), region_metadata_addr(region_index), global_rkey_);
     if(alloc_region.last_modify_id_ != 0){
-        block_e old_block = {0, alloc_region.last_timestamp_ - 1};
-        block_e new_block = {conn_id_, alloc_region.last_timestamp_};
-        bool out_date = false;
-        do {
-            if(old_block.client_id_ != 0 || old_block.timestamp_ != old_block.timestamp_ + 1){
-                // out-of-date update, skip
-                out_date = true;
-                break;
-            }
-        } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_index, global_rkey_));
+        if(alloc_region.base_map_ & ((uint32_t)1<<alloc_region.last_offset_) == 1 ){
+            // malloc
+            block_e old_block = {0, (alloc_region.last_timestamp_ +127) % 128};
+            block_e new_block = {conn_id_+1, alloc_region.last_timestamp_};
+            do {
+                if(old_block.client_id_ != 0 || old_block.timestamp_ != old_block.timestamp_ + 1){
+                    break;
+                }
+            } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_index, global_rkey_));
+        } else {
+            //free
+            block_e old_block = {alloc_region.last_modify_id_, (alloc_region.last_timestamp_ +127) % 128};
+            block_e new_block = {0, alloc_region.last_timestamp_};
+            do {
+                if(old_block.client_id_ == 0 || old_block.timestamp_ != old_block.timestamp_ + 1){
+                    break;
+                }
+            } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_index, global_rkey_));
+        }
     }
-
     // [Stage 1] region allocation
     do{
         retry_time++;
@@ -1196,9 +1205,12 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
         new_region.last_offset_ = index;
         new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 128;
         // TODO: a new cliennt id mechanism
-        new_region.last_modify_id_ = conn_id_;
+        new_region.last_modify_id_ = conn_id_+1;
     } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_));
-    
+    // if(mt()%1000 == 1){
+    //     printf("stall happend\n");
+    //     usleep(1000);
+    // }
     alloc_region = new_region;
     addr = get_region_block_addr(region_index, index);
     rkey = get_region_block_rkey(region_index, index); 
@@ -1218,18 +1230,26 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
     else if(old_retry < retry_threshold && retry_time >= retry_threshold) {
         force_update_section_state(alloc_section, region_index, alloc_light, alloc_heavy);
     } 
-    
+    // if(mt()%1000 == 1){
+    //     printf("stall happend\n");
+    //     usleep(1000);
+    // }
     // [Stage 3] Flush log, will async it in the future
-    block_e old_block = {0, alloc_region.last_timestamp_ - 1};
-    block_e new_block = {conn_id_, alloc_region.last_timestamp_};
+    block_e old_block = {0, (alloc_region.last_timestamp_ + 127 ) % 128};
+    block_e new_block = {conn_id_+1, alloc_region.last_timestamp_};
     bool out_date = false;
     do {
         if(old_block.client_id_ != 0 || old_block.timestamp_ != old_block.timestamp_ + 1){
             // out-of-date update, skip
+            // printf("other people done this: %d instead of %d\n", old_block.client_id_, conn_id_);
             out_date = true;
             break;
         }
     } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_index, global_rkey_));
+    // if(mt()%1000 == 1){
+    //     printf("stall happend\n");
+    //     usleep(1000);
+    // }
     if(!out_date){
         new_region = alloc_region;
         new_region.last_modify_id_ = 0;
@@ -1243,7 +1263,7 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
 
 int RDMAConnection::fetch_region_batch(section_e &alloc_section, region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive, uint32_t region_index) {
     int index; region_e new_region;
-    uint64_t free_item = 0;
+    int free_item = 0;
     do{
         if(alloc_region.exclusive_ != is_exclusive || alloc_region.on_use_ != 1) {
             printf("Region not avaliable, addr = %lx, exclusive = %d\n", get_region_addr(region_index), alloc_region.exclusive_);
@@ -1341,12 +1361,34 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
     uint32_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
     region_e region, new_region;
     int retry_time = 0;
+    // [Stage 0] flush log
     remote_read(&region, sizeof(region_e), region_metadata_addr(region_offset), global_rkey_);
-
     if(!region.exclusive_ && is_exclusive) {
         printf("exclusive error, the actual block is shared\n");
         return -1;
     }
+    if(region.last_modify_id_ != 0){
+        if(region.base_map_ & ((uint32_t)1<<region.last_offset_) == 1 ){
+            // malloc
+            block_e old_block = {0, (region.last_timestamp_ +127) % 128};
+            block_e new_block = {conn_id_+1, region.last_timestamp_};
+            do {
+                if(old_block.client_id_ != 0 || old_block.timestamp_ != old_block.timestamp_ + 1){
+                    break;
+                }
+            } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_offset, global_rkey_));
+        } else {
+            //free
+            block_e old_block = {region.last_modify_id_, (region.last_timestamp_ +127) % 128};
+            block_e new_block = {0, region.last_timestamp_};
+            do {
+                if(old_block.client_id_ == 0 || old_block.timestamp_ != old_block.timestamp_ + 1){
+                    break;
+                }
+            } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_offset, global_rkey_));
+        }
+    }
+
     bool full = (region.base_map_ == bitmap32_filled);
     uint32_t new_rkey;
     if((region.base_map_ & ((uint32_t)1<<region_block_offset)) == 0) {
@@ -1364,6 +1406,9 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
         }
         retry_counter_ = new_region.retry_;
         new_region.retry_ = retry_time;
+        new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 128;
+        new_region.last_modify_id_ = conn_id_+1;
+        new_region.last_offset_ = region_block_offset;
     } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region, region_metadata_addr(region_offset), global_rkey_));
 
     uint16_t old_retry = retry_counter_+1;
@@ -1377,13 +1422,7 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
     } 
     else if(full) {
         force_update_section_state(alloc_section, region_offset, alloc_light, alloc_full);
-        // while(!force_update_section_state(alloc_section, region_offset, alloc_light, alloc_full)){
-        //     printf("make region %d light failed\n", region_offset);
-        // }
     }
-    // else if(old_retry < 10 && avg_retry >= 10) {
-    //     force_update_section_state(alloc_section, region_offset, alloc_full);
-    // } 
     else if(old_retry < retry_threshold && retry_time >= retry_threshold) {
         force_update_section_state(alloc_section, region_offset, alloc_heavy, alloc_light);
         // printf("make region %d heavy\n", region_offset);
@@ -1395,10 +1434,29 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
     else {
         force_update_section_state(alloc_section, region_offset, alloc_light, alloc_full);
     }
-    // else if(old_retry >= 10 && avg_retry < 10) {
-    //     force_update_section_state(alloc_section, region_offset, alloc_heavy);
-    // } 
 
+    block_e old_block = {conn_id_+1, (region.last_timestamp_ + 127 ) % 128};
+    block_e new_block = {0, region.last_timestamp_};
+    bool out_date = false;
+    do {
+        if(old_block.client_id_ == 0 || old_block.timestamp_ != old_block.timestamp_ + 1){
+            // out-of-date update, skip
+            out_date = true;
+            // printf("other people done this\n");
+            break;
+        }
+    } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_offset, global_rkey_));
+    // if(mt()%1000 == 1){
+    //     printf("stall happend\n");
+    //     usleep(1000);
+    // }
+    if(!out_date){
+        new_region = region;
+        new_region.last_modify_id_ = 0;
+        // no matter true or false, no retry
+        // if false, someone other must have done persistence, then do nothing 
+        remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region, region_metadata_addr(region_offset), global_rkey_);
+    }
 
     region = new_region;
     return 0;
