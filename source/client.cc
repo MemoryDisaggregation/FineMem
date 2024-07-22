@@ -84,13 +84,13 @@ int main(int argc, char* argv[]){
 
         // before the real client running, make a test of iter times allocation
         // << single thread, local test, fetch remote memory >>
-        int iter = 100;
+        int iter = 0;
         mralloc::mr_rdma_addr addr;
         char buffer[2][64*1024] = {"aaa", "bbb"};
         char read_buffer[4];
         struct timeval start, end;
         gettimeofday(&start, NULL);
-        while(iter--){
+        while(0){
             heap->fetch_mem_block(addr);
             heap->show_ring_length();
             // std::cout << "write addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;

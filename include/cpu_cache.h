@@ -8,10 +8,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <sys/types.h>
 #include <unistd.h>
 #include <assert.h>
 #include <fcntl.h>
+#include <sys/sem.h>
+#include <semaphore.h>
 
 #pragma once
 
@@ -21,9 +24,9 @@ namespace mralloc {
 // TODO: change to fifo pipe?
 // TODO:
 
-const uint32_t nprocs = 48;
-const uint32_t max_alloc_item = 256;
-const uint32_t max_free_item = 1024;
+const uint32_t nprocs = 16;
+const uint32_t max_alloc_item = 16;
+const uint32_t max_free_item = 16;
 
 template <typename T>
 class ring_buffer{
@@ -56,9 +59,9 @@ public:
     void add_cache(T value){
         // host side fill cache, add write pointer
         volatile uint32_t writer = *writer_;
-	while(get_length() >= max_length_ - 1){
-		printf("busy wait\n");
-	}
+	    while(get_length() >= max_length_ - 1){
+		    printf("busy wait\n");
+	    }
         if(get_length() < max_length_-1){
             buffer_[writer] = value;        
             *writer_ = (writer + 1) % max_length_;
@@ -301,9 +304,20 @@ public:
         uint32_t writer[nprocs];
         uint32_t free_writer[nprocs];
     };
-
+    
+    sem_t* sem_alloc[nprocs];
+    sem_t* sem_alloc_ret[nprocs];
+    sem_t* sem_free[nprocs];
+    sem_t* sem_free_ret[nprocs];
+    
     cpu_cache() {
         this->null = {0,0};
+        for(int i = 0; i < nprocs; i++) {
+            sem_alloc[i] = sem_open(std::to_string(i+114514).c_str(), O_CREAT, 0666, 0);
+            sem_alloc_ret[i] = sem_open(std::to_string(i+nprocs+114514).c_str(), O_CREAT, 0666, 0);
+            sem_free[i] = sem_open(std::to_string(i+1919810).c_str(), O_CREAT, 0666, 0);
+            sem_free_ret[i] = sem_open(std::to_string(i+nprocs+1919810).c_str(), O_CREAT, 0666, 0);
+        }
         int fd = shm_open("/cpu_cache", O_RDWR, 0);
         if (fd == -1) {
             perror("init failed, no computing node running");
@@ -324,6 +338,12 @@ public:
     }
 
     cpu_cache(uint64_t cache_size) : cache_size_(cache_size) {
+        for(int i = 0; i < nprocs; i++) {
+            sem_alloc[i] = sem_open(std::to_string(i+114514).c_str(), O_CREAT, 0666, 0);
+            sem_alloc_ret[i] = sem_open(std::to_string(i+nprocs+114514).c_str(), O_CREAT, 0666, 0);
+            sem_free[i] = sem_open(std::to_string(i+1919810).c_str(), O_CREAT, 0666, 0);
+            sem_free_ret[i] = sem_open(std::to_string(i+nprocs+1919810).c_str(), O_CREAT, 0666, 0);
+        }
         int port_flag = PROT_READ | PROT_WRITE;
         int mm_flag   = MAP_SHARED; 
         int fd = shm_open("/cpu_cache", O_RDWR, 0);
@@ -386,14 +406,24 @@ public:
             printf("sched_getcpu bad \n");
             return false;
         }
+        sem_post(sem_alloc[nproc]);
+        // printf("send request to %d\n", nproc);
+        sem_wait(sem_alloc_ret[nproc]);
+        // printf("recieve from %d\n", nproc);
         bool ret = alloc_ring[nproc]->force_fetch_cache(addr);
         return ret;
     }
 
     bool fetch_cache(uint32_t nproc, mr_rdma_addr &addr){
         // just fetch one block in the current cpu_id --> ring buffer
+        sem_post(sem_alloc[nproc]);
+        sem_wait(sem_alloc_ret[nproc]);
         bool ret = alloc_ring[nproc]->force_fetch_cache(addr);
         return ret;
+    }
+
+    uint64_t fetch_free_cache_single(uint32_t nproc, mr_rdma_addr &addr) {
+        return free_ring[nproc]->force_fetch_cache(addr);
     }
 
     uint64_t fetch_free_cache(uint32_t nproc, mr_rdma_addr* addr_list) {
@@ -417,10 +447,14 @@ public:
             return;
         }
         free_ring[nproc]->add_cache(addr);
+        sem_post(sem_free[nproc]);
+        sem_wait(sem_free_ret[nproc]);
     }
 
     void add_free_cache(unsigned nproc, mr_rdma_addr addr) {
         free_ring[nproc]->add_cache(addr);
+        sem_post(sem_free[nproc]);
+        sem_wait(sem_free_ret[nproc]);
     }
 
     inline uint32_t get_length(uint32_t nproc) {

@@ -15,10 +15,11 @@
 
 namespace mralloc {
 
-void * run_cache_filler(void* arg) {
+void* run_allocator_thread(void* arg){
+    worker_param* param = (worker_param*)arg;
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    CPU_SET(0, &cpuset);
+    CPU_SET(param->id, &cpuset);
     pthread_t this_tid = pthread_self();
     uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
     ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
@@ -27,45 +28,113 @@ void * run_cache_filler(void* arg) {
             printf("filler running on core: %d\n" , i);
         }
     }
-  ComputingNode *heap = (ComputingNode*)arg;
-  heap->cache_filler();
-  return NULL;
-} 
-
-void * run_pre_fetcher(void* arg) {
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(1, &cpuset);
-    pthread_t this_tid = pthread_self();
-    uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
-    // assert(ret == 0);
-    ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
-    for (int i = 0; i < sysconf(_SC_NPROCESSORS_CONF); i ++) {
-        if (CPU_ISSET(i, &cpuset)) {
-            printf("fetcher running on core: %d\n" , i);
-        }
-    }
-  ComputingNode *heap = (ComputingNode*)arg;
-  heap->pre_fetcher();
-  return NULL;
-} 
-
-void* run_recycler(void* arg) {
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(2, &cpuset);
-    pthread_t this_tid = pthread_self();
-    uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
-    // assert(ret == 0);
-    ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
-    for (int i = 0; i < sysconf(_SC_NPROCESSORS_CONF); i ++) {
-        if (CPU_ISSET(i, &cpuset)) {
-            printf("recycler running on core: %d\n" , i);
-        }
-    }
-    ComputingNode *heap = (ComputingNode*)arg;
-    heap->recycler();
+    param->heap->allocator(param->id);
     return NULL;
+}
+
+void ComputingNode::allocator(int proc) {
+    section_e section_;
+    uint32_t section_index_;
+    region_e region_;
+    uint32_t region_index_;
+    uint32_t node_ = current_node_;
+    std::vector<ConnectionManager*> m_rdma_conn;
+    for(int i = 0; i < node_num_; i++){
+        m_rdma_conn.push_back(new ConnectionManager());
+        if (m_rdma_conn[i] == nullptr) return;
+        if (m_rdma_conn[i]->init(ips[i], ports[i], 1, 1)) return;
+        sleep(1);
+    }
+    m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_light);
+    m_rdma_conn[node_]->fetch_region(section_, section_index_, 
+                            true, false, region_, region_index_);
+    while(1){
+        sem_wait(cpu_cache_->sem_alloc[proc]);
+        // printf("recieve request from %d\n", proc);
+        int retry_time = 0, cas_time = 0, section_time = 0, region_time = 0, result;
+        bool slow_path = false;
+        mr_rdma_addr remote_addr;
+        remote_addr.node = node_;
+        while((result = m_rdma_conn[node_]->fetch_region_block(section_, region_, remote_addr.addr, remote_addr.rkey, false, region_index_)) < 0){
+            cas_time += (-1)*result;
+            if(!slow_path){
+                while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, true, false, region_, region_index_)) < 0){
+                    region_time += (-1)*result;
+                    if((result = m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_light)) < 0){
+                        slow_path = true;
+                        section_time += (-1)*result;
+                        break;
+			        }else section_time += result;
+                }
+                region_time += result;
+            } else {
+                while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, true, true, region_, region_index_)) < 0){
+                    region_time += (-1)*result;
+                    if((result = m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_heavy)) < 0){
+                        section_time += (-1)*result;
+                        node_ = (node_+1) % node_num_;
+                        remote_addr.node = node_;
+                        printf("[cache single region] try to scan next node %d\n", node_);
+			        }
+                    else section_time += result;
+                }  
+                region_time += result;
+            }
+        }
+        cas_time += result;
+        if(cas_time > 2 && !slow_path) {
+            if((result = m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_light)) < 0){
+                slow_path = true;
+                section_time += (-1)*result;
+			}else section_time += result;
+            while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, true, false, region_, region_index_)) < 0){
+                region_time += (-1)*result;
+                if((result = m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_light)) < 0){
+                    slow_path = true;
+                    section_time += (-1)*result;
+                    break;
+			    }else section_time += result;
+            }
+        }
+        retry_time = cas_time + section_time + region_time;
+        cpu_cache_->add_cache(proc, remote_addr);
+        sem_post(cpu_cache_->sem_alloc_ret[proc]);
+    }
+    return;
+}
+
+void* run_free_thread(void* arg){
+    worker_param* param = (worker_param*)arg;
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(param->id, &cpuset);
+    pthread_t this_tid = pthread_self();
+    uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    for (int i = 0; i < sysconf(_SC_NPROCESSORS_CONF); i ++) {
+        if (CPU_ISSET(i, &cpuset)) {
+            printf("filler running on core: %d\n" , i);
+        }
+    }
+    param->heap->recycler(param->id);
+    return NULL;
+}
+
+void ComputingNode::recycler(int proc) {
+    std::vector<ConnectionManager*> m_rdma_conn;
+    for(int i = 0; i < node_num_; i++){
+        m_rdma_conn.push_back(new ConnectionManager());
+        if (m_rdma_conn[i] == nullptr) return;
+        if (m_rdma_conn[i]->init(ips[i], ports[i], 1, 1)) return;
+    }
+    while(1){
+        sem_wait(cpu_cache_->sem_free[proc]);
+        mr_rdma_addr remote_addr;
+        cpu_cache_->fetch_free_cache_single(proc, remote_addr);
+        m_rdma_conn[remote_addr.node]->free_region_block(remote_addr.addr, false);
+        sem_post(cpu_cache_->sem_free_ret[proc]);
+    }
+    return;
 }
 
 /**
@@ -79,6 +148,7 @@ bool ComputingNode::start(std::string* addr, std::string* port, uint32_t node_nu
     node_num_ = node_num;
     for(int i = 0; i < node_num; i++){
         m_rdma_conn_.push_back(new ConnectionManager());
+        ips.push_back(std::string(addr[i])); ports.push_back(std::string(port[i]));
         if (m_rdma_conn_[i] == nullptr) return -1;
         if (m_rdma_conn_[i]->init(addr[i], port[i], 1, 1)) return false;
         sleep(1);
@@ -95,42 +165,51 @@ bool ComputingNode::start(std::string* addr, std::string* port, uint32_t node_nu
             exclusive_region_.push_back((region_with_rkey*)malloc(sizeof(region_with_rkey) * new_info.region_num_));
         }
         hint_ = rand()%node_info_[0].block_num_;
-        ret = new_cache_section(alloc_empty, rand()%node_num_);
-        ret &= new_backup_section(rand()%node_num_);
-        ret &= new_cache_region();
-        ret &= new_backup_region();
-        cache_watermark_high = 0.99;
-        cache_watermark_low = 0.01;
-        cache_upper_bound = 145;
-        ret &= fill_cache_block();
-        if(!ret) {
-            printf("init cache failed\n");
-            return false;
-        }
-    } else if(one_side_enabled_) {
-        new_cache_section(alloc_empty, rand()%node_num_);
-        new_cache_region();
-    } else if(heap_enabled_) {
-        printf("RPC not implemented now\n");
-    }
+        // ret = new_cache_section(alloc_empty, rand()%node_num_);
+        // ret &= new_backup_section(rand()%node_num_);
+        // ret &= new_cache_region();
+        // ret &= new_backup_region();
+        // cache_watermark_high = 0.99;
+        // cache_watermark_low = 0.01;
+        // cache_upper_bound = 145;
+        // ret &= fill_cache_block();
+        // if(!ret) {
+        //     printf("init cache failed\n");
+        //     return false;
+        // }
+    } 
+    // else if(one_side_enabled_) {
+    //     new_cache_section(alloc_empty, rand()%node_num_);
+    //     new_cache_region();
+    // } else if(heap_enabled_) {
+    //     printf("RPC not implemented now\n");
+    // }
     // init cpu cache, insert a block for each cpu cache ring buffer
     if(cpu_cache_enabled_) {
         mr_rdma_addr remote_addr;
         cpu_cache_ = new cpu_cache(node_info_[0].block_size_);
-        for(int i = 0; i < nprocs; i++){
-            fetch_mem_block(remote_addr);
-            assert(remote_addr.addr!=0);
-            cpu_cache_->add_cache(i, remote_addr);
-            printf("init @%d addr:%lx rkey:%u\n", i, remote_addr.addr, remote_addr.rkey);
-        }
+        // for(int i = 0; i < nprocs; i++){
+        //     fetch_mem_block(remote_addr);
+        //     assert(remote_addr.addr!=0);
+        //     cpu_cache_->add_cache(i, remote_addr);
+        //     printf("init @%d addr:%lx rkey:%u\n", i, remote_addr.addr, remote_addr.rkey);
+        // }
         pthread_t running_thread;
-        pthread_create(&cache_fill_thread_, NULL, run_cache_filler, this);
-        pthread_create(&recycle_thread_, NULL, run_recycler, this);   
-        
+        // pthread_create(&cache_fill_thread_, NULL, run_cache_filler, this);
+        // pthread_create(&recycle_thread_, NULL, run_recycler, this);   
+        worker_param new_param[nprocs];
+        for(int i = 0; i < nprocs; i++) {
+            new_param[i].heap = this; new_param[i].id = i;
+            pthread_create(&malloc_thread_[i], NULL, run_allocator_thread, &new_param[i]);
+            sleep(1);
+            // usleep(1000);
+        }   
+        for(int i = 0; i < nprocs; i++) {
+            pthread_create(&free_thread_[i], NULL, run_free_thread, &new_param[i]);
+            sleep(1);
+            // usleep(1000);
+        }   
     }
-    if(heap_enabled_ && one_side_enabled_) 
-        pthread_create(&pre_fetch_thread_, NULL, run_pre_fetcher, this);   
-
     return true;
 }
 

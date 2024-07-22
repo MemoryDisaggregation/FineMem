@@ -88,6 +88,8 @@ public:
 
     ~ComputingNode() { destory(); }
 
+    void allocator(int proc);
+    void recycler(int proc);
     void pre_fetcher() ;
     void cache_filler() ;
     void print_cpu_cache() ;
@@ -153,9 +155,8 @@ private:
     uint32_t node_num_;
     std::vector<uint32_t> global_rkey_;
     
-    pthread_t pre_fetch_thread_;
-    pthread_t cache_fill_thread_;
-    pthread_t recycle_thread_;
+    pthread_t malloc_thread_[nprocs];
+    pthread_t free_thread_[nprocs];
 
     std::vector<node_info> node_info_;
     uint64_t fill_counter = 0;
@@ -203,10 +204,17 @@ private:
     uint64_t last_alloc_;
     uint64_t hint_ = 0;
     std::vector<ConnectionManager*> m_rdma_conn_;
+    std::vector<std::string> ips;
+    std::vector<std::string> ports;
     std::vector<rdma_mem_t> m_used_mem_; /* the used mem */
     std::mutex m_mutex_;                 /* used for concurrent mem allocation */
+    
+    uint64_t time_stamp_;
+};
 
-     uint64_t time_stamp_;
+struct worker_param{
+    ComputingNode* heap;
+    int id;
 };
 
 }
