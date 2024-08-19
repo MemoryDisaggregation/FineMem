@@ -13,6 +13,7 @@ namespace mralloc {
 
     bool ServerBlockManager::init(uint64_t meta_addr, uint64_t addr, uint64_t size, uint32_t rkey) {
         assert(size%region_size_ == 0);
+
         block_num_ = size/block_size_;
         region_num_ = block_num_/block_per_region;
         section_num_ = region_num_/region_per_section;
@@ -23,12 +24,24 @@ namespace mralloc {
         block_rkey_ = (uint32_t*)(region_header_ + region_num_);
         block_header_ = (uint64_t*)(block_rkey_ + block_num_);
         backup_rkey_ = (uint32_t*)(block_header_ + block_num_);
+        public_info_ = (PublicInfo*)(backup_rkey_ + block_num_);
+        for(int i  = 0; i < 128; i++) {
+            for(int j = 0; j < 8; j++){
+                for(int k = 0; k < 8; k++){
+                    public_info_->node_buffer[i].msg_type[j][k] = MRType::MR_IDLE;
+                }
+            }
+            public_info_->node_buffer[i].buffer = (void*)((uint64_t)public_info_ + sizeof(PublicInfo) + (uint64_t)1024*1024*64*i);
+        }
+        for(int i = 0;i < 1024;i++){
+            public_info_->pid_alive[i] = 0;
+        }
         
         heap_start_ = addr;
         heap_size_ = size;
-        assert(heap_start_ > (uint64_t)(backup_rkey_ + block_num_));
+        assert(heap_start_ > (uint64_t)((uint64_t)public_info_ + sizeof(PublicInfo) + (uint64_t)1024*1024*64*128));
 
-        if((uint64_t)(backup_rkey_ + block_num_) > heap_start_) {
+        if((uint64_t)((uint64_t)public_info_ + sizeof(PublicInfo) + (uint64_t)1024*1024*64*128) > heap_start_) {
             printf("metadata out of bound\n");
         }
 

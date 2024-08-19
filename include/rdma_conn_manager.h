@@ -47,7 +47,7 @@ class ConnectionManager {
     }
 
     int init(const std::string ip, const std::string port, uint32_t rpc_conn_num,
-            uint32_t one_sided_conn_num);
+            uint32_t one_sided_conn_num, uint16_t pid);
     one_side_info get_one_side_info() {return m_one_side_info_;};
     int register_remote_memory(uint64_t &addr, uint32_t &rkey, uint64_t size);
     int unregister_remote_memory(uint64_t addr);
@@ -137,6 +137,7 @@ class ConnectionManager {
     uint64_t heap_start_;
     uint64_t block_header_;
     uint64_t backup_rkey_;
+    PublicInfo* public_info_;
 
 };
 

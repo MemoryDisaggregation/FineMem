@@ -47,6 +47,7 @@ struct node_info {
         block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
         block_header_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
         backup_rkey_ = (uint64_t)((uint64_t*)block_header_ + block_num_);            
+        public_info_ = (PublicInfo*)((uint32_t*)backup_rkey_ + block_num_);           
         heap_start_ = m_one_side_info_.heap_start_;
     }
     uint64_t block_size_;
@@ -63,6 +64,7 @@ struct node_info {
     uint64_t heap_start_;
     uint64_t block_header_;
     uint64_t backup_rkey_;
+    PublicInfo* public_info_;
 };
 
 class ComputingNode {
@@ -72,7 +74,8 @@ public:
         uint32_t rkey;
     } rdma_mem_t;
 
-    ComputingNode(bool heap_enabled, bool cache_enabled, bool one_side_enabled): heap_enabled_(heap_enabled), cpu_cache_enabled_(cache_enabled), one_side_enabled_(one_side_enabled) {
+    ComputingNode(bool heap_enabled, bool cache_enabled, bool one_side_enabled, uint16_t pid): 
+        heap_enabled_(heap_enabled), cpu_cache_enabled_(cache_enabled), one_side_enabled_(one_side_enabled), mr_pid(pid){
         if(cpu_cache_enabled_)  assert(heap_enabled_);
         ring_cache = new ring_buffer_atomic<mr_rdma_addr>(ring_buffer_size, ring_cache_content, mr_rdma_addr(-1, -1, -1), &reader, &writer);
         ring_cache->clear();
@@ -148,6 +151,9 @@ public:
 
 private:
     void destory(){};
+
+    uint16_t mr_pid;
+    uint16_t mr_tid;
 
     FreeBlockManager *free_queue_manager;
     uint8_t running;

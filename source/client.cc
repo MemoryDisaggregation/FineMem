@@ -79,7 +79,7 @@ int main(int argc, char* argv[]){
     }
     bool multitest = false;
     if(!multitest) {
-        mralloc::ComputingNode* heap = new mralloc::ComputingNode(true, true, true);
+        mralloc::ComputingNode* heap = new mralloc::ComputingNode(true, true, true, config.mr_pid);
         heap->start(ip, port, config.memory_node_num);
 
         // before the real client running, make a test of iter times allocation
@@ -123,7 +123,7 @@ int main(int argc, char* argv[]){
         pthread_barrier_init(&end_barrier, NULL, thread_num);
         pthread_t running_thread[thread_num];
         for(int i = 0; i < thread_num; i++) {
-            client[i] = new mralloc::ComputingNode(false, false, true);
+            client[i] = new mralloc::ComputingNode(false, false, true, 0);
             client[i]->start(ip, port, config.memory_node_num);
             printf("thread %d\n init success\n", i);
             pthread_create(&running_thread[i], NULL, fetch_mem, client[i]);

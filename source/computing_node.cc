@@ -150,7 +150,7 @@ bool ComputingNode::start(std::string* addr, std::string* port, uint32_t node_nu
         m_rdma_conn_.push_back(new ConnectionManager());
         ips.push_back(std::string(addr[i])); ports.push_back(std::string(port[i]));
         if (m_rdma_conn_[i] == nullptr) return -1;
-        if (m_rdma_conn_[i]->init(addr[i], port[i], 1, 1)) return false;
+        if (m_rdma_conn_[i]->init(addr[i], port[i], 1, 1, mr_pid)) return false;
         sleep(1);
         set_global_rkey(m_rdma_conn_[i]->get_global_rkey(), i);
     }

@@ -7,7 +7,7 @@ namespace mralloc {
 
 int ConnectionManager::init(const std::string ip, const std::string port,
                             uint32_t rpc_conn_num,
-                            uint32_t one_sided_conn_num) {
+                            uint32_t one_sided_conn_num, uint16_t pid) {
   m_rpc_conn_queue_ = new ConnQue();
   m_one_sided_conn_queue_ = new ConnQue();
   if (rpc_conn_num > MAX_SERVER_WORKER * MAX_SERVER_CLIENT) {
@@ -20,7 +20,7 @@ int ConnectionManager::init(const std::string ip, const std::string port,
 
   for (uint32_t i = 0; i < rpc_conn_num; i++) {
     RDMAConnection *conn = new RDMAConnection();
-    if (conn->init(ip, port, CONN_RPC)) {
+    if (conn->init(ip, port, CONN_RPC, pid)) {
       return -1;
     }
     m_one_side_info_ = conn->get_one_side_info();
@@ -38,12 +38,13 @@ int ConnectionManager::init(const std::string ip, const std::string port,
     block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
     block_header_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
     backup_rkey_ = (uint64_t)((uint64_t*)block_header_ + block_num_);
+    public_info_ = (PublicInfo*)((uint32_t*)backup_rkey_ + block_num_);
     heap_start_ = m_one_side_info_.heap_start_;
   }
 
   for (uint32_t i = 0; i < one_sided_conn_num; i++) {
     RDMAConnection *conn = new RDMAConnection();
-    if (conn->init(ip, port, CONN_ONESIDE)) {
+    if (conn->init(ip, port, CONN_ONESIDE, pid)) {
       return -1;
     }
     m_one_sided_conn_queue_->enqueue(conn);

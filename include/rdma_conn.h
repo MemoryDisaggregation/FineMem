@@ -35,7 +35,7 @@ struct one_side_info {
 /* RDMA connection */
 class RDMAConnection {
 public:
-    int init(const std::string ip, const std::string port, uint8_t access_type);
+    int init(const std::string ip, const std::string port, uint8_t access_type, uint16_t pid);
     one_side_info get_one_side_info() {return m_one_side_info_;};
     int register_remote_memory(uint64_t &addr, uint32_t &rkey, uint64_t size);
     int unregister_remote_memory(uint64_t addr);
@@ -156,6 +156,7 @@ public:
     uint64_t heap_start_;
     uint64_t block_header_;
     uint64_t backup_rkey_;
+    PublicInfo* public_info_;
 
     uint64_t retry_counter_;
     std::mt19937 mt;

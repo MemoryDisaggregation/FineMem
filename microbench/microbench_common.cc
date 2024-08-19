@@ -954,7 +954,7 @@ int main(int argc, char* argv[]) {
     mralloc::ConnectionManager* conn[thread_num];
     for(int i = 0; i < thread_num; i++) {
         conn[i] = new mralloc::ConnectionManager();
-        conn[i]->init(ip, port, 1, 1);
+        conn[i]->init(ip, port, 1, 1, 1);
         pthread_create(&running_thread[i], NULL, worker, conn[i]);
     }
     for(int i = 0; i < thread_num; i++) {

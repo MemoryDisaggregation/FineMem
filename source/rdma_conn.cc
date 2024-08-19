@@ -10,9 +10,7 @@
 
 namespace mralloc {
 
-const int retry_threshold = 3;
-
-int RDMAConnection::init(const std::string ip, const std::string port, uint8_t access_type) {
+int RDMAConnection::init(const std::string ip, const std::string port, uint8_t access_type, uint16_t pid) {
     time_t time_; time(&time_); srand(time_);
     std::random_device e;
     mt.seed(e());
@@ -115,11 +113,12 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
         return -1;
     }
 
-    uint8_t access_type_ = access_type;
+    CNodeInit init_msg = {pid, access_type};
+    // uint8_t access_type_ = access_type;
     struct rdma_conn_param conn_param = {};
     conn_param.responder_resources = 16;
-    conn_param.private_data = &access_type_;
-    conn_param.private_data_len = sizeof(access_type_);
+    conn_param.private_data = &init_msg;
+    conn_param.private_data_len = sizeof(CNodeInit);
     conn_param.initiator_depth = 16;
     conn_param.retry_count = 7;
     conn_param.rnr_retry_count = 7;
@@ -165,7 +164,7 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
     block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
     block_header_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
     backup_rkey_ = (uint64_t)((uint64_t*)block_header_ + block_num_);
-    
+    public_info_ = (PublicInfo*)((uint32_t*)backup_rkey_ + block_num_);
     heap_start_ = server_pdata.heap_start_;
     
     

@@ -335,9 +335,9 @@ void MemoryNode::handle_connection() {
         
         if (event->event == RDMA_CM_EVENT_CONNECT_REQUEST) {
             struct rdma_cm_id *cm_id = event->id;
-            uint8_t type = *(uint8_t*)event->param.conn.private_data;
+            CNodeInit msg = *(CNodeInit*)event->param.conn.private_data;
             rdma_ack_cm_event(event);
-            create_connection(cm_id, type);
+            create_connection(cm_id, msg.access_type);
         } else if (event->event == RDMA_CM_EVENT_ESTABLISHED) {
             rdma_ack_cm_event(event);
         } else {

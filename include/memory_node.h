@@ -176,6 +176,5 @@ private:
     uint8_t running;
     uint32_t global_rkey_;
 
-
 };
 }

@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include "msg.h"
 #include <bits/stdint-uintn.h>
 #include <algorithm>
 #include <atomic>
@@ -206,9 +207,11 @@ public:
         if(cal_header_size() > page_size) {
             printf("too large memory region, out of range!\n");
         }
-        init_size = size + align;
+        init_size = size + (uint64_t)1024*1024*1024*10;
+        // init_size = size + align;
         init_addr = num_align_upper(addr, align);
-        addr = init_addr + align;
+        addr = init_addr + (uint64_t)1024*1024*1024*10;
+        // addr = init_addr + align;
         assert(init_addr % align == 0);
     };
 
@@ -318,6 +321,8 @@ private:
     uint64_t heap_start_;
     uint64_t heap_size_;
     std::ofstream mem_record_;
+    PublicInfo* public_info_;
+
     // info helping accelerate
     struct cache_info{
         uint64_t current_section_;
