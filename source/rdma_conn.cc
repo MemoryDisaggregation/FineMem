@@ -10,6 +10,8 @@
 
 namespace mralloc {
 
+const int retry_threshold = 3;
+
 int RDMAConnection::init(const std::string ip, const std::string port, uint8_t access_type, uint16_t pid) {
     time_t time_; time(&time_); srand(time_);
     std::random_device e;

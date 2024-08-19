@@ -42,7 +42,7 @@ void ComputingNode::allocator(int proc) {
     for(int i = 0; i < node_num_; i++){
         m_rdma_conn.push_back(new ConnectionManager());
         if (m_rdma_conn[i] == nullptr) return;
-        if (m_rdma_conn[i]->init(ips[i], ports[i], 1, 1)) return;
+        if (m_rdma_conn[i]->init(ips[i], ports[i], 1, 1, mr_pid)) return;
         sleep(1);
     }
     m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_light);
@@ -125,7 +125,7 @@ void ComputingNode::recycler(int proc) {
     for(int i = 0; i < node_num_; i++){
         m_rdma_conn.push_back(new ConnectionManager());
         if (m_rdma_conn[i] == nullptr) return;
-        if (m_rdma_conn[i]->init(ips[i], ports[i], 1, 1)) return;
+        if (m_rdma_conn[i]->init(ips[i], ports[i], 1, 1, mr_pid)) return;
     }
     while(1){
         sem_wait(cpu_cache_->sem_free[proc]);
