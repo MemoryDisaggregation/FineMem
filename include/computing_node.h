@@ -91,13 +91,12 @@ public:
 
     ~ComputingNode() { destory(); }
 
-    void allocator(int proc);
-    void recycler(int proc);
+    void woker(int proc);
     void pre_fetcher() ;
     void cache_filler() ;
     void print_cpu_cache() ;
     void recycler() ;
-    
+
     inline void show_ring_length() {
         printf("ring length:%u\n", ring_cache->get_length());
         return ;
@@ -161,8 +160,7 @@ private:
     uint32_t node_num_;
     std::vector<uint32_t> global_rkey_;
     
-    pthread_t malloc_thread_[nprocs];
-    pthread_t free_thread_[nprocs];
+    pthread_t woker_thread_[nprocs];
 
     std::vector<node_info> node_info_;
     uint64_t fill_counter = 0;
@@ -184,7 +182,7 @@ private:
     uint32_t backup_region_index_;
     int backup_counter = 0;
     int backup_cycle = -1;
-
+    
     // << reserved block cache>>
     ring_buffer_atomic<mr_rdma_addr>* ring_cache;
     mr_rdma_addr ring_cache_content[ring_buffer_size];

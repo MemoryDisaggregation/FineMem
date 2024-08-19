@@ -322,10 +322,10 @@ public:
     }
     ~pool_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
-        return cpu_cache_->fetch_cache(remote_addr);
+        return cpu_cache_->malloc(remote_addr);
     };
     bool free(mralloc::mr_rdma_addr remote_addr) override {
-        cpu_cache_->add_free_cache(remote_addr);
+        cpu_cache_->free(remote_addr);
         return true;
     };
     bool print_state() override {return false;};

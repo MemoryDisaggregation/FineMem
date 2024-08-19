@@ -15,7 +15,7 @@
 
 namespace mralloc {
 
-void* run_allocator_thread(void* arg){
+void* run_woker_thread(void* arg){
     worker_param* param = (worker_param*)arg;
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
@@ -28,11 +28,11 @@ void* run_allocator_thread(void* arg){
             printf("filler running on core: %d\n" , i);
         }
     }
-    param->heap->allocator(param->id);
+    param->heap->woker(param->id);
     return NULL;
 }
 
-void ComputingNode::allocator(int proc) {
+void ComputingNode::woker(int proc) {
     section_e section_;
     uint32_t section_index_;
     region_e region_;
@@ -49,90 +49,72 @@ void ComputingNode::allocator(int proc) {
     m_rdma_conn[node_]->fetch_region(section_, section_index_, 
                             true, false, region_, region_index_);
     while(1){
-        sem_wait(cpu_cache_->sem_alloc[proc]);
+        sem_wait(cpu_cache_->doorbell[proc]);
         // printf("recieve request from %d\n", proc);
-        int retry_time = 0, cas_time = 0, section_time = 0, region_time = 0, result;
-        bool slow_path = false;
-        mr_rdma_addr remote_addr;
-        remote_addr.node = node_;
-        while((result = m_rdma_conn[node_]->fetch_region_block(section_, region_, remote_addr.addr, remote_addr.rkey, false, region_index_)) < 0){
-            cas_time += (-1)*result;
-            if(!slow_path){
-                while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, true, false, region_, region_index_)) < 0){
-                    region_time += (-1)*result;
+        switch(cpu_cache_->buffer_[proc].opcode_){
+            case LegoOpcode::LegoAlloc: {
+                int retry_time = 0, cas_time = 0, section_time = 0, region_time = 0, result;
+                bool slow_path = false;
+                mr_rdma_addr remote_addr;
+                remote_addr.node = node_;
+                while((result = m_rdma_conn[node_]->fetch_region_block(section_, region_, remote_addr.addr, remote_addr.rkey, false, region_index_)) < 0){
+                    cas_time += (-1)*result;
+                    if(!slow_path){
+                        while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, true, false, region_, region_index_)) < 0){
+                            region_time += (-1)*result;
+                            if((result = m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_light)) < 0){
+                                slow_path = true;
+                                section_time += (-1)*result;
+                                break;
+                            }else section_time += result;
+                        }
+                        region_time += result;
+                    } else {
+                        while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, true, true, region_, region_index_)) < 0){
+                            region_time += (-1)*result;
+                            if((result = m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_heavy)) < 0){
+                                section_time += (-1)*result;
+                                node_ = (node_+1) % node_num_;
+                                remote_addr.node = node_;
+                                printf("[cache single region] try to scan next node %d\n", node_);
+                            }
+                            else section_time += result;
+                        }  
+                        region_time += result;
+                    }
+                }
+                cas_time += result;
+                if(cas_time > 2 && !slow_path) {
                     if((result = m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_light)) < 0){
                         slow_path = true;
                         section_time += (-1)*result;
-                        break;
-			        }else section_time += result;
+                    }else section_time += result;
+                    while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, true, false, region_, region_index_)) < 0){
+                        region_time += (-1)*result;
+                        if((result = m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_light)) < 0){
+                            slow_path = true;
+                            section_time += (-1)*result;
+                            break;
+                        }else section_time += result;
+                    }
                 }
-                region_time += result;
-            } else {
-                while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, true, true, region_, region_index_)) < 0){
-                    region_time += (-1)*result;
-                    if((result = m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_heavy)) < 0){
-                        section_time += (-1)*result;
-                        node_ = (node_+1) % node_num_;
-                        remote_addr.node = node_;
-                        printf("[cache single region] try to scan next node %d\n", node_);
-			        }
-                    else section_time += result;
-                }  
-                region_time += result;
+                retry_time = cas_time + section_time + region_time;
+                *(mr_rdma_addr*)cpu_cache_->buffer_[proc].buffer_ = remote_addr;
+                cpu_cache_->buffer_[proc].opcode_ = LegoOpcode::LegoIdle;
+                break;
+            }
+            case LegoOpcode::LegoFree: {
+                mr_rdma_addr remote_addr = *(mr_rdma_addr*)cpu_cache_->buffer_[proc].buffer_;
+                m_rdma_conn[remote_addr.node]->free_region_block(remote_addr.addr, false);
+                cpu_cache_->buffer_[proc].opcode_ = LegoOpcode::LegoIdle;
+                break;
+            }
+            default :{
+                printf("Wrong opcode\n");
+                break;
             }
         }
-        cas_time += result;
-        if(cas_time > 2 && !slow_path) {
-            if((result = m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_light)) < 0){
-                slow_path = true;
-                section_time += (-1)*result;
-			}else section_time += result;
-            while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, true, false, region_, region_index_)) < 0){
-                region_time += (-1)*result;
-                if((result = m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_light)) < 0){
-                    slow_path = true;
-                    section_time += (-1)*result;
-                    break;
-			    }else section_time += result;
-            }
-        }
-        retry_time = cas_time + section_time + region_time;
-        cpu_cache_->add_cache(proc, remote_addr);
-        sem_post(cpu_cache_->sem_alloc_ret[proc]);
-    }
-    return;
-}
-
-void* run_free_thread(void* arg){
-    worker_param* param = (worker_param*)arg;
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(param->id, &cpuset);
-    pthread_t this_tid = pthread_self();
-    uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
-    ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
-    for (int i = 0; i < sysconf(_SC_NPROCESSORS_CONF); i ++) {
-        if (CPU_ISSET(i, &cpuset)) {
-            printf("filler running on core: %d\n" , i);
-        }
-    }
-    param->heap->recycler(param->id);
-    return NULL;
-}
-
-void ComputingNode::recycler(int proc) {
-    std::vector<ConnectionManager*> m_rdma_conn;
-    for(int i = 0; i < node_num_; i++){
-        m_rdma_conn.push_back(new ConnectionManager());
-        if (m_rdma_conn[i] == nullptr) return;
-        if (m_rdma_conn[i]->init(ips[i], ports[i], 1, 1, mr_pid)) return;
-    }
-    while(1){
-        sem_wait(cpu_cache_->sem_free[proc]);
-        mr_rdma_addr remote_addr;
-        cpu_cache_->fetch_free_cache_single(proc, remote_addr);
-        m_rdma_conn[remote_addr.node]->free_region_block(remote_addr.addr, false);
-        sem_post(cpu_cache_->sem_free_ret[proc]);
+        sem_post(cpu_cache_->retbell[proc]);
     }
     return;
 }
@@ -200,12 +182,7 @@ bool ComputingNode::start(std::string* addr, std::string* port, uint32_t node_nu
         worker_param new_param[nprocs];
         for(int i = 0; i < nprocs; i++) {
             new_param[i].heap = this; new_param[i].id = i;
-            pthread_create(&malloc_thread_[i], NULL, run_allocator_thread, &new_param[i]);
-            sleep(1);
-            // usleep(1000);
-        }   
-        for(int i = 0; i < nprocs; i++) {
-            pthread_create(&free_thread_[i], NULL, run_free_thread, &new_param[i]);
+            pthread_create(&woker_thread_[i], NULL, run_woker_thread, &new_param[i]);
             sleep(1);
             // usleep(1000);
         }   
@@ -234,7 +211,6 @@ void ComputingNode::decrease_watermark(int &upper_bound) {
         upper_bound -= 8;
     }
 }
-
 // a infinite loop worker
 void ComputingNode::pre_fetcher() {
     std::unordered_map<uint32_t, uint32_t> region_map; 
@@ -292,102 +268,102 @@ void ComputingNode::pre_fetcher() {
     }
 }
 
-void ComputingNode::recycler() {
-    uint64_t addr, length;
-    mr_rdma_addr batch_addr[max_free_item];
-    int recycle_counter = 0; uint64_t recycle_addr[32]; uint32_t new_rkey[32];
-    while(running) {
-        int free_num;
-	    int total_free = 0;
-	    do{
-	        free_num = 0; 
-            for(int i = 0; i < nprocs; i++){
-                if((length = cpu_cache_->fetch_free_cache(i, batch_addr)) != 0) {
-                    free_num += length;
-                    for(int j = 0; j < length; j++){
-                        uint64_t region_offset = (batch_addr[j].addr - node_info_[batch_addr[j].node].heap_start_) / node_info_[batch_addr[j].node].region_size_;
-                        uint64_t region_block_offset = (batch_addr[j].addr - node_info_[batch_addr[j].node].heap_start_) 
-                            % node_info_[batch_addr[j].node].region_size_ / node_info_[batch_addr[j].node].block_size_;
-                        uint32_t new_key = m_rdma_conn_[batch_addr[j].node]->rebind_region_block_rkey(region_offset, region_block_offset);
-                        if(new_key != 0) {
-                            mr_rdma_addr result; 
-                            result = batch_addr[j]; 
-                            exclusive_region_[batch_addr[j].node][region_offset].rkey[region_block_offset] = new_key;
-                            result.rkey = new_key;
-                            ring_cache->add_cache(result);
-                        } else {
-                            printf("Do not use batch for rebind anymore\n");
-                            // if(recycle_counter > 31) {
-                            //     recycle_counter = 0;
-                            //     free_mem_block_fast_batch(recycle_addr);
-                            // }
-                            // recycle_addr[recycle_counter] = batch_addr[j];
-                            // recycle_counter ++;
-                        }
-                    }
-                }
-            }
-	        total_free += free_num;
-        }while(free_num >= 8);
-    }
-}
+// void ComputingNode::recycler() {
+//     uint64_t addr, length;
+//     mr_rdma_addr batch_addr[max_free_item];
+//     int recycle_counter = 0; uint64_t recycle_addr[32]; uint32_t new_rkey[32];
+//     while(running) {
+//         int free_num;
+// 	    int total_free = 0;
+// 	    do{
+// 	        free_num = 0; 
+//             for(int i = 0; i < nprocs; i++){
+//                 if((length = cpu_cache_->fetch_free_cache(i, batch_addr)) != 0) {
+//                     free_num += length;
+//                     for(int j = 0; j < length; j++){
+//                         uint64_t region_offset = (batch_addr[j].addr - node_info_[batch_addr[j].node].heap_start_) / node_info_[batch_addr[j].node].region_size_;
+//                         uint64_t region_block_offset = (batch_addr[j].addr - node_info_[batch_addr[j].node].heap_start_) 
+//                             % node_info_[batch_addr[j].node].region_size_ / node_info_[batch_addr[j].node].block_size_;
+//                         uint32_t new_key = m_rdma_conn_[batch_addr[j].node]->rebind_region_block_rkey(region_offset, region_block_offset);
+//                         if(new_key != 0) {
+//                             mr_rdma_addr result; 
+//                             result = batch_addr[j]; 
+//                             exclusive_region_[batch_addr[j].node][region_offset].rkey[region_block_offset] = new_key;
+//                             result.rkey = new_key;
+//                             ring_cache->add_cache(result);
+//                         } else {
+//                             printf("Do not use batch for rebind anymore\n");
+//                             // if(recycle_counter > 31) {
+//                             //     recycle_counter = 0;
+//                             //     free_mem_block_fast_batch(recycle_addr);
+//                             // }
+//                             // recycle_addr[recycle_counter] = batch_addr[j];
+//                             // recycle_counter ++;
+//                         }
+//                     }
+//                 }
+//             }
+// 	        total_free += free_num;
+//         }while(free_num >= 8);
+//     }
+// }
 
-void ComputingNode::print_cpu_cache() {
-    for(int i = 0;i < nprocs; i++) {
-        if(cpu_cache_watermark[i] != 1 || cpu_cache_->get_length(i) != 1)
-            printf("%d:%d/%u\t", i, cpu_cache_->get_length(i), cpu_cache_watermark[i]);
-    }
-    printf("\n");
+// void ComputingNode::print_cpu_cache() {
+//     for(int i = 0;i < nprocs; i++) {
+//         if(cpu_cache_watermark[i] != 1 || cpu_cache_->get_length(i) != 1)
+//             printf("%d:%d/%u\t", i, cpu_cache_->get_length(i), cpu_cache_watermark[i]);
+//     }
+//     printf("\n");
 
-}
+// }
 
-// a infinite loop worker
-void ComputingNode::cache_filler() {
-  // scan the cpu cache and refill them
-    time_stamp_ = 0; uint64_t update = 0;
+// // a infinite loop worker
+// void ComputingNode::cache_filler() {
+//   // scan the cpu cache and refill them
+//     time_stamp_ = 0; uint64_t update = 0;
 
-    for(int i=0; i<nprocs; i++) {
-        cpu_cache_watermark[i] = 1;
-    }
-    uint64_t init_addr_ = -1; uint32_t init_rkey_ = -1;
-    mr_rdma_addr batch_addr[64];
-    while(running) {
-        update = 0;
-        for(int i = 0; i < nprocs; i++){
-            int free_ = cpu_cache_->get_length(i);
-            // empty    --> fill and +1
-            // 1 left   --> fill
-            // > 1 left --> fill and -1
-            if(free_ == 0){
-                if (cpu_cache_watermark[i] < 8)
-                    cpu_cache_watermark[i] += 1;
-                while(!ring_cache->try_fetch_batch(batch_addr, cpu_cache_watermark[i])){
-                    time_stamp_ += 1;
-                }
-                cpu_cache_->add_batch(i, batch_addr, cpu_cache_watermark[i]);
-                update += cpu_cache_watermark[i];
-            }
-            else if(free_ < cpu_cache_watermark[i] && free_ > 1) {
-                if(cpu_cache_watermark[1] > 1)
-                    cpu_cache_watermark[i] -= 1;
-                while(!ring_cache->try_fetch_batch(batch_addr, cpu_cache_watermark[i]-free_)){
-                    time_stamp_ += 1;
-                }
-                cpu_cache_->add_batch(i, batch_addr, cpu_cache_watermark[i]-free_);
-                update += cpu_cache_watermark[i] - free_;
-            } else if(cpu_cache_watermark[i] > 1 && free_ == 1) {
-                while(!ring_cache->try_fetch_batch(batch_addr, cpu_cache_watermark[i]-free_)){
-                    time_stamp_ += 1;
-		}
-                cpu_cache_->add_batch(i, batch_addr, cpu_cache_watermark[i]-free_);
-                update += cpu_cache_watermark[i] - free_;
-            } 
-        }
-        if(update) {
-            time_stamp_ += 1;
-        }
-    }
-}
+//     for(int i=0; i<nprocs; i++) {
+//         cpu_cache_watermark[i] = 1;
+//     }
+//     uint64_t init_addr_ = -1; uint32_t init_rkey_ = -1;
+//     mr_rdma_addr batch_addr[64];
+//     while(running) {
+//         update = 0;
+//         for(int i = 0; i < nprocs; i++){
+//             int free_ = cpu_cache_->get_length(i);
+//             // empty    --> fill and +1
+//             // 1 left   --> fill
+//             // > 1 left --> fill and -1
+//             if(free_ == 0){
+//                 if (cpu_cache_watermark[i] < 8)
+//                     cpu_cache_watermark[i] += 1;
+//                 while(!ring_cache->try_fetch_batch(batch_addr, cpu_cache_watermark[i])){
+//                     time_stamp_ += 1;
+//                 }
+//                 cpu_cache_->add_batch(i, batch_addr, cpu_cache_watermark[i]);
+//                 update += cpu_cache_watermark[i];
+//             }
+//             else if(free_ < cpu_cache_watermark[i] && free_ > 1) {
+//                 if(cpu_cache_watermark[1] > 1)
+//                     cpu_cache_watermark[i] -= 1;
+//                 while(!ring_cache->try_fetch_batch(batch_addr, cpu_cache_watermark[i]-free_)){
+//                     time_stamp_ += 1;
+//                 }
+//                 cpu_cache_->add_batch(i, batch_addr, cpu_cache_watermark[i]-free_);
+//                 update += cpu_cache_watermark[i] - free_;
+//             } else if(cpu_cache_watermark[i] > 1 && free_ == 1) {
+//                 while(!ring_cache->try_fetch_batch(batch_addr, cpu_cache_watermark[i]-free_)){
+//                     time_stamp_ += 1;
+// 		}
+//                 cpu_cache_->add_batch(i, batch_addr, cpu_cache_watermark[i]-free_);
+//                 update += cpu_cache_watermark[i] - free_;
+//             } 
+//         }
+//         if(update) {
+//             time_stamp_ += 1;
+//         }
+//     }
+// }
 
 bool ComputingNode::new_cache_section(alloc_advise advise, uint32_t node){
     if(!m_rdma_conn_[node]->find_section(current_section_, current_section_index_, advise) ) {
@@ -672,10 +648,10 @@ bool ComputingNode::fetch_mem_block_nocached(mr_rdma_addr &remote_addr, uint32_t
     return true;
 }
 
-void ComputingNode::fetch_cache(uint8_t nproc, mr_rdma_addr &remote_addr) {
-  cpu_cache_->fetch_cache(nproc, remote_addr);
-  return;
-}
+// void ComputingNode::fetch_cache(uint8_t nproc, mr_rdma_addr &remote_addr) {
+//   cpu_cache_->fetch_cache(nproc, remote_addr);
+//   return;
+// }
 
 /**
   * @description: stop local memory service
