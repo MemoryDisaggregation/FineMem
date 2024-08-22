@@ -297,7 +297,7 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
  * @description: get engine alive state
  * @return {bool}  true for alive
  */
-bool MemoryNode::alive() {  // TODO
+bool MemoryNode::alive() {  
     return true;
 }
 
@@ -337,7 +337,7 @@ void MemoryNode::handle_connection() {
             struct rdma_cm_id *cm_id = event->id;
             CNodeInit msg = *(CNodeInit*)event->param.conn.private_data;
             rdma_ack_cm_event(event);
-            create_connection(cm_id, msg.access_type);
+            create_connection(cm_id, msg.access_type, msg.node_id);
         } else if (event->event == RDMA_CM_EVENT_ESTABLISHED) {
             rdma_ack_cm_event(event);
         } else {
@@ -347,7 +347,7 @@ void MemoryNode::handle_connection() {
     printf("exit handle_connection\n");
 }
 
-int MemoryNode::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type) {
+int MemoryNode::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type, uint16_t node_id) {
 
     if (!m_pd_) {
         perror("ibv_pibv_alloc_pdoll_cq fail");
@@ -434,12 +434,13 @@ int MemoryNode::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
             m_worker_info_[num]->cm_id = cm_id;
             m_worker_info_[num]->cq = cq;
         } 
+        
         rep_pdata.id = num;
+        server_block_manager_->public_info_->id_node_map[num] = node_id;
         m_worker_num_ += 1;
         one_side_qp_[num] = cm_id->qp;
         one_side_cq_[num] = cq;
     } 
-
     rep_pdata.buf_addr = (uintptr_t)cmd_msg;
     rep_pdata.buf_rkey = msg_mr->rkey;
     rep_pdata.size = sizeof(CmdMsgRespBlock);

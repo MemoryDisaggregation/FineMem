@@ -1205,7 +1205,6 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
         new_region.retry_ = retry_time-1;
         new_region.last_offset_ = index;
         new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 128;
-        // TODO: a new cliennt id mechanism
         new_region.last_modify_id_ = conn_id_+1;
     } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_));
     // if(mt()%1000 == 1){

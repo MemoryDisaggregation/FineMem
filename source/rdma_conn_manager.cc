@@ -7,7 +7,7 @@ namespace mralloc {
 
 int ConnectionManager::init(const std::string ip, const std::string port,
                             uint32_t rpc_conn_num,
-                            uint32_t one_sided_conn_num, uint16_t pid) {
+                            uint32_t one_sided_conn_num, uint16_t node_id) {
   m_rpc_conn_queue_ = new ConnQue();
   m_one_sided_conn_queue_ = new ConnQue();
   if (rpc_conn_num > MAX_SERVER_WORKER * MAX_SERVER_CLIENT) {
@@ -20,7 +20,7 @@ int ConnectionManager::init(const std::string ip, const std::string port,
 
   for (uint32_t i = 0; i < rpc_conn_num; i++) {
     RDMAConnection *conn = new RDMAConnection();
-    if (conn->init(ip, port, CONN_RPC, pid)) {
+    if (conn->init(ip, port, CONN_RPC, node_id)) {
       return -1;
     }
     m_one_side_info_ = conn->get_one_side_info();
@@ -44,7 +44,7 @@ int ConnectionManager::init(const std::string ip, const std::string port,
 
   for (uint32_t i = 0; i < one_sided_conn_num; i++) {
     RDMAConnection *conn = new RDMAConnection();
-    if (conn->init(ip, port, CONN_ONESIDE, pid)) {
+    if (conn->init(ip, port, CONN_ONESIDE, node_id)) {
       return -1;
     }
     m_one_sided_conn_queue_->enqueue(conn);

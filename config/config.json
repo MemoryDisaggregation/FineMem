@@ -1,5 +1,5 @@
 {
-    "mr_pid":1,
+    "node_id":1,
     "rdma_cm_port":1145,
     "memory_node_num":1,
     "memory_ips":[

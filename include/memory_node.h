@@ -115,7 +115,7 @@ private:
 
     void handle_connection();
 
-    int create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type);
+    int create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type, uint16_t node_id);
 
     struct ibv_mr *rdma_register_memory(void *ptr, uint64_t size);
 

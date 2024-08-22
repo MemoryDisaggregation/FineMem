@@ -79,7 +79,7 @@ int main(int argc, char* argv[]){
     }
     bool multitest = false;
     if(!multitest) {
-        mralloc::ComputingNode* heap = new mralloc::ComputingNode(true, true, true, config.mr_pid);
+        mralloc::ComputingNode* heap = new mralloc::ComputingNode(true, true, true, config.node_id);
         heap->start(ip, port, config.memory_node_num);
 
         // before the real client running, make a test of iter times allocation

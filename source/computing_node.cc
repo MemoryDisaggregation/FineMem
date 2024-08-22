@@ -15,6 +15,79 @@
 
 namespace mralloc {
 
+void* run_rpc_thread(void* arg){
+    ComputingNode* heap = (ComputingNode*)arg;
+    heap->listenser();
+    return NULL;
+}
+
+void ComputingNode::listenser() {
+    section_e section_;
+    uint32_t section_index_;
+    region_e region_;
+    uint32_t region_index_;
+    uint32_t node_ = current_node_;
+    std::vector<ConnectionManager*> m_rdma_conn;
+    for(int i = 0; i < node_num_; i++){
+        m_rdma_conn.push_back(new ConnectionManager());
+        if (m_rdma_conn[i] == nullptr) return;
+        if (m_rdma_conn[i]->init(ips[i], ports[i], 1, 1, node_id_)) return;
+        sleep(1);
+    }
+    while(1) {
+        MsgBuffer msg_buffer_;
+        void* full_content;
+        MRType type;
+        for(int i = 0; i < node_num_; i++){
+            m_rdma_conn[i]->remote_read((void*)&msg_buffer_, sizeof(MsgBuffer), 
+                (uint64_t)node_info_[i].public_info_ + 1024*sizeof(uint64_t) + 1024*sizeof(uint16_t) + node_id_*sizeof(MsgBuffer), global_rkey_[i]);
+            for(int j = 0; j < 8; j++){
+                type = msg_buffer_.msg_type[j];
+                if(type == MRType::MR_FREE) {
+                    mr_rdma_addr free_addr;
+                    m_rdma_conn[i]->remote_read((void*)&free_addr, sizeof(mr_rdma_addr),
+                        (uint64_t)msg_buffer_.buffer, 
+                        global_rkey_[i]);
+                    assert(free_addr.addr != 0 && free_addr.rkey != 0);
+                    mr_rdma_addr addr_empty;
+                    memset((void*)&addr_empty, 0, sizeof(mr_rdma_addr));
+                    
+                    //set buffer to empty
+                    m_rdma_conn[i]->remote_write((void*)&addr_empty, sizeof(mr_rdma_addr),
+                        (uint64_t)msg_buffer_.buffer, 
+                        global_rkey_[i]);
+
+                    //set opcode to empty
+                    MRType newtype = MRType::MR_IDLE;
+                    m_rdma_conn[i]->remote_write((uint64_t*)&newtype, sizeof(MRType), 
+                            (uint64_t)node_info_[free_addr.node].public_info_ + 1024*sizeof(uint64_t) + 1024*sizeof(uint16_t) + node_id_*sizeof(MsgBuffer) + sizeof(MRType)*j,
+                            global_rkey_[free_addr.node]);    
+                    
+
+                    //TODO: update the free info to a page bitmap
+                    mr_rdma_addr block_addr = free_addr;
+                    uint64_t block_offset = block_addr.addr % node_info_[free_addr.node].block_size_;
+                    block_addr.addr -= block_offset;
+                    bitmap_record record = offset_record_[block_addr];
+                    uint64_t bitmap_index = block_offset / record.bin_size /64;
+                    uint64_t bitmap_offset = block_offset / record.bin_size %64;
+                    uint64_t bitmap = cpu_cache_->bitmap_[record.offset + bitmap_index].load();
+                    uint64_t new_bitmap= bitmap & ((uint64_t)1<<bitmap_offset);
+                    do{
+                        new_bitmap= bitmap & ((uint64_t)1<<bitmap_offset);
+                    }while(cpu_cache_->bitmap_[record.offset + bitmap_index].compare_exchange_weak(bitmap,new_bitmap));
+
+                } else if(type == MRType::MR_TRANSFER) {
+                    //TODO: read a segment and add it to local heap
+
+                }
+            }
+        }
+    }
+    return;
+}
+
+
 void* run_woker_thread(void* arg){
     worker_param* param = (worker_param*)arg;
     cpu_set_t cpuset;
@@ -42,7 +115,7 @@ void ComputingNode::woker(int proc) {
     for(int i = 0; i < node_num_; i++){
         m_rdma_conn.push_back(new ConnectionManager());
         if (m_rdma_conn[i] == nullptr) return;
-        if (m_rdma_conn[i]->init(ips[i], ports[i], 1, 1, mr_pid)) return;
+        if (m_rdma_conn[i]->init(ips[i], ports[i], 1, 1, node_id_)) return;
         sleep(1);
     }
     m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_light);
@@ -52,7 +125,13 @@ void ComputingNode::woker(int proc) {
         sem_wait(cpu_cache_->doorbell[proc]);
         // printf("recieve request from %d\n", proc);
         switch(cpu_cache_->buffer_[proc].opcode_){
+            
             case LegoOpcode::LegoAlloc: {
+                uint64_t bin_size = *(uint64_t*)cpu_cache_->buffer_[proc].buffer_;
+                if(bin_size != 0){
+                //TODO: check bin_size, first find if there are segment avaliable
+                // find_segment(bin_size);
+                }
                 int retry_time = 0, cas_time = 0, section_time = 0, region_time = 0, result;
                 bool slow_path = false;
                 mr_rdma_addr remote_addr;
@@ -100,13 +179,93 @@ void ComputingNode::woker(int proc) {
                 }
                 retry_time = cas_time + section_time + region_time;
                 *(mr_rdma_addr*)cpu_cache_->buffer_[proc].buffer_ = remote_addr;
+                if(bin_size != 0){
+                    uint64_t shm_offset = cpu_cache_->bitmap_malloc(bin_size);
+                    *(uint64_t*)((mr_rdma_addr*)cpu_cache_->buffer_[proc].buffer_+1) = shm_offset;
+                    bitmap_record record = {shm_offset, bin_size};
+                    offset_record_[remote_addr] = record;
+                }
                 cpu_cache_->buffer_[proc].opcode_ = LegoOpcode::LegoIdle;
                 break;
             }
+            
             case LegoOpcode::LegoFree: {
                 mr_rdma_addr remote_addr = *(mr_rdma_addr*)cpu_cache_->buffer_[proc].buffer_;
                 m_rdma_conn[remote_addr.node]->free_region_block(remote_addr.addr, false);
                 cpu_cache_->buffer_[proc].opcode_ = LegoOpcode::LegoIdle;
+                break;
+            }
+
+            case LegoOpcode::LegoReg: {
+                uint16_t process_id = *(uint16_t*)cpu_cache_->buffer_[proc].buffer_;
+                for(int i = 0; i < node_num_; i++){
+                    uint64_t alive_count;
+                    m_rdma_conn[i]->remote_read(&alive_count, sizeof(uint64_t), (uint64_t)node_info_[i].public_info_ + sizeof(uint64_t)*process_id, global_rkey_[i]);
+                    while(m_rdma_conn[i]->remote_CAS(alive_count+1, &alive_count, (uint64_t)node_info_[i].public_info_ + sizeof(uint64_t)*process_id, global_rkey_[i]));
+                }
+                cpu_cache_->buffer_[proc].opcode_ = LegoOpcode::LegoIdle;
+                break;
+            }
+
+            case LegoOpcode::LegoDereg: {
+                uint16_t process_id = *(uint16_t*)cpu_cache_->buffer_[proc].buffer_;
+                for(int i = 0; i < node_num_; i++){
+                    uint64_t alive_count;
+                    m_rdma_conn[i]->remote_read(&alive_count, sizeof(uint64_t), (uint64_t)node_info_[i].public_info_ + sizeof(uint64_t)*process_id, global_rkey_[i]);
+                    while(m_rdma_conn[i]->remote_CAS(alive_count-1, &alive_count, (uint64_t)node_info_[i].public_info_ + sizeof(uint64_t)*process_id, global_rkey_[i]));
+                }
+                cpu_cache_->buffer_[proc].opcode_ = LegoOpcode::LegoIdle;
+                break;
+            }
+
+            case LegoOpcode::LegoRemoteFree: {
+
+                mr_rdma_addr free_addr;
+                block_e owner_block_header;
+                uint64_t block_index = (free_addr.addr-node_info_[free_addr.node].heap_start_)/node_info_[free_addr.node].block_size_;
+                
+                // read block's owner id 
+                m_rdma_conn[free_addr.node]->remote_read((void*)&owner_block_header, sizeof(block_e), 
+                    node_info_[free_addr.node].block_header_ + sizeof(uint64_t)*block_index, global_rkey_[free_addr.node]);
+                if(owner_block_header.client_id_ == 0){
+                    printf("free an invaliadate block!\n");
+                }
+                uint16_t owner_id = owner_block_header.client_id_ - 1;
+                uint16_t node_id;
+
+                // read owner's node id
+                m_rdma_conn[free_addr.node]->remote_read((void*)&node_id, sizeof(uint16_t), 
+                    (uint64_t)node_info_[free_addr.node].public_info_ + sizeof(uint64_t) * 1024 + sizeof(uint16_t) * owner_id, 
+                    global_rkey_[free_addr.node]);
+                MsgBuffer msg_buffer_;
+                
+                // read current msg buffer
+                m_rdma_conn[free_addr.node]->remote_read((void*)&msg_buffer_, sizeof(MsgBuffer), 
+                    (uint64_t)node_info_[free_addr.node].public_info_ + 1024*sizeof(uint64_t) + 1024*sizeof(uint16_t) + node_id*sizeof(MsgBuffer), 
+                    global_rkey_[free_addr.node]);
+                
+                // send msg to node's heap
+                for(int i = 0; i < 8; i++){
+                    if(msg_buffer_.msg_type[i]==MRType::MR_IDLE){
+
+                        // set opcode
+                        while(m_rdma_conn[free_addr.node]->remote_CAS(MRType::MR_FREE, (uint64_t*)&msg_buffer_.msg_type[i], 
+                            (uint64_t)node_info_[free_addr.node].public_info_ + 1024*sizeof(uint64_t) + 1024*sizeof(uint16_t) + node_id*sizeof(MsgBuffer) + sizeof(MRType)*i,
+                            global_rkey_[free_addr.node]));
+                        
+                        // set memory
+                        m_rdma_conn[free_addr.node]->remote_write((void*)&free_addr, sizeof(mr_rdma_addr),
+                            (uint64_t)msg_buffer_.buffer, 
+                            global_rkey_[free_addr.node]);
+                        
+                        break;
+                    }
+                }                
+                cpu_cache_->buffer_[proc].opcode_ = LegoOpcode::LegoIdle;
+                break;
+            }
+            case LegoOpcode::LegoTransfer: {
+                //TODO: Write a full segment with pages and bitmaps
                 break;
             }
             default :{
@@ -132,7 +291,7 @@ bool ComputingNode::start(std::string* addr, std::string* port, uint32_t node_nu
         m_rdma_conn_.push_back(new ConnectionManager());
         ips.push_back(std::string(addr[i])); ports.push_back(std::string(port[i]));
         if (m_rdma_conn_[i] == nullptr) return -1;
-        if (m_rdma_conn_[i]->init(addr[i], port[i], 1, 1, mr_pid)) return false;
+        if (m_rdma_conn_[i]->init(addr[i], port[i], 1, 1, node_id_)) return false;
         sleep(1);
         set_global_rkey(m_rdma_conn_[i]->get_global_rkey(), i);
     }
@@ -177,15 +336,17 @@ bool ComputingNode::start(std::string* addr, std::string* port, uint32_t node_nu
         //     printf("init @%d addr:%lx rkey:%u\n", i, remote_addr.addr, remote_addr.rkey);
         // }
         pthread_t running_thread;
+        pthread_t listening_thread;
         // pthread_create(&cache_fill_thread_, NULL, run_cache_filler, this);
         // pthread_create(&recycle_thread_, NULL, run_recycler, this);   
         worker_param new_param[nprocs];
         for(int i = 0; i < nprocs; i++) {
             new_param[i].heap = this; new_param[i].id = i;
             pthread_create(&woker_thread_[i], NULL, run_woker_thread, &new_param[i]);
-            sleep(1);
-            // usleep(1000);
-        }   
+            // sleep(1);
+            usleep(10000);
+        }
+        pthread_create(&listening_thread, NULL, run_rpc_thread, this);
     }
     return true;
 }

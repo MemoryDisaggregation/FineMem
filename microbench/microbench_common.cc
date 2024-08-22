@@ -14,8 +14,8 @@
 #include <gperftools/profiler.h>
 #include <random>
 
-const int iteration = 600;
-const int free_num = 600;
+const int iteration = 200;
+const int free_num = 100;
 const int epoch = 100;
 
 enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc };
@@ -322,7 +322,8 @@ public:
     }
     ~pool_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
-        return cpu_cache_->malloc(remote_addr);
+        uint64_t unused;
+        return cpu_cache_->malloc(0, remote_addr, unused);
     };
     bool free(mralloc::mr_rdma_addr remote_addr) override {
         cpu_cache_->free(remote_addr);

@@ -27,11 +27,9 @@ namespace mralloc {
         public_info_ = (PublicInfo*)(backup_rkey_ + block_num_);
         for(int i  = 0; i < 128; i++) {
             for(int j = 0; j < 8; j++){
-                for(int k = 0; k < 8; k++){
-                    public_info_->node_buffer[i].msg_type[j][k] = MRType::MR_IDLE;
-                }
+                public_info_->node_buffer[i].msg_type[j] = MRType::MR_IDLE;
             }
-            public_info_->node_buffer[i].buffer = (void*)((uint64_t)public_info_ + sizeof(PublicInfo) + (uint64_t)1024*1024*64*i);
+            public_info_->node_buffer[i].buffer = (void*)((uint64_t)public_info_ + sizeof(PublicInfo) + (uint64_t)1024*1024*8*i);
         }
         for(int i = 0;i < 1024;i++){
             public_info_->pid_alive[i] = 0;
@@ -39,9 +37,9 @@ namespace mralloc {
         
         heap_start_ = addr;
         heap_size_ = size;
-        assert(heap_start_ > (uint64_t)((uint64_t)public_info_ + sizeof(PublicInfo) + (uint64_t)1024*1024*64*128));
+        assert(heap_start_ > (uint64_t)((uint64_t)public_info_ + sizeof(PublicInfo) + (uint64_t)1024*1024*8*128));
 
-        if((uint64_t)((uint64_t)public_info_ + sizeof(PublicInfo) + (uint64_t)1024*1024*64*128) > heap_start_) {
+        if((uint64_t)((uint64_t)public_info_ + sizeof(PublicInfo) + (uint64_t)1024*1024*8*128) > heap_start_) {
             printf("metadata out of bound\n");
         }
 

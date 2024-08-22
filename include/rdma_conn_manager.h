@@ -43,11 +43,11 @@ class ConnectionManager {
     ConnectionManager() {}
 
     ~ConnectionManager() {
-        // TODO: release resources;
+      
     }
 
     int init(const std::string ip, const std::string port, uint32_t rpc_conn_num,
-            uint32_t one_sided_conn_num, uint16_t pid);
+            uint32_t one_sided_conn_num, uint16_t node_id);
     one_side_info get_one_side_info() {return m_one_side_info_;};
     int register_remote_memory(uint64_t &addr, uint32_t &rkey, uint64_t size);
     int unregister_remote_memory(uint64_t addr);

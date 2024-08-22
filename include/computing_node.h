@@ -74,8 +74,8 @@ public:
         uint32_t rkey;
     } rdma_mem_t;
 
-    ComputingNode(bool heap_enabled, bool cache_enabled, bool one_side_enabled, uint16_t pid): 
-        heap_enabled_(heap_enabled), cpu_cache_enabled_(cache_enabled), one_side_enabled_(one_side_enabled), mr_pid(pid){
+    ComputingNode(bool heap_enabled, bool cache_enabled, bool one_side_enabled, uint16_t node_id): 
+        heap_enabled_(heap_enabled), cpu_cache_enabled_(cache_enabled), one_side_enabled_(one_side_enabled), node_id_(node_id){
         if(cpu_cache_enabled_)  assert(heap_enabled_);
         ring_cache = new ring_buffer_atomic<mr_rdma_addr>(ring_buffer_size, ring_cache_content, mr_rdma_addr(-1, -1, -1), &reader, &writer);
         ring_cache->clear();
@@ -92,6 +92,7 @@ public:
     ~ComputingNode() { destory(); }
 
     void woker(int proc);
+    void listenser();
     void pre_fetcher() ;
     void cache_filler() ;
     void print_cpu_cache() ;
@@ -151,8 +152,7 @@ public:
 private:
     void destory(){};
 
-    uint16_t mr_pid;
-    uint16_t mr_tid;
+    uint16_t node_id_;
 
     FreeBlockManager *free_queue_manager;
     uint8_t running;
@@ -214,6 +214,12 @@ private:
     std::mutex m_mutex_;                 /* used for concurrent mem allocation */
     
     uint64_t time_stamp_;
+    struct bitmap_record{
+        uint64_t offset;
+        uint64_t bin_size;
+    };
+    std::map<mr_rdma_addr, bitmap_record> offset_record_;
+
 };
 
 struct worker_param{

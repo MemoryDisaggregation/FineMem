@@ -101,12 +101,12 @@ inline int free_bit_in_bitmap16(uint16_t bitmap) {
 }
 
 inline int free_bit_in_bitmap64(uint64_t bitmap) {
-    return 64 - __builtin_popcount(bitmap);
+    return 64 - __builtin_popcountll(bitmap);
 }
 
 inline int find_free_index_from_bitmap64_tail(uint64_t bitmap) {
     if(~bitmap == 0) return -1;
-    return __builtin_ctzl(~bitmap);
+    return __builtin_ctzll(~bitmap);
 }
 
 inline int find_free_index_from_bitmap32_tail(uint32_t bitmap) {
@@ -122,7 +122,7 @@ inline int find_free_index_from_bitmap16_tail(uint16_t bitmap) {
 
 inline int find_free_index_from_bitmap64_lead(uint64_t bitmap) {
     if(~bitmap == 0) return -1;
-    return 63-__builtin_clzl(~bitmap);
+    return 63-__builtin_clzll(~bitmap);
 }
 
 inline int find_free_index_from_bitmap32_lead(uint32_t bitmap) {
@@ -187,6 +187,7 @@ protected:
 
 class ServerBlockManager {
 public:
+    PublicInfo* public_info_;
     ServerBlockManager(uint64_t block_size):block_size_(block_size) {
         region_size_ = block_size_ * block_per_region;
         section_size_ = region_size_ * region_per_section;
@@ -321,7 +322,6 @@ private:
     uint64_t heap_start_;
     uint64_t heap_size_;
     std::ofstream mem_record_;
-    PublicInfo* public_info_;
 
     // info helping accelerate
     struct cache_info{
