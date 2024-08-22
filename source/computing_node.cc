@@ -75,7 +75,7 @@ void ComputingNode::listenser() {
                     uint64_t new_bitmap= bitmap & ((uint64_t)1<<bitmap_offset);
                     do{
                         new_bitmap= bitmap & ((uint64_t)1<<bitmap_offset);
-                    }while(cpu_cache_->bitmap_[record.offset + bitmap_index].compare_exchange_weak(bitmap,new_bitmap));
+                    }while(!cpu_cache_->bitmap_[record.offset + bitmap_index].compare_exchange_weak(bitmap,new_bitmap));
 
                 } else if(type == MRType::MR_TRANSFER) {
                     //TODO: read a segment and add it to local heap

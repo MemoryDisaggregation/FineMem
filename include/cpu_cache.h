@@ -64,6 +64,7 @@ typedef struct mi_page_migrate {
   uint32_t              used;              // number of blocks in use (including blocks in `local_free` and `thread_free`)
   uint32_t              xblock_size;       // size available in each block (always `>0`)
   uint64_t           local_free[128];        // list of deferred free blocks by this thread (migrates to `free`)
+  uint64_t          remote_free[128];
 
   #if (MI_ENCODE_FREELIST || MI_PADDING)
   uintptr_t             keys[2];           // two random keys to encode the free lists (see `_mi_block_next`) or padding canary
