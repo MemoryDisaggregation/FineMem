@@ -344,7 +344,7 @@ bool ComputingNode::start(std::string* addr, std::string* port, uint32_t node_nu
             new_param[i].heap = this; new_param[i].id = i;
             pthread_create(&woker_thread_[i], NULL, run_woker_thread, &new_param[i]);
             // sleep(1);
-            usleep(10000);
+            usleep(100000);
         }
         pthread_create(&listening_thread, NULL, run_rpc_thread, this);
     }

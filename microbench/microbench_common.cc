@@ -18,6 +18,9 @@ const int iteration = 200;
 const int free_num = 100;
 const int epoch = 100;
 
+const int alloc_size = 4096;
+
+
 enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc };
 
 enum test_type { stage_test, shuffle_test, short_test, frag_test };
@@ -154,6 +157,36 @@ public:
     bool print_state() override {return false;};
 private:
     mralloc::ConnectionManager* conn_;
+};
+
+class MR_1GB_allocator : test_allocator{
+public:
+    MR_1GB_allocator(mralloc::ConnectionManager* conn) {
+        conn_ = conn;
+        heap_ = new mralloc::FreeQueueManager(alloc_size);
+        mralloc::mr_rdma_addr new_heap = {0, 0, 0};
+        bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
+        heap_->init(new_heap, (size_t)1024*1024*1024);
+    }
+    ~MR_1GB_allocator() {};
+    bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
+        if(heap_->fetch_block(remote_addr)){
+            return true;
+        } else {
+            mralloc::mr_rdma_addr new_heap = {0, 0, 0};
+            bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
+            if(result) return false;
+            heap_->fill_block(new_heap, (size_t)1024*1024*1024);
+        }
+        return heap_->fetch_block(remote_addr);
+    };
+    bool free(mralloc::mr_rdma_addr remote_addr) override {
+        return !conn_->unregister_remote_memory(remote_addr.addr);
+    };
+    bool print_state() override {return false;};
+private:
+    mralloc::ConnectionManager* conn_;
+    mralloc::FreeQueueManager* heap_;
 };
 
 class rpc_allocator : test_allocator{

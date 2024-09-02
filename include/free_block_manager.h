@@ -2,6 +2,7 @@
 #pragma once
 
 #include "msg.h"
+#include "cpu_cache.h"
 #include <bits/stdint-uintn.h>
 #include <algorithm>
 #include <atomic>
@@ -520,27 +521,27 @@ private:
 
 };
 
-class FreeQueueManager: public FreeBlockManager{
+class FreeQueueManager{
 public:
-    FreeQueueManager(uint64_t block_size):FreeBlockManager(block_size) {};
+    FreeQueueManager(uint64_t block_size):block_size_(block_size) {};
     ~FreeQueueManager() {
         while(!free_block_queue.empty()){
             free_block_queue.pop();
         }
     };
     
-    bool init(uint64_t addr, uint64_t size, uint32_t rkey) override;
+    bool init(mr_rdma_addr addr, uint64_t size);
 
-    bool fetch(uint64_t size, uint64_t &addr, uint32_t &rkey) override;
+    bool fetch(uint64_t size, mr_rdma_addr &addr);
 
-    bool fill_block(uint64_t addr, uint64_t size, uint32_t rkey) override;
+    bool fill_block(mr_rdma_addr addr, uint64_t size);
 
-    bool fetch_block(uint64_t &addr, uint32_t &rkey) override;
+    bool fetch_block(mr_rdma_addr &addr);
 
-    void print_state() override;
+    void print_state();
     
 private:
-    std::queue<remote_addr> free_block_queue;
+    std::queue<mr_rdma_addr> free_block_queue;
 
     const uint64_t queue_watermark = (uint64_t)1 << 30;
 
@@ -548,11 +549,15 @@ private:
 
     uint64_t raw_size;
 
+    uint32_t raw_node;
+
     std::mutex m_mutex_;
 
     uint64_t total_used;
 
     uint32_t raw_rkey;
+
+    uint64_t block_size_;
     
 };
 

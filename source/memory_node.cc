@@ -585,7 +585,11 @@ int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
 }
 
 int MemoryNode::deallocate_and_unregister_memory(uint64_t addr) {
+    if(mr_recorder[addr] == NULL) {
+        return 0;
+    }
     ibv_dereg_mr(mr_recorder[addr]);
+    mr_recorder[addr]=NULL;
     free((void*)addr);
     return 0;
 }

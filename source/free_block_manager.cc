@@ -676,35 +676,36 @@ namespace mralloc {
         return true;
     }
 
-    bool FreeQueueManager::init(uint64_t addr, uint64_t size, uint32_t rkey){
+    bool FreeQueueManager::init(mr_rdma_addr addr, uint64_t size){
         if (size % block_size_ != 0){
             printf("Error: FreeQueueManager only support size that is multiple of %ld \n", block_size_);
             return false;
         }
         uint64_t cache_size = std::min(queue_watermark, size);
-        raw_heap = addr;
+        raw_heap = addr.addr;
         raw_size = size;
-        raw_rkey = rkey;
-        uint64_t start_addr = addr + raw_size - cache_size;
+        raw_rkey = addr.rkey;
+        raw_node = addr.node;
+        uint64_t start_addr = addr.addr + raw_size - cache_size;
         for(uint64_t i = 0; i < cache_size / block_size_; i++){
-            free_block_queue.push({start_addr + i * block_size_, rkey});
+            free_block_queue.push({start_addr + i * block_size_, addr.rkey, addr.node});
             raw_size -= block_size_;
         }
         total_used = 0;
         return true;
     }
 
-    bool FreeQueueManager::fetch(uint64_t size, uint64_t &addr, uint32_t &rkey) {
+    bool FreeQueueManager::fetch(uint64_t size,  mr_rdma_addr &addr) {
         std::unique_lock<std::mutex> lock(m_mutex_);
         if(size == block_size_){
-            return fetch_block(addr, rkey);
+            return fetch_block(addr);
         }
         else if (size <= raw_size) {
             uint64_t raw_alloc = raw_heap;
             raw_heap += size;
             raw_size -= size;
             total_used += size;
-            addr = raw_alloc; rkey = raw_rkey;
+            addr.addr = raw_alloc; addr.rkey = raw_rkey; addr.node = raw_node;
             return true;
         } else {
             perror("alloc failed, no free space\n");
@@ -712,7 +713,7 @@ namespace mralloc {
         }
     }
 
-    bool FreeQueueManager::fill_block(uint64_t addr, uint64_t size, uint32_t rkey) {
+    bool FreeQueueManager::fill_block(mr_rdma_addr addr, uint64_t size) {
         std::unique_lock<std::mutex> lock(m_mutex_);
         if (0) {
             raw_heap -= size;
@@ -723,25 +724,24 @@ namespace mralloc {
             return false;
         }
         for(uint64_t i = 0; i < size / block_size_; i++){
-            free_block_queue.push({addr + i * block_size_, rkey});
+            free_block_queue.push({addr.addr + i * block_size_, addr.rkey, addr.node});
         }
         return true;    
     }
 
-    bool FreeQueueManager::fetch_block(uint64_t &addr, uint32_t &rkey){
+    bool FreeQueueManager::fetch_block(mr_rdma_addr &addr){
         std::unique_lock<std::mutex> lock(m_mutex_);
         if(free_block_queue.empty()){
             if(raw_size >= block_size_){
-                free_block_queue.push({raw_heap + raw_size - block_size_, raw_rkey});
+                free_block_queue.push({raw_heap + raw_size - block_size_, raw_rkey, raw_node});
                 raw_size -= block_size_;
             } else {
                 return false;
             }
         }
-        remote_addr rem_addr = free_block_queue.front();
+        addr = free_block_queue.front();
         free_block_queue.pop();
         total_used += block_size_;
-        addr = rem_addr.addr; rkey = rem_addr.rkey;
         return true;
     }
 
