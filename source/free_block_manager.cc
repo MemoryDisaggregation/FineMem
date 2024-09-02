@@ -751,21 +751,20 @@ namespace mralloc {
         return true;
     }
 
-    bool FreeQueueManager::return_block(mr_rdma_addr addr){
+    bool FreeQueueManager::return_block(mr_rdma_addr addr, bool &all_free){
         std::unique_lock<std::mutex> lock(m_mutex_);
-        if(free_block_queue.empty()){
-            // if(raw_size >= block_size_){
-            //     free_block_queue.push({raw_heap + raw_size - block_size_, raw_rkey, raw_node});
-            //     raw_size -= block_size_;
-            // } else {
-            return false;
-            // }
-        }
         free_block_queue.push(addr);
         mr_rdma_addr index = addr;
         uint64_t offset = index.addr % pool_size_ / block_size_;
         index.addr -= index.addr % pool_size_;
         free_bitmap_[index][offset/64] &= ~((uint64_t)1<<(offset%64));
+        all_free = true;
+        for(int i = 0; i < pool_size_/block_size_/64 + 1; i++) {
+            if(free_bitmap_[index][i] != 0){
+                all_free=false;
+                break;
+            }
+        }
         total_used -= block_size_;
         return true;
     }

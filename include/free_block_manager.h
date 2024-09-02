@@ -539,7 +539,7 @@ public:
 
     bool fetch_block(mr_rdma_addr &addr);
 
-    bool return_block(mr_rdma_addr addr);
+    bool return_block(mr_rdma_addr addr, bool &all_free);
 
     void print_state();
     
