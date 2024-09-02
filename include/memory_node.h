@@ -176,5 +176,7 @@ private:
     uint8_t running;
     uint32_t global_rkey_;
 
+    std::atomic<uint64_t> heap_pointer_;
+
 };
 }

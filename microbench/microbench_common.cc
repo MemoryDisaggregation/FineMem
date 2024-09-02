@@ -163,7 +163,7 @@ class MR_1GB_allocator : test_allocator{
 public:
     MR_1GB_allocator(mralloc::ConnectionManager* conn) {
         conn_ = conn;
-        heap_ = new mralloc::FreeQueueManager(alloc_size);
+        heap_ = new mralloc::FreeQueueManager(alloc_size, (size_t)1024*1024*1024);
         mralloc::mr_rdma_addr new_heap = {0, 0, 0};
         bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
         heap_->init(new_heap, (size_t)1024*1024*1024);

@@ -33,7 +33,8 @@
 // #define REMOTE_MEM_SIZE 4096
 // #define REMOTE_MEM_SIZE 131072
 
-#define INIT_MEM_SIZE ((uint64_t)50*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)100*1024*1024*1024)
+// #define INIT_MEM_SIZE ((uint64_t)10*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 
@@ -41,7 +42,7 @@
 
 namespace mralloc {
 
-const uint64_t base_block_size = (uint64_t)1024*2*1024;
+const uint64_t base_block_size = (uint64_t)1024*4*1024;
 
 const bool global_rkey = true;
 
@@ -266,7 +267,7 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
     if(fusee_enable)
         rpc_fusee_ = new RPC_Fusee(server_base_addr, server_base_addr + META_AREA_LEN, heap_mr_->rkey);
     set_global_rkey(heap_mr_->rkey);
-
+    heap_pointer_.store(init_addr_raw + init_size_raw);
     m_mw_handler = (ibv_mw**)malloc(size / base_block_size * sizeof(ibv_mw*));
 
     mw_binded = false;
@@ -572,9 +573,17 @@ struct ibv_mr *MemoryNode::rdma_register_memory(void *ptr, uint64_t size) {
 int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
                                                uint64_t size) {
     /* align mem */
-    uint64_t mem = (uint64_t)malloc(size);
-    addr = mem;
+    // uint64_t mem = (uint64_t)malloc(size);
+    // addr = mem;
+    uint64_t p = heap_pointer_.load();
+    uint64_t new_p = p+size;
+    do{
+        new_p = p +size;
+    }while(heap_pointer_.compare_exchange_weak(p, new_p));
+    addr = (uint64_t)mmap((void*)p, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED |MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
+    assert(addr == p);
     struct ibv_mr *mr = rdma_register_memory((void *)addr, size);
+    // printf("%lx\n", addr);
     if (!mr) {
         perror("ibv_reg_mr fail");
         return -1;
@@ -589,8 +598,9 @@ int MemoryNode::deallocate_and_unregister_memory(uint64_t addr) {
         return 0;
     }
     ibv_dereg_mr(mr_recorder[addr]);
+    munmap((void*)addr, mr_recorder[addr]->length);
     mr_recorder[addr]=NULL;
-    free((void*)addr);
+    // free((void*)addr);
     return 0;
 }
 
@@ -677,6 +687,7 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
         assert(active_id == request->id);
         work_info = m_worker_info_[request->id];
         cmd_resp = work_info->cmd_resp_msg;
+        memset(cmd_resp, 0, sizeof(CmdMsgRespBlock));
         resp_mr = work_info->resp_mr;
         cmd_resp->notify = NOTIFY_WORK;
         active_id = -1;
@@ -691,6 +702,8 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
                 resp_msg->status = RES_OK;
             }
             /* write response */
+            // printf("%lx %u\n", resp_msg->addr, resp_msg->rkey);
+            // resp_msg->addr = resp_msg->addr; resp_msg->rkey = 0;
             remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
                         sizeof(CmdMsgRespBlock), reg_req->resp_addr,
                         reg_req->resp_rkey);

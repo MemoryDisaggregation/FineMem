@@ -12,6 +12,7 @@
 #include <mutex>
 #include <fstream>
 #include <random>
+#include <map>
 
 namespace mralloc {
 
@@ -523,7 +524,7 @@ private:
 
 class FreeQueueManager{
 public:
-    FreeQueueManager(uint64_t block_size):block_size_(block_size) {};
+    FreeQueueManager(uint64_t block_size, uint64_t pool_size):block_size_(block_size), pool_size_(pool_size) {};
     ~FreeQueueManager() {
         while(!free_block_queue.empty()){
             free_block_queue.pop();
@@ -538,26 +539,32 @@ public:
 
     bool fetch_block(mr_rdma_addr &addr);
 
+    bool return_block(mr_rdma_addr addr);
+
     void print_state();
     
 private:
     std::queue<mr_rdma_addr> free_block_queue;
 
-    const uint64_t queue_watermark = (uint64_t)1 << 30;
+    std::map<mr_rdma_addr, uint64_t*> free_bitmap_;
 
-    uint64_t raw_heap; 
+    // const uint64_t queue_watermark = (uint64_t)1 << 30;
 
-    uint64_t raw_size;
+    // uint64_t raw_heap; 
 
-    uint32_t raw_node;
+    // uint64_t raw_size;
+
+    // uint32_t raw_node;
 
     std::mutex m_mutex_;
 
     uint64_t total_used;
 
-    uint32_t raw_rkey;
+    // uint32_t raw_rkey;
 
     uint64_t block_size_;
+
+    uint64_t pool_size_;
     
 };
 
