@@ -116,6 +116,7 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
     }
 
     CNodeInit init_msg = {pid, access_type};
+    node_id_ = pid;
     // uint8_t access_type_ = access_type;
     struct rdma_conn_param conn_param = {};
     conn_param.responder_resources = 16;
@@ -1170,7 +1171,7 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
         if(alloc_region.base_map_ & ((uint32_t)1<<alloc_region.last_offset_) == 1 ){
             // malloc
             block_e old_block = {0, (alloc_region.last_timestamp_ +127) % 128};
-            block_e new_block = {conn_id_+1, alloc_region.last_timestamp_};
+            block_e new_block = {node_id_, alloc_region.last_timestamp_};
             do {
                 if(old_block.client_id_ != 0 || old_block.timestamp_ != old_block.timestamp_ + 1){
                     break;
@@ -1205,7 +1206,7 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
         new_region.retry_ = retry_time-1;
         new_region.last_offset_ = index;
         new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 128;
-        new_region.last_modify_id_ = conn_id_+1;
+        new_region.last_modify_id_ = node_id_;
     } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_));
     // if(mt()%1000 == 1){
     //     printf("stall happend\n");
@@ -1236,7 +1237,7 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
     // }
     // [Stage 3] Flush log, will async it in the future
     block_e old_block = {0, (alloc_region.last_timestamp_ + 127 ) % 128};
-    block_e new_block = {conn_id_+1, alloc_region.last_timestamp_};
+    block_e new_block = {node_id_, alloc_region.last_timestamp_};
     bool out_date = false;
     do {
         if(old_block.client_id_ != 0 || old_block.timestamp_ != old_block.timestamp_ + 1){
@@ -1371,7 +1372,7 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
         if(region.base_map_ & ((uint32_t)1<<region.last_offset_) == 1 ){
             // malloc
             block_e old_block = {0, (region.last_timestamp_ +127) % 128};
-            block_e new_block = {conn_id_+1, region.last_timestamp_};
+            block_e new_block = {node_id_, region.last_timestamp_};
             do {
                 if(old_block.client_id_ != 0 || old_block.timestamp_ != old_block.timestamp_ + 1){
                     break;
@@ -1407,7 +1408,7 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
         retry_counter_ = new_region.retry_;
         new_region.retry_ = retry_time;
         new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 128;
-        new_region.last_modify_id_ = conn_id_+1;
+        new_region.last_modify_id_ = node_id_;
         new_region.last_offset_ = region_block_offset;
     } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region, region_metadata_addr(region_offset), global_rkey_));
 
@@ -1435,7 +1436,7 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
         force_update_section_state(alloc_section, region_offset, alloc_light, alloc_full);
     }
 
-    block_e old_block = {conn_id_+1, (region.last_timestamp_ + 127 ) % 128};
+    block_e old_block = {node_id_, (region.last_timestamp_ + 127 ) % 128};
     block_e new_block = {0, region.last_timestamp_};
     bool out_date = false;
     do {

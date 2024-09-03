@@ -136,6 +136,7 @@ public:
     char *m_reg_buf_;
     struct ibv_mr *m_reg_buf_mr_;
     uint16_t conn_id_;
+    uint16_t node_id_;
 
     // << one-sided support >>
     one_side_info m_one_side_info_;

@@ -824,4 +824,8 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
     }
 }
 
+void MemoryNode::recovery(int id) {
+    
+}
+
 }  // namespace kv

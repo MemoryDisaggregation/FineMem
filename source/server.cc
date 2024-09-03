@@ -15,9 +15,15 @@ int main(int argc, char *argv[]) {
   std::string port = argv[3];
   mralloc::MemoryNode *heap = new mralloc::MemoryNode(true);
   heap->start(ip, port, device);
-
-  while (getchar()) {
-    heap->print_alloc_info();
+  char s;
+  while (s = getchar()) {
+    if(s=='r'){
+      int id;
+      std::cin >> id;
+      heap->recovery(id);
+    }
+    else
+      heap->print_alloc_info();
   }
 
   getchar();

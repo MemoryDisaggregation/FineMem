@@ -85,6 +85,7 @@ public:
     void stop();
     bool alive();
     void rebinder();
+    void recovery(int id);
 
     bool new_cache_section();
     bool new_cache_region();

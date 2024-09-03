@@ -20,6 +20,20 @@
 
 namespace mralloc {
 
+#ifdef FAULT_INJECTION
+std::mt19937 mt_rand = std::mt19937(std::random_device{}());
+std::uniform_int_distribution<int> dis = std::uniform_int_distribution<int>(1, 50);
+#endif
+
+#ifdef FAULT_INJECTION
+    #define POTENTIAL_FAULT    \
+        if(dis(mt_rand) == 1)  \
+        {                      \
+            _exit(0);           \
+        }                      
+#else
+    #define POTENTIAL_FAULT
+#endif
 
 typedef enum mi_malloc_kind_e {
     MI_MALLOC_NORMAL,

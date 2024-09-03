@@ -87,6 +87,8 @@ struct block_e {
 
 typedef std::atomic<block_e> block;
 
+// typedef std::atomic<block_e> block;
+
 struct region_with_rkey {
     region_e region;
     uint32_t index;
@@ -199,7 +201,7 @@ public:
     ~ServerBlockManager() {
         mem_record_.close();
     };
-    
+    void recovery(int node);
     inline uint64_t num_align_upper(uint64_t num, uint64_t align) {
         return (num + align - 1) - ((num + align - 1) % align);
     }
@@ -247,7 +249,8 @@ public:
         }
         used += exclusive * block_per_region;
         for(int i = 0; i <block_num_; i++) {
-            if(block_header_[i] == 1) {
+            block_e block_head = block_header_[i].load();
+            if(*(uint64_t*)(&block_head) == 1) {
                 used ++;
             }
         }
@@ -317,7 +320,7 @@ private:
     section* section_header_;
     region* region_header_;
     uint32_t* block_rkey_;
-    uint64_t* block_header_;
+    block* block_header_;
     uint32_t* backup_rkey_;
 
     // info of heap segment

@@ -11,6 +11,54 @@ namespace mralloc {
     
     const int retry_threshold = 3;
 
+    void ServerBlockManager::recovery(int node){
+        for(int i = 0; i < region_num_; i++) {
+            uint64_t flush_map = 0;
+            region_e region = region_header_[i].load();
+            region_e new_region; 
+            do{
+                new_region = region;
+                if(region.last_modify_id_ == node){
+                    flush_map |= (uint64_t)1 << region.last_offset_;
+                    new_region.last_modify_id_ = 0;
+                    new_region.last_offset_ = 0;
+                    new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 128;
+                }
+                new_region.base_map_ &= ~(flush_map);
+                if(flush_map == 0 || *(uint64_t*)&new_region == *(uint64_t*)&region){
+                    break;
+                }    
+            }while(region_header_[i/block_per_region].compare_exchange_weak(region, new_region));
+        } 
+        block_e blank = {0,0};
+        for(int i=0; i < block_num_; i++){
+            block_e log = block_header_[i].load();
+            blank.timestamp_ = (log.timestamp_+1)%128;
+            block_header_[i].store(blank);
+            if(log.client_id_ == node){
+                // do recovery
+                uint64_t flush_map = 0;
+                region_e region = region_header_[i/block_per_region].load();
+                region_e new_region; 
+                do{
+                    new_region = region;
+                    if(region.last_modify_id_ == node){
+                        flush_map |= (uint64_t)1 << region.last_offset_;
+                        new_region.last_modify_id_ = 0;
+                        new_region.last_offset_ = 0;
+                        new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 128;
+                    }
+                    flush_map |= (uint64_t)1 << i%block_per_region;
+                    new_region.base_map_ &= ~(flush_map);
+                    if(*(uint64_t*)&new_region == *(uint64_t*)&region){
+                        break;
+                    }    
+                }while(region_header_[i/block_per_region].compare_exchange_weak(region, new_region));
+            }
+        }
+    }
+
+
     bool ServerBlockManager::init(uint64_t meta_addr, uint64_t addr, uint64_t size, uint32_t rkey) {
         assert(size%region_size_ == 0);
 
@@ -22,7 +70,7 @@ namespace mralloc {
         section_header_ = (section*)meta_addr;
         region_header_ = (region*)(section_header_ + section_num_);
         block_rkey_ = (uint32_t*)(region_header_ + region_num_);
-        block_header_ = (uint64_t*)(block_rkey_ + block_num_);
+        block_header_ = (block*)(block_rkey_ + block_num_);
         backup_rkey_ = (uint32_t*)(block_header_ + block_num_);
         public_info_ = (PublicInfo*)(backup_rkey_ + block_num_);
         for(int i  = 0; i < 128; i++) {
@@ -54,10 +102,10 @@ namespace mralloc {
             init_region_header.exclusive_ = 0;
             region_header_[i].store(init_region_header);
         }
-
+        block_e blank = {0,0};
         for(int i = 0; i < block_num_; i++) {
             block_rkey_[i] = 0;
-            block_header_[i] = 0;
+            block_header_[i].store(blank);
         }
 
         std::random_device e;
