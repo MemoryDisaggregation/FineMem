@@ -687,7 +687,7 @@ namespace mralloc {
         // raw_rkey = addr.rkey;
         // raw_node = addr.node;
         // uint64_t start_addr = addr.addr + raw_size - cache_size;
-        free_bitmap_[{addr.addr-addr.addr%((uint64_t)1024*1024*1024), 0, 0}]=new uint64_t[1024];
+        free_bitmap_[{addr.addr-addr.addr%((uint64_t)1024*1024*1024), 0, addr.node}]=new uint64_t[1024];
         for(uint64_t i = 0; i < size / block_size_; i++){
             free_block_queue.push({addr.addr + i * block_size_, addr.rkey, addr.node});
         }
@@ -724,7 +724,7 @@ namespace mralloc {
         //     raw_size += size;
         //     return true;
         // } else 
-        free_bitmap_[{addr.addr-addr.addr%((uint64_t)1024*1024*1024), 0, 0}] = new uint64_t[1024];
+        free_bitmap_[{addr.addr-addr.addr%((uint64_t)1024*1024*1024), 0, addr.node}] = new uint64_t[1024];
         for(uint64_t i = 0; i < size / block_size_; i++){
             free_block_queue.push({addr.addr + i * block_size_, addr.rkey, addr.node});
         }
@@ -743,7 +743,7 @@ namespace mralloc {
         }
         addr = free_block_queue.front();
         free_block_queue.pop();
-        mr_rdma_addr index = {addr.addr, 0, 0};
+        mr_rdma_addr index = {addr.addr, 0, addr.node};
         uint64_t offset = index.addr % pool_size_ / block_size_;
         index.addr -= index.addr % pool_size_;
         free_bitmap_[index][offset/64] |= (uint64_t)1<<(offset%64);
@@ -754,7 +754,7 @@ namespace mralloc {
     bool FreeQueueManager::return_block(mr_rdma_addr addr, bool &all_free){
         std::unique_lock<std::mutex> lock(m_mutex_);
         free_block_queue.push(addr);
-        mr_rdma_addr index = {addr.addr, 0, 0};
+        mr_rdma_addr index = {addr.addr, 0, addr.node};
         uint64_t offset = index.addr % pool_size_ / block_size_;
         index.addr -= index.addr % pool_size_;
         free_bitmap_[index][offset/64] &= ~((uint64_t)1<<(offset%64));
