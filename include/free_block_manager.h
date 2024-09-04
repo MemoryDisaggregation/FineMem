@@ -229,7 +229,7 @@ public:
 
     bool init(uint64_t meta_addr, uint64_t addr, uint64_t size, uint32_t rkey);
 
-    void print_section_info(int cache) {
+    void print_section_info(int cache, int reg_size) {
         uint64_t empty=0, exclusive=0;
         uint64_t used = 0;
         for(int i = 0; i< section_num_; i++) {
@@ -248,6 +248,7 @@ public:
             }
         }
         used += exclusive * block_per_region;
+        used += reg_size;
         // for(int i = 0; i <block_num_; i++) {
         //     block_e block_head = block_header_[i].load();
         //     if(*(uint64_t*)(&block_head) == 1) {

@@ -66,7 +66,7 @@ void * run_rebinder(void* arg) {
 } 
 
 void MemoryNode::print_alloc_info() {
-  server_block_manager_->print_section_info(ring_cache->get_length());
+  server_block_manager_->print_section_info(ring_cache->get_length(), reg_size_);
 }
 
 /**
@@ -586,6 +586,7 @@ int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
     // printf("%lx\n", addr);
     assert(addr == p);
     struct ibv_mr *mr = rdma_register_memory((void *)addr, size);
+    reg_size_ += size / 1024;
     // printf("%lx\n", addr);
     if (!mr) {
         perror("ibv_reg_mr fail");
