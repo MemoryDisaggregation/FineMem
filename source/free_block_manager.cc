@@ -12,6 +12,7 @@ namespace mralloc {
     const int retry_threshold = 3;
 
     void ServerBlockManager::recovery(int node){
+        int counter = 0;
         for(int i = 0; i < region_num_; i++) {
             uint64_t flush_map = 0;
             region_e region = region_header_[i].load();
@@ -21,15 +22,29 @@ namespace mralloc {
                 if(region.last_modify_id_ == node){
                     flush_map |= (uint64_t)1 << region.last_offset_;
                     new_region.last_modify_id_ = 0;
-                    new_region.last_offset_ = 0;
-                    new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 128;
                 }
                 new_region.base_map_ &= ~(flush_map);
                 if(flush_map == 0 || *(uint64_t*)&new_region == *(uint64_t*)&region){
+                    counter --;
                     break;
+                }
+                if(new_region.base_map_ == 0) {
+                    new_region.on_use_ = 0;
                 }    
-            }while(region_header_[i/block_per_region].compare_exchange_weak(region, new_region));
+            }while(!region_header_[i/block_per_region].compare_exchange_weak(region, new_region));
+            counter++;
+            if (new_region.base_map_ == 0){
+                section_e sect = section_header_[i/block_per_region/region_per_section].load();
+                section_e new_sect;
+                do{
+                    int offset = i/block_per_region%region_per_section;
+                    new_sect = sect;
+                    new_sect.alloc_map_ &= ~((uint32_t)1<<(offset));
+                    new_sect.frag_map_ &= ~((uint32_t)1<<(offset));
+                }while(!section_header_[i/block_per_region/region_per_section].compare_exchange_weak(sect, new_sect));
+            }
         } 
+        printf("region scan success, scan block log...\n");
         block_e blank = {0,0};
         for(int i=0; i < block_num_; i++){
             block_e log = block_header_[i].load();
@@ -42,20 +57,36 @@ namespace mralloc {
                 region_e new_region; 
                 do{
                     new_region = region;
-                    if(region.last_modify_id_ == node){
-                        flush_map |= (uint64_t)1 << region.last_offset_;
-                        new_region.last_modify_id_ = 0;
-                        new_region.last_offset_ = 0;
-                        new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 128;
-                    }
+                    // if(region.last_modify_id_ == node){
+                    //     flush_map |= (uint64_t)1 << region.last_offset_;
+                    //     new_region.last_modify_id_ = 0;
+                    //     new_region.last_offset_ = 0;
+                    //     new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 128;
+                    // }
                     flush_map |= (uint64_t)1 << i%block_per_region;
                     new_region.base_map_ &= ~(flush_map);
                     if(*(uint64_t*)&new_region == *(uint64_t*)&region){
+                        counter --;
                         break;
                     }    
-                }while(region_header_[i/block_per_region].compare_exchange_weak(region, new_region));
+                    if(new_region.base_map_ == 0) {
+                        new_region.on_use_ = 0;
+                    }    
+                }while(!region_header_[i/block_per_region].compare_exchange_weak(region, new_region));
+                counter ++;
+                if (new_region.base_map_ == 0){
+                    section_e sect = section_header_[i/block_per_region/region_per_section].load();
+                    section_e new_sect;
+                    do{
+                        int offset = i/block_per_region%region_per_section;
+                        new_sect = sect;
+                        new_sect.alloc_map_ &= ~((uint32_t)1<<(offset));
+                        new_sect.frag_map_ &= ~((uint32_t)1<<(offset));
+                    }while(!section_header_[i/block_per_region/region_per_section].compare_exchange_weak(sect, new_sect));
+                }
             }
         }
+        printf("recycle total region %d \n", counter);
     }
 
 
@@ -92,7 +123,7 @@ namespace mralloc {
         }
 
         section_e init_section_header = {0,0};
-        region_e init_region_header = {0, 0, 0, 0, 0};
+        region_e init_region_header = {0, 0, 0, 0, 0, 1, 0};
 
         for(int i = 0; i < section_num_; i++) {
             section_header_[i].store(init_section_header);

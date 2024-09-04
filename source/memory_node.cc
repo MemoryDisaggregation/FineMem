@@ -33,8 +33,8 @@
 // #define REMOTE_MEM_SIZE 4096
 // #define REMOTE_MEM_SIZE 131072
 
+// #define INIT_MEM_SIZE ((uint64_t)150*1024*1024*1024)
 #define INIT_MEM_SIZE ((uint64_t)150*1024*1024*1024)
-// #define INIT_MEM_SIZE ((uint64_t)10*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 
@@ -576,14 +576,14 @@ int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
     // uint64_t mem = (uint64_t)malloc(size);
     // addr = mem;
     uint64_t p = heap_pointer_.load();
-    uint64_t new_p = p + size + (1024*1024*1024-1);
-    new_p = new_p - new_p%(1024*1024*1024);
+    uint64_t new_p = p + size;
+    // new_p = new_p - new_p%(1024*1024*1024);
     do{
-        new_p = p +size + (1024*1024*1024-1);
-        new_p = new_p - new_p%(1024*1024*1024);
-    }while(heap_pointer_.compare_exchange_weak(p, new_p));
+        new_p = p +size;
+        // new_p = new_p - new_p%(1024*1024*1024);
+    }while(!heap_pointer_.compare_exchange_weak(p, new_p));
     addr = (uint64_t)mmap((void*)p, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED |MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
-    printf("%lx\n", addr);
+    // printf("%lx\n", addr);
     assert(addr == p);
     struct ibv_mr *mr = rdma_register_memory((void *)addr, size);
     // printf("%lx\n", addr);
@@ -825,7 +825,8 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
 }
 
 void MemoryNode::recovery(int id) {
-    
+    printf("recovery node %d\n", id);
+    server_block_manager_->recovery(id);
 }
 
 }  // namespace kv

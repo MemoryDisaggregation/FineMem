@@ -236,24 +236,24 @@ public:
             uint32_t empty_map = section_header_[i].load().alloc_map_ | section_header_[i].load().frag_map_;
             uint32_t exclusive_map = ~section_header_[i].load().alloc_map_ | ~section_header_[i].load().frag_map_;
             for(int j = 0; j < region_per_section; j ++) {
-                if(empty_map%2 == 0) {
-                    empty += 1;
-                } else if(exclusive_map%2 == 0) {
-                    exclusive += 1;
-                } else {
-                    used += block_per_region - free_bit_in_bitmap32(region_header_[i*region_per_section + j].load().base_map_);
-                }
+                // if(empty_map%2 == 0) {
+                //     empty += 1;
+                // } else if(exclusive_map%2 == 0) {
+                //     exclusive += 1;
+                // } else {
+                used += block_per_region - free_bit_in_bitmap32(region_header_[i*region_per_section + j].load().base_map_);
+                // }
                 empty_map >>= 1;
                 exclusive_map >>= 1;
             }
         }
         used += exclusive * block_per_region;
-        for(int i = 0; i <block_num_; i++) {
-            block_e block_head = block_header_[i].load();
-            if(*(uint64_t*)(&block_head) == 1) {
-                used ++;
-            }
-        }
+        // for(int i = 0; i <block_num_; i++) {
+        //     block_e block_head = block_header_[i].load();
+        //     if(*(uint64_t*)(&block_head) == 1) {
+        //         used ++;
+        //     }
+        // }
         mem_record_ << (used-cache)*4 << std::endl;
     }
 
