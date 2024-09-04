@@ -66,7 +66,7 @@ void * run_rebinder(void* arg) {
 } 
 
 void MemoryNode::print_alloc_info() {
-  server_block_manager_->print_section_info(ring_cache->get_length(), reg_size_);
+  server_block_manager_->print_section_info(ring_cache->get_length(), reg_size_.load());
 }
 
 /**
@@ -586,7 +586,7 @@ int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
     // printf("%lx\n", addr);
     assert(addr == p);
     struct ibv_mr *mr = rdma_register_memory((void *)addr, size);
-    reg_size_ += size / 1024;
+    reg_size_.fetch_add(size / 1024 / 1024);
     // printf("%lx\n", addr);
     if (!mr) {
         perror("ibv_reg_mr fail");
@@ -601,6 +601,7 @@ int MemoryNode::deallocate_and_unregister_memory(uint64_t addr) {
     if(mr_recorder[addr] == NULL) {
         return 0;
     }
+    reg_size_.fetch_sub(mr_recorder[addr]->length / 1024 / 1024);
     ibv_dereg_mr(mr_recorder[addr]);
     munmap((void*)addr, mr_recorder[addr]->length);
     mr_recorder[addr]=NULL;

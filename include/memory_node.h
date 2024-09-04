@@ -176,7 +176,7 @@ private:
     ServerBlockManager *server_block_manager_;
     uint8_t running;
     uint32_t global_rkey_;
-    uint64_t reg_size_;
+    std::atomic<int> reg_size_;
     std::atomic<uint64_t> heap_pointer_;
 
 };
