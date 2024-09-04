@@ -1341,7 +1341,6 @@ int RDMAConnection::free_region_batch(uint32_t region_offset, uint32_t free_bitm
     section_e alloc_section;
     if(!is_exclusive && new_region.base_map_ == (bitmap32)0 ){
         force_update_section_state(alloc_section, region_offset, alloc_empty); 
-        return -2;
     } 
     // else if(old_retry < 10 && avg_retry >= 10) {
     //     force_update_section_state(alloc_section, region_offset, alloc_full);
@@ -1411,7 +1410,7 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
         full = (region.base_map_ == bitmap32_filled);
         retry_time++;
         new_region = region;
-        new_region.base_map_ &= ~(uint32_t)(1<<region_block_offset);
+        new_region.base_map_ &= ~(uint32_t)((uint32_t)1<<region_block_offset);
         if ( new_region.base_map_ == (bitmap32)0 ) {
             new_region.on_use_ = 0;
             new_region.exclusive_ = 0;
@@ -1431,7 +1430,6 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
     section_e alloc_section;
     if(!is_exclusive && new_region.base_map_ == (bitmap32)0 ){
         force_update_section_state(alloc_section, region_offset, alloc_empty); 
-        return -2;
     } 
     else if(full) {
         force_update_section_state(alloc_section, region_offset, alloc_light, alloc_full);
