@@ -248,14 +248,13 @@ public:
             }
         }
         used += exclusive * block_per_region;
-        used += reg_size;
         // for(int i = 0; i <block_num_; i++) {
         //     block_e block_head = block_header_[i].load();
         //     if(*(uint64_t*)(&block_head) == 1) {
         //         used ++;
         //     }
         // }
-        mem_record_ << (used-cache)*4 << std::endl;
+        mem_record_ << (used-cache)*4 + reg_size << std::endl;
     }
 
     inline bool check_section(section_e alloc_section, alloc_advise advise, uint32_t offset);

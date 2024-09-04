@@ -33,8 +33,8 @@
 // #define REMOTE_MEM_SIZE 4096
 // #define REMOTE_MEM_SIZE 131072
 
-// #define INIT_MEM_SIZE ((uint64_t)150*1024*1024*1024)
 #define INIT_MEM_SIZE ((uint64_t)150*1024*1024*1024)
+// #define INIT_MEM_SIZE ((uint64_t)10*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
 
@@ -592,12 +592,14 @@ int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
         perror("ibv_reg_mr fail");
         return -1;
     }
+    std::unique_lock<std::mutex> lock(m_mutex_);
     mr_recorder[addr] = mr;
     rkey = mr->rkey;
     return 0;
 }
 
 int MemoryNode::deallocate_and_unregister_memory(uint64_t addr) {
+    std::unique_lock<std::mutex> lock(m_mutex_);
     if(mr_recorder[addr] == NULL) {
         return 0;
     }

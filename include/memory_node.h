@@ -179,5 +179,7 @@ private:
     std::atomic<int> reg_size_;
     std::atomic<uint64_t> heap_pointer_;
 
+    std::mutex m_mutex_;
+
 };
 }
