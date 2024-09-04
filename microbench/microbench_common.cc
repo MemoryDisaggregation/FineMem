@@ -802,10 +802,10 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
         malloc_record_global[i].fetch_add(malloc_record[i]);
         free_record_global[i].fetch_add(free_record[i]);
     }
-    for(int i = 0; i < rand_iter; i++) {
-    	if(remote_addr[i].addr!=-1)
-		alloc->free(remote_addr[i]);
-    }
+    // for(int i = 0; i < rand_iter; i++) {
+    // 	if(remote_addr[i].addr!=-1)
+	// 	alloc->free(remote_addr[i]);
+    // }
     alloc->print_state();
     malloc_avg[thread_id] = malloc_avg_time_;
     cas_avg[thread_id] = alloc->get_avg_retry();
