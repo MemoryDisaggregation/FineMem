@@ -77,7 +77,7 @@ public:
     bool fetch_exclusive_region_rkey(uint32_t region_index, rkey_table_e* rkey_list) {
         // uint32_t new_rkey[block_per_region];
         // memset(new_rkey, (uint32_t)-1, sizeof(uint32_t)*block_per_region);
-        remote_read(rkey_list, sizeof(uint32_t)*block_per_region, block_rkey_ + region_index*block_per_region*sizeof(uint32_t), global_rkey_);
+        remote_read(rkey_list, sizeof(rkey_table_e)*block_per_region, block_rkey_ + region_index*block_per_region*sizeof(rkey_table_e), global_rkey_);
         // for(int i = 0; i < block_per_region; i++) {
         //     while(rkey_list[i] == (uint32_t)-1){
         //         remote_read(&rkey_list[i], sizeof(uint32_t), block_rkey_ + (region_index*block_per_region+i)*sizeof(uint32_t), global_rkey_);
@@ -93,18 +93,18 @@ public:
     inline uint64_t get_block_addr(uint32_t block_offset) {return heap_start_ + block_offset * block_size_;} ;
     inline uint32_t get_region_block_rkey(uint32_t region_index, uint32_t block_offset) {
         rkey_table_e rkey;
-        remote_read(&rkey, sizeof(rkey), block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
+        remote_read(&rkey, sizeof(rkey), block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(rkey_table_e), global_rkey_);
         return rkey.main_rkey_;
     };
     inline uint32_t get_block_rkey(uint32_t block_offset) {
         rkey_table_e rkey;
-        remote_read(&rkey, sizeof(rkey), block_rkey_ + (block_offset)*sizeof(uint32_t), global_rkey_);
+        remote_read(&rkey, sizeof(rkey), block_rkey_ + (block_offset)*sizeof(rkey_table_e), global_rkey_);
         return rkey.main_rkey_;
     };
     
     inline uint32_t rebind_region_block_rkey(uint32_t region_index, uint32_t block_offset) {
         rkey_table_e rkey;
-        remote_read(&rkey, sizeof(rkey), block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
+        remote_read(&rkey, sizeof(rkey), block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(rkey), global_rkey_);
         rkey_table_e new_rkey;
         do{
             if(rkey.backup_rkey_ == (uint32_t)-1 || rkey.backup_rkey_ == 0){
@@ -112,7 +112,7 @@ public:
             }
             new_rkey.main_rkey_ = rkey.backup_rkey_;
             new_rkey.backup_rkey_ = (uint32_t)-1;
-        }while(!remote_CAS(*(uint64_t*)&new_rkey, (uint64_t*)&rkey, block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_) );
+        }while(!remote_CAS(*(uint64_t*)&new_rkey, (uint64_t*)&rkey, block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(rkey), global_rkey_) );
         // remote_write(&rkey_new, sizeof(uint32_t), backup_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
         return new_rkey.main_rkey_;
     };

@@ -1367,6 +1367,7 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
     uint32_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
     region_e region, new_region;
     int retry_time = 0;
+    rebind_region_block_rkey(region_offset, region_block_offset);
     // [Stage 0] flush log
     remote_read(&region, sizeof(region_e), region_metadata_addr(region_offset), global_rkey_);
     if(!region.exclusive_ && is_exclusive) {

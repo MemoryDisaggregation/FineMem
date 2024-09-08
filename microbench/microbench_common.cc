@@ -18,7 +18,7 @@ const int iteration = 200;
 const int free_num = 100;
 const int epoch = 100;
 
-const int alloc_size = 4096;
+const int alloc_size = 4096*1024;
 
 
 enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc };
@@ -719,6 +719,14 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
                 malloc_count_ += 1;
                 allocated ++;
             }
+            // for(int i = 0; i < rand_iter; i ++){
+            //     char buffer[2][16] = {"aaa", "bbb"};
+            //     char read_buffer[4];
+            //     conn->remote_write(buffer[i%2], 64, remote_addr[i].addr, remote_addr[i].rkey);
+            //     conn->remote_read(read_buffer, 4, remote_addr[i].addr, remote_addr[i].rkey);
+            //     printf("access addr %p: %s\n", remote_addr[i].addr, read_buffer);
+            //     assert(read_buffer[0] == buffer[i%2][0]);
+            // } 
         } else {
             for(int i = 0; i < rand_iter; i ++){
                 if(remote_addr[i].addr != -1 && remote_addr[i].rkey != -1) 
@@ -736,7 +744,8 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
                 malloc_record[(int)(time)] += 1;
                 malloc_count_ += 1;
                 allocated ++;
-            }
+                
+            }   
         }
         if (thread_id == 1)
             conn->remote_print_alloc_info();
@@ -806,10 +815,10 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
         malloc_record_global[i].fetch_add(malloc_record[i]);
         free_record_global[i].fetch_add(free_record[i]);
     }
-    // for(int i = 0; i < rand_iter; i++) {
-    // 	if(remote_addr[i].addr!=-1)
-	// 	alloc->free(remote_addr[i]);
-    // }
+    for(int i = 0; i < rand_iter; i++) {
+    	if(remote_addr[i].addr!=-1)
+		alloc->free(remote_addr[i]);
+    }
     alloc->print_state();
     malloc_avg[thread_id] = malloc_avg_time_;
     cas_avg[thread_id] = alloc->get_avg_retry();
