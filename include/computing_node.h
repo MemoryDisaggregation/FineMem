@@ -45,9 +45,8 @@ struct node_info {
 
         region_header_ = (uint64_t)((section_e*)section_header_ + section_num_);
         block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
-        block_header_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
-        backup_rkey_ = (uint64_t)((uint64_t*)block_header_ + block_num_);            
-        public_info_ = (PublicInfo*)((uint32_t*)backup_rkey_ + block_num_);           
+        block_header_ = (uint64_t)((rkey_table_e*)block_rkey_ + block_num_);
+        public_info_ = (PublicInfo*)((uint64_t*)block_header_ + block_num_);           
         heap_start_ = m_one_side_info_.heap_start_;
     }
     uint64_t block_size_;
@@ -63,7 +62,6 @@ struct node_info {
     uint64_t block_rkey_;
     uint64_t heap_start_;
     uint64_t block_header_;
-    uint64_t backup_rkey_;
     PublicInfo* public_info_;
 };
 

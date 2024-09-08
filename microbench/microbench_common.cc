@@ -167,6 +167,10 @@ public:
         mralloc::mr_rdma_addr new_heap = {0, 0, 0};
         bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
         heap_->init(new_heap, (size_t)1024*1024*1024);
+        for(int i = 0; i < 24;i ++){
+            conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
+            heap_->fill_block(new_heap, (size_t)1024*1024*1024);
+        }
     }
     ~MR_1GB_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
@@ -323,7 +327,7 @@ public:
         }
         cache_region.region.base_map_ |= 1<<index;
         remote_addr.addr = conn_->get_region_block_addr(cache_region.index, index);
-        remote_addr.rkey = cache_region.rkey[index];
+        remote_addr.rkey = cache_region.rkey[index].main_rkey_;
         return true;
     };
     bool free(mralloc::mr_rdma_addr remote_addr) override {

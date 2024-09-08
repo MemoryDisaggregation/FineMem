@@ -587,7 +587,7 @@ bool ComputingNode::fill_cache_block(){
         if(current_region_->region.base_map_ != bitmap32_filled) {
             int index = find_free_index_from_bitmap32_tail(current_region_->region.base_map_);
             current_region_->region.base_map_ |= 1<<index;
-            mr_rdma_addr addr(get_region_block_addr(current_region_->index, index, current_region_->node), current_region_->rkey[index], current_region_->node);
+            mr_rdma_addr addr(get_region_block_addr(current_region_->index, index, current_region_->node), current_region_->rkey[index].main_rkey_, current_region_->node);
             ring_cache->add_cache(addr);
             fill_counter += 1;
         } else {
@@ -614,7 +614,7 @@ bool ComputingNode::fill_cache_block(){
                 uint64_t offset = backup_region_index_;
                 uint64_t region_start = node_info_[backup_node_].heap_start_ + offset * node_info_[backup_node_].region_size_;
                 for(int j = 0; j < get_num; j++) {
-                    exclusive_region_[backup_node_][offset].rkey[(addr[j].addr-region_start)/node_info_[backup_node_].block_size_] = addr[j].rkey;
+                    exclusive_region_[backup_node_][offset].rkey[(addr[j].addr-region_start)/node_info_[backup_node_].block_size_].main_rkey_ = addr[j].rkey;
                     addr[j].node = backup_node_;
                 }
                 block_num -= get_num;
@@ -644,7 +644,7 @@ bool ComputingNode::free_mem_batch(uint32_t region_offset, uint32_t free_map, ui
             index = find_free_index_from_bitmap32_tail(free_map);
             free_map |= (uint32_t)(1<<index);
             result[i].addr = get_region_block_addr(region_offset, index, node);
-            result[i].rkey = exclusive_region_[node][region_offset].rkey[index];
+            result[i].rkey = exclusive_region_[node][region_offset].rkey[index].main_rkey_;
             result[i].node = node;
         } 
         ring_cache->add_batch(result, free_length);
@@ -654,7 +654,7 @@ bool ComputingNode::free_mem_batch(uint32_t region_offset, uint32_t free_map, ui
             index = find_free_index_from_bitmap32_tail(free_map);
             free_map |= (uint32_t)(1<<index);
             result[i].addr = get_region_block_addr(region_offset, index, node);
-            result[i].rkey = exclusive_region_[node][region_offset].rkey[index];
+            result[i].rkey = exclusive_region_[node][region_offset].rkey[index].main_rkey_;
             result[i].node = node;
         } 
         ring_cache->add_batch(result, free_length);
@@ -782,17 +782,17 @@ bool ComputingNode::free_mem_block(mr_rdma_addr remote_addr){
     uint64_t region_offset = (addr - node_info_[node].heap_start_) / node_info_[node].region_size_;
     uint64_t region_block_offset = (addr - node_info_[node].heap_start_) % node_info_[node].region_size_ / node_info_[node].block_size_;
     region_with_rkey* region; 
-    m_rdma_conn_[node]->remote_rebind(addr, exclusive_region_[node][region_offset].rkey[region_block_offset]);
+    m_rdma_conn_[node]->remote_rebind(addr, exclusive_region_[node][region_offset].rkey[region_block_offset].main_rkey_);
     if(exclusive_region_[node][region_offset].region.exclusive_ == 1 && ring_cache->get_length() < 200*block_per_region) {
         mr_rdma_addr result; 
         result.addr = addr; 
-        result.rkey = exclusive_region_[node][region_offset].rkey[region_block_offset];
+        result.rkey = exclusive_region_[node][region_offset].rkey[region_block_offset].main_rkey_;
         ring_cache->add_cache(result);
         return true;
     } else if (exclusive_region_[node][region_offset].region.on_use_ == 1 && ring_cache->get_length() < 200*block_per_region){
         mr_rdma_addr result; 
         result.addr = addr; 
-        result.rkey = exclusive_region_[node][region_offset].rkey[region_block_offset];
+        result.rkey = exclusive_region_[node][region_offset].rkey[region_block_offset].main_rkey_;
         ring_cache->add_cache(result);
         return true;
     }

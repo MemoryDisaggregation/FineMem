@@ -168,10 +168,8 @@ void MemoryNode::rebinder() {
     while(1) {
         for(int i = 0; i < block_num; i ++) {
             if(server_block_manager_->get_backup_rkey(i)== (uint32_t)-1){
-                server_block_manager_->set_backup_rkey(i, 0);
                 bind_mw(block_mw[i], server_block_manager_->get_block_addr(i), server_block_manager_->get_block_size(), rebinder_qp, rebinder_cq);
                 server_block_manager_->set_backup_rkey(i, block_mw[i]->rkey);
-                server_block_manager_->set_block_rkey(i, backup_mw[i]->rkey);
                 swap = block_mw[i]; block_mw[i] = backup_mw[i]; backup_mw[i] = swap;
             }
         }

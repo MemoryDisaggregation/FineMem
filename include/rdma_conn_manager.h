@@ -87,7 +87,7 @@ class ConnectionManager {
     int free_block(uint64_t addr) ;
     int free_region_batch(uint32_t region_offset, uint32_t free_bitmap, bool is_exclusive);
 
-    bool fetch_exclusive_region_rkey(uint32_t region_index, uint32_t* rkey_list);
+    bool fetch_exclusive_region_rkey(uint32_t region_index, rkey_table_e* rkey_list);
     int free_region_block(uint64_t addr, bool is_exclusive) ;
 
     inline uint32_t get_addr_region_index(uint64_t addr) {return (addr-heap_start_) / region_size_;};
@@ -96,19 +96,24 @@ class ConnectionManager {
     inline uint64_t get_region_addr(uint32_t region_index) {return heap_start_ + region_index * region_size_;};
     inline uint64_t get_region_block_addr(uint32_t region_index, uint32_t block_offset) {return heap_start_ + region_index * region_size_ + block_offset * block_size_;} ;
     inline uint32_t get_region_block_rkey(uint32_t region_index, uint32_t block_offset) {
-        uint32_t rkey; uint32_t rkey_new = -1;
+        rkey_table_e rkey;
         remote_read(&rkey, sizeof(rkey), block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
-        return rkey;
+        return rkey.main_rkey_;
     };
 
     inline uint32_t rebind_region_block_rkey(uint32_t region_index, uint32_t block_offset) {
-        uint32_t rkey; uint32_t rkey_new = -1;
-        remote_read(&rkey, sizeof(rkey), backup_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
-        if(rkey == (uint32_t)-1 || rkey == 0){
-            return 0;
-        }
-        remote_write(&rkey_new, sizeof(uint32_t), backup_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
-        return rkey;
+        rkey_table_e rkey;
+        remote_read(&rkey, sizeof(rkey), block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
+        rkey_table_e new_rkey;
+        do{
+            if(rkey.backup_rkey_ == (uint32_t)-1 || rkey.backup_rkey_ == 0){
+                return 0;
+            }
+            new_rkey.main_rkey_ = rkey.backup_rkey_;
+            new_rkey.backup_rkey_ = (uint32_t)-1;
+        }while(!remote_CAS(*(uint64_t*)&new_rkey, (uint64_t*)&rkey, block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_) );
+        // remote_write(&rkey_new, sizeof(uint32_t), backup_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
+        return new_rkey.main_rkey_;
     };
     
     inline uint32_t get_block_num() {return block_num_;};
@@ -136,7 +141,6 @@ class ConnectionManager {
     uint64_t block_rkey_;
     uint64_t heap_start_;
     uint64_t block_header_;
-    uint64_t backup_rkey_;
     PublicInfo* public_info_;
 
 };

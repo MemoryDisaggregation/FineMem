@@ -165,9 +165,8 @@ int RDMAConnection::init(const std::string ip, const std::string port, uint8_t a
     section_header_ = server_pdata.section_header_;
     region_header_ = (uint64_t)((section_e*)section_header_ + section_num_);
     block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
-    block_header_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
-    backup_rkey_ = (uint64_t)((uint64_t*)block_header_ + block_num_);
-    public_info_ = (PublicInfo*)((uint32_t*)backup_rkey_ + block_num_);
+    block_header_ = (uint64_t)((rkey_table_e*)block_rkey_ + block_num_);
+    public_info_ = (PublicInfo*)((uint64_t*)block_header_ + block_num_);
     heap_start_ = server_pdata.heap_start_;
     
     
@@ -1295,10 +1294,10 @@ int RDMAConnection::fetch_region_batch(section_e &alloc_section, region_e &alloc
 
     } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_));
     alloc_region = new_region;
-    uint32_t rkey_list[block_per_region];
+    rkey_table_e rkey_list[block_per_region];
     fetch_exclusive_region_rkey(region_index, rkey_list);
     for(int i = 0; i < free_item; i++){
-        addr[i].rkey = rkey_list[addr[i].addr]; 
+        addr[i].rkey = rkey_list[addr[i].addr].main_rkey_; 
         addr[i].addr = get_region_block_addr(region_index, addr[i].addr);    
     }
 

@@ -64,6 +64,12 @@ struct section_e {
 };
 typedef std::atomic<section_e> section;
 
+struct rkey_table_e {
+    uint32_t main_rkey_;
+    uint32_t backup_rkey_;
+};
+typedef std::atomic<rkey_table_e> rkey_table;
+
 struct region_e {
     bitmap32 base_map_;
     // max_length, 1~32 
@@ -92,7 +98,7 @@ typedef std::atomic<block_e> block;
 struct region_with_rkey {
     region_e region;
     uint32_t index;
-    uint32_t rkey[block_per_region];
+    rkey_table_e rkey[block_per_region];
     uint32_t node;
 };
 
@@ -270,12 +276,28 @@ public:
     inline uint64_t get_section_region_addr(uint32_t section_offset, uint32_t region_offset) {return heap_start_ + section_offset*section_size_ + region_offset * region_size_ ;};
     inline uint64_t get_region_addr(uint32_t region_index) {return heap_start_ + region_index * region_size_;};
     inline uint64_t get_region_block_addr(uint32_t region_index, uint32_t block_offset) {return heap_start_ + region_index * region_size_ + block_offset * block_size_;} ;
-    inline uint32_t get_region_block_rkey(uint32_t region_index, uint32_t block_offset) {return block_rkey_[region_index*block_per_region + block_offset];};
+    inline uint32_t get_region_block_rkey(uint32_t region_index, uint32_t block_offset) {return block_rkey_[region_index*block_per_region + block_offset].load().main_rkey_;};
 
     int fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) ;
 
-    inline bool set_block_rkey(uint64_t index, uint32_t rkey) {block_rkey_[index] = rkey; return true;};
-    inline bool set_backup_rkey(uint64_t index, uint32_t rkey) {backup_rkey_[index] = rkey; return true;};
+    inline bool set_block_rkey(uint64_t index, uint32_t rkey) {
+        rkey_table_e table = block_rkey_[index].load();
+        rkey_table_e new_table;
+        do{
+            new_table = table;
+            new_table.main_rkey_ = rkey;
+        }while(!block_rkey_[index].compare_exchange_weak(table, new_table));
+        return true;
+    };
+    inline bool set_backup_rkey(uint64_t index, uint32_t rkey) {
+        rkey_table_e table = block_rkey_[index].load();
+        rkey_table_e new_table;
+        do{
+            new_table = table;
+            new_table.backup_rkey_ = rkey;
+        }while(!block_rkey_[index].compare_exchange_weak(table, new_table));
+        return true;
+    };
 
     inline uint64_t get_block_num() {return block_num_;};
 
@@ -287,9 +309,9 @@ public:
 
     inline uint64_t get_metadata() {return (uint64_t)section_header_;};
 
-    inline uint32_t get_block_rkey(uint64_t index) {return block_rkey_[index];};
+    inline uint32_t get_block_rkey(uint64_t index) {return block_rkey_[index].load().main_rkey_;};
     
-    inline uint32_t get_backup_rkey(uint64_t index) {return backup_rkey_[index];};
+    inline uint32_t get_backup_rkey(uint64_t index) {return block_rkey_[index].load().backup_rkey_;};
 
     inline uint64_t get_block_index(uint64_t addr) {return (addr-heap_start_)/block_size_;}
 
@@ -319,10 +341,9 @@ private:
     // info before heap segment
     section* section_header_;
     region* region_header_;
-    uint32_t* block_rkey_;
+    rkey_table* block_rkey_;
     block* block_header_;
-    uint32_t* backup_rkey_;
-
+    
     // info of heap segment
     uint64_t heap_start_;
     uint64_t heap_size_;
@@ -543,6 +564,8 @@ public:
     bool fetch_block(mr_rdma_addr &addr);
 
     bool return_block(mr_rdma_addr addr, bool &all_free);
+
+    bool return_block_no_free(mr_rdma_addr addr, bool &all_free);
 
     void print_state();
     

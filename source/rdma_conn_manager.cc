@@ -36,9 +36,8 @@ int ConnectionManager::init(const std::string ip, const std::string port,
     section_header_ = m_one_side_info_.section_header_;
     region_header_ = (uint64_t)((section_e*)section_header_ + section_num_);
     block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
-    block_header_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
-    backup_rkey_ = (uint64_t)((uint64_t*)block_header_ + block_num_);
-    public_info_ = (PublicInfo*)((uint32_t*)backup_rkey_ + block_num_);
+    block_header_ = (uint64_t)((rkey_table_e*)block_rkey_ + block_num_);
+    public_info_ = (PublicInfo*)((uint64_t*)block_header_ + block_num_);
     heap_start_ = m_one_side_info_.heap_start_;
   }
 
@@ -191,7 +190,7 @@ int ConnectionManager::free_block(uint64_t addr) {
     return ret;  
 }
 
-bool ConnectionManager::fetch_exclusive_region_rkey(uint32_t region_index, uint32_t* rkey_list) {
+bool ConnectionManager::fetch_exclusive_region_rkey(uint32_t region_index, rkey_table_e* rkey_list) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
     bool ret = conn->fetch_exclusive_region_rkey(region_index, rkey_list);

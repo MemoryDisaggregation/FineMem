@@ -74,7 +74,7 @@ public:
     int find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
 
     int fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index) ;
-    bool fetch_exclusive_region_rkey(uint32_t region_index, uint32_t* rkey_list) {
+    bool fetch_exclusive_region_rkey(uint32_t region_index, rkey_table_e* rkey_list) {
         // uint32_t new_rkey[block_per_region];
         // memset(new_rkey, (uint32_t)-1, sizeof(uint32_t)*block_per_region);
         remote_read(rkey_list, sizeof(uint32_t)*block_per_region, block_rkey_ + region_index*block_per_region*sizeof(uint32_t), global_rkey_);
@@ -92,14 +92,29 @@ public:
     inline uint64_t get_region_block_addr(uint32_t region_index, uint32_t block_offset) {return heap_start_ + region_index * region_size_ + block_offset * block_size_;} ;
     inline uint64_t get_block_addr(uint32_t block_offset) {return heap_start_ + block_offset * block_size_;} ;
     inline uint32_t get_region_block_rkey(uint32_t region_index, uint32_t block_offset) {
-        uint32_t rkey; uint32_t rkey_new = -1;
+        rkey_table_e rkey;
         remote_read(&rkey, sizeof(rkey), block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
-        return rkey;
+        return rkey.main_rkey_;
     };
     inline uint32_t get_block_rkey(uint32_t block_offset) {
-        uint32_t rkey; uint32_t rkey_new = -1;
+        rkey_table_e rkey;
         remote_read(&rkey, sizeof(rkey), block_rkey_ + (block_offset)*sizeof(uint32_t), global_rkey_);
-        return rkey;
+        return rkey.main_rkey_;
+    };
+    
+    inline uint32_t rebind_region_block_rkey(uint32_t region_index, uint32_t block_offset) {
+        rkey_table_e rkey;
+        remote_read(&rkey, sizeof(rkey), block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
+        rkey_table_e new_rkey;
+        do{
+            if(rkey.backup_rkey_ == (uint32_t)-1 || rkey.backup_rkey_ == 0){
+                return 0;
+            }
+            new_rkey.main_rkey_ = rkey.backup_rkey_;
+            new_rkey.backup_rkey_ = (uint32_t)-1;
+        }while(!remote_CAS(*(uint64_t*)&new_rkey, (uint64_t*)&rkey, block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_) );
+        // remote_write(&rkey_new, sizeof(uint32_t), backup_rkey_ + (region_index*block_per_region + block_offset)*sizeof(uint32_t), global_rkey_);
+        return new_rkey.main_rkey_;
     };
     
     int fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) ;
@@ -156,7 +171,6 @@ public:
     uint64_t block_rkey_;
     uint64_t heap_start_;
     uint64_t block_header_;
-    uint64_t backup_rkey_;
     PublicInfo* public_info_;
 
     uint64_t retry_counter_;
