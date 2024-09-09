@@ -10,8 +10,6 @@
 
 namespace mralloc {
 
-const int retry_threshold = 10;
-const int low_threshold = 5;
 
 int RDMAConnection::init(const std::string ip, const std::string port, uint8_t access_type, uint16_t pid) {
     time_t time_; time(&time_); srand(time_);
@@ -992,8 +990,9 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
 int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
     int retry_time = 0;
     section_e section[8] = {0,0};
-    // int offset = (section_offset)%section_num_;
-    int offset = (section_offset+mt())%section_num_;
+    section_offset += 1;
+    int offset = (section_offset)%section_num_;
+    // int offset = (section_offset+mt())%section_num_;
     // each epoch fetch 8 sections, 8*8B = 64Byte
     if (advise == alloc_heavy) {
         int remain = section_num_, fetch = (offset + 8) > section_num_ ? (section_num_ - offset):8, index = offset;
@@ -1207,8 +1206,8 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
             return retry_time*(-1);
         }
         new_region.base_map_ |= (uint32_t)1<<index;
-        retry_counter_ = new_region.retry_+1;
-        new_region.retry_ = retry_time-1;
+        retry_counter_ = new_region.retry_;
+        new_region.retry_ = (retry_time>=retry_threshold)? 2: ((retry_time >= low_threshold)? 1:0);
         new_region.last_offset_ = index;
         if (alloc_region.base_map_ & ((uint32_t)1<<alloc_region.last_offset_) == 0) 
             new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 127 + 1;
@@ -1231,11 +1230,11 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
         force_update_section_state(alloc_section, region_index, alloc_full);
     } 
 
-    else if(old_retry >= low_threshold && retry_time < low_threshold) {
-        force_update_section_state(alloc_section, region_index, alloc_heavy, alloc_light);
-    } 
-    else if(old_retry < retry_threshold && retry_time >= retry_threshold) {
+    else if(old_retry > 0 && retry_time < low_threshold) {
         force_update_section_state(alloc_section, region_index, alloc_light, alloc_heavy);
+    } 
+    else if(old_retry < 2 && retry_time >= retry_threshold) {
+        force_update_section_state(alloc_section, region_index, alloc_heavy, alloc_light);
     } 
     // if(mt()%1000 == 1){
     //     printf("stall happend\n");
@@ -1273,6 +1272,7 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
 int RDMAConnection::fetch_region_batch(section_e &alloc_section, region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive, uint32_t region_index) {
     int index; region_e new_region;
     int free_item = 0;
+    printf("?????????\n");
     do{
         if(alloc_region.exclusive_ != is_exclusive || alloc_region.on_use_ != 1) {
             printf("Region not avaliable, addr = %lx, exclusive = %d\n", get_region_addr(region_index), alloc_region.exclusive_);
@@ -1314,7 +1314,7 @@ int RDMAConnection::free_region_batch(uint32_t region_offset, uint32_t free_bitm
     region_e region, new_region;
     int retry_time = 0;
     remote_read(&region, sizeof(region_e), region_metadata_addr(region_offset), global_rkey_);
-
+    printf("?????????\n");
     if(!region.exclusive_ && is_exclusive) {
         printf("exclusive error, the actual block is shared\n");
         return -1;
@@ -1346,13 +1346,13 @@ int RDMAConnection::free_region_batch(uint32_t region_offset, uint32_t free_bitm
     // else if(old_retry < 10 && avg_retry >= 10) {
     //     force_update_section_state(alloc_section, region_offset, alloc_full);
     // } 
-    else if(old_retry < 5 && retry_time >= 5) {
-        force_update_section_state(alloc_section, region_offset, alloc_heavy, alloc_light);
-    } 
-    else if(old_retry >= 5 && retry_time < 5) {
-        force_update_section_state(alloc_section, region_offset, alloc_light, alloc_heavy);
-        // printf("make region %d light\n", region_offset);
-    } 
+    // else if(old_retry < 5 && retry_time >= 5) {
+    //     force_update_section_state(alloc_section, region_offset, alloc_heavy, alloc_light);
+    // } 
+    // else if(old_retry >= 5 && retry_time < 5) {
+    //     force_update_section_state(alloc_section, region_offset, alloc_light, alloc_heavy);
+    //     // printf("make region %d light\n", region_offset);
+    // } 
     else {
         force_update_section_state(alloc_section, region_offset, alloc_light, alloc_full);
     }
@@ -1418,15 +1418,15 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
             new_region.exclusive_ = 0;
         }
         retry_counter_ = new_region.retry_;
-        new_region.retry_ = retry_time;
+        new_region.retry_ = (retry_time>=retry_threshold)? 2: ((retry_time >= low_threshold)? 1:0);
         if (region.base_map_ & ((uint32_t)1<<region.last_offset_) == 1) 
             new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 127 + 1;
         new_region.last_modify_id_ = node_id_;
         new_region.last_offset_ = region_block_offset;
     } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region, region_metadata_addr(region_offset), global_rkey_));
 
-    uint16_t old_retry = retry_counter_+1;
-    retry_counter_ = retry_time-1;
+    uint16_t old_retry = retry_counter_;
+    retry_counter_ = retry_time;
     
     // concurrency state update, will async it in the future
     section_e alloc_section;
@@ -1436,12 +1436,14 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
     else if(full) {
         force_update_section_state(alloc_section, region_offset, alloc_light, alloc_full);
     }
-    else if(old_retry < low_threshold && retry_time >= low_threshold) {
-        force_update_section_state(alloc_section, region_offset, alloc_heavy, alloc_light);
+    else if(old_retry > 0 && retry_time < low_threshold) {
+    // else if(old_retry < low_threshold && retry_time >= low_threshold) {
+        force_update_section_state(alloc_section, region_offset, alloc_light, alloc_heavy);
         // printf("make region %d heavy\n", region_offset);
     } 
-    else if(old_retry >= retry_threshold && retry_time < retry_threshold) {
-        force_update_section_state(alloc_section, region_offset, alloc_light, alloc_heavy);
+    else if(old_retry < 2 && retry_time >= retry_threshold) {
+    // else if(old_retry >= retry_threshold && retry_time < retry_threshold) {
+        force_update_section_state(alloc_section, region_offset, alloc_heavy, alloc_light);
         // printf("make region %d light\n", region_offset);
     } 
     else {
@@ -1505,6 +1507,53 @@ int RDMAConnection::free_block(uint64_t addr) {
     if(!remote_CAS(*(uint64_t*)&new_header, (uint64_t*)&old_header, block_header_ + index * sizeof(uint64_t), global_rkey_)){
         return false;
     };
+    return true;
+}
+
+
+int RDMAConnection::fetch_block_bitmap(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) {
+    uint64_t old_header = 0, new_header = 1, hint = block_hint % region_num_;
+    uint16_t counter = 0;
+    int retry_time = 0;
+    region_e alloc_region, new_region;
+    remote_read(&alloc_region, sizeof(region_e), region_metadata_addr(hint), global_rkey_);
+    int index;
+    do{
+        retry_time++;
+        while((index = find_free_index_from_bitmap32_tail(alloc_region.base_map_)) == -1) {
+            hint = (hint + 1) % region_num_;
+            retry_time++;
+            remote_read(&alloc_region, sizeof(region_e), region_metadata_addr(hint), global_rkey_);
+        }
+        new_region = alloc_region;
+        new_region.base_map_ |= (uint32_t)1<<index;
+    } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(hint), global_rkey_));
+    // if(mt()%1000 == 1){
+    //     printf("stall happend\n");
+    //     usleep(1000);
+    // }
+    alloc_region = new_region;
+    addr = get_region_block_addr(hint, index);
+    rkey = get_region_block_rkey(hint, index);
+    block_hint = hint; 
+    return retry_time;
+}
+
+int RDMAConnection::free_block_bitmap(uint64_t addr) {
+    uint32_t region_offset = (addr - heap_start_) / region_size_;
+    uint32_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
+    region_e region, new_region;
+    remote_read(&region, sizeof(region_e), region_metadata_addr(region_offset), global_rkey_);
+    bool full;
+    uint64_t old_header = 1, new_header = 0;
+    if((region.base_map_ & ((uint32_t)1<<region_block_offset)) == 0) {
+        printf("already freed\n");
+        return true;
+    } 
+    do{
+        new_region = region;
+        new_region.base_map_ &= ~(uint32_t)((uint32_t)1<<region_block_offset);
+    } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region, region_metadata_addr(region_offset), global_rkey_));
     return true;
 }
 

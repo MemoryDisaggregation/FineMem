@@ -23,6 +23,11 @@ namespace mralloc {
 
 #define RESOLVE_TIMEOUT_MS 5000
 
+const int retry_threshold = 5;
+// const int retry_threshold = 100000;
+// const int low_threshold = 100000;
+const int low_threshold = 2;
+
 struct one_side_info {
     uint64_t block_size_;
     uint64_t block_num_;
@@ -127,6 +132,10 @@ public:
 
     int fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
     int free_block(uint64_t addr) ;
+
+    int fetch_block_bitmap(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
+    int free_block_bitmap(uint64_t addr) ;
+
 
     private:
 

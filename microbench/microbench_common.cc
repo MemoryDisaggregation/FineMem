@@ -14,14 +14,14 @@
 #include <gperftools/profiler.h>
 #include <random>
 
-const int iteration = 800;
+const int iteration = 200;
 const int free_num = 200;
 const int epoch = 100;
 
 const int alloc_size = 4096*1024;
 
 
-enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc };
+enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc, bitmap_alloc };
 
 enum test_type { stage_test, shuffle_test, short_test, frag_test };
 
@@ -126,6 +126,44 @@ public:
     };
     bool free(mralloc::mr_rdma_addr remote_addr) override {
         return conn_->free_block(remote_addr.addr);
+    };
+    bool print_state() override {printf("%lf, %d\n", avg_retry, max_retry); return true;};
+    double get_avg_retry() {return avg_retry;};
+    int get_max_retry() {return max_retry;};
+
+private:
+    double avg_retry=0;
+    int alloc_num=0;
+    int max_retry=0;
+    uint64_t current_index_;
+    mralloc::ConnectionManager* conn_;
+    std::mt19937 mt;
+};
+
+class bitmap_allocator : test_allocator{
+public:
+    bitmap_allocator(mralloc::ConnectionManager* conn, uint64_t start_hint) {
+        conn_ = conn;
+        current_index_ = start_hint;
+        std::random_device e;
+        mt.seed(e());
+    }
+    ~bitmap_allocator() {};
+    bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
+        // current_index_ += mt();
+        int retry_time = conn_->fetch_block_bitmap(current_index_, remote_addr.addr, remote_addr.rkey);
+        if(retry_time) {
+            if(retry_time > max_retry) 
+                max_retry = retry_time;
+            avg_retry = (avg_retry*alloc_num + retry_time)/(alloc_num+1);
+	        alloc_num ++;
+            return true;
+        } else {
+            return false;
+        }
+    };
+    bool free(mralloc::mr_rdma_addr remote_addr) override {
+        return conn_->free_block_bitmap(remote_addr.addr);
     };
     bool print_state() override {printf("%lf, %d\n", avg_retry, max_retry); return true;};
     double get_avg_retry() {return avg_retry;};
@@ -247,7 +285,7 @@ public:
             }
         }
         cas_time += result;
-        if(cas_time > 2 && !slow_path) {
+        if(cas_time >= mralloc::retry_threshold && !slow_path) {
             if((result = conn_->find_section(cache_section, cache_section_index, mralloc::alloc_light)) < 0){
                 slow_path = true;
                 section_time += (-1)*result;
@@ -899,7 +937,8 @@ void* worker(void* arg) {
     switch (type)
     {
     case cxl_shm_alloc:
-        alloc = (test_allocator*)new cxl_shm_allocator(conn, rand()%(40*1024*1024));
+        alloc = (test_allocator*)new cxl_shm_allocator(conn, 0);
+        // alloc = (test_allocator*)new cxl_shm_allocator(conn, rand());
         break;
     case fusee_alloc:
         alloc = (test_allocator*)new fusee_allocator(conn);
@@ -908,13 +947,18 @@ void* worker(void* arg) {
         alloc = (test_allocator*)new rpc_allocator(conn);
         break;
     case share_alloc:
-        alloc = (test_allocator*)new share_allocator(conn, rand()%(25));
+        alloc = (test_allocator*)new share_allocator(conn, 0);
+        // alloc = (test_allocator*)new share_allocator(conn, rand());
         break;
     case exclusive_alloc:
         alloc = (test_allocator*)new exclusive_allocator(conn);
         break;
     case pool_alloc:
         alloc = (test_allocator*)new pool_allocator();
+        break;
+    case bitmap_alloc:
+        alloc = (test_allocator*)new bitmap_allocator(conn, 0);
+        // alloc = (test_allocator*)new bitmap_allocator(conn, rand());
         break;
     default:
         break;
@@ -953,7 +997,7 @@ int main(int argc, char* argv[]) {
         printf("Usage: %s <ip> <port> <thread> <allocator> <trace>\n", argv[0]);
         return 0;
     }
-    ProfilerStart("test.prof");
+    // ProfilerStart("test.prof");
     // init_random_values(random_offsets);
     std::string ip = argv[1];
     std::string port = argv[2];
@@ -972,6 +1016,8 @@ int main(int argc, char* argv[]) {
         type = exclusive_alloc;
     else if (allocator_type == "pool")
         type = pool_alloc;
+    else if (allocator_type == "bitmap")
+        type = bitmap_alloc;
     else {
         printf("allocator type error\n");
         return -1;
@@ -1048,5 +1094,5 @@ int main(int argc, char* argv[]) {
     result << "max cas :" << cas_max_final << std::endl;
     result.close();
     result_detail.close();
-    ProfilerStop();
+    // ProfilerStop();
 }
