@@ -10,7 +10,8 @@
 
 namespace mralloc {
 
-const int retry_threshold = 3;
+const int retry_threshold = 10;
+const int low_threshold = 5;
 
 int RDMAConnection::init(const std::string ip, const std::string port, uint8_t access_type, uint16_t pid) {
     time_t time_; time(&time_); srand(time_);
@@ -991,6 +992,7 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
 int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
     int retry_time = 0;
     section_e section[8] = {0,0};
+    // int offset = (section_offset)%section_num_;
     int offset = (section_offset+mt())%section_num_;
     // each epoch fetch 8 sections, 8*8B = 64Byte
     if (advise == alloc_heavy) {
@@ -1229,7 +1231,7 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
         force_update_section_state(alloc_section, region_index, alloc_full);
     } 
 
-    else if(old_retry >= retry_threshold && retry_time < retry_threshold) {
+    else if(old_retry >= low_threshold && retry_time < low_threshold) {
         force_update_section_state(alloc_section, region_index, alloc_heavy, alloc_light);
     } 
     else if(old_retry < retry_threshold && retry_time >= retry_threshold) {
@@ -1434,7 +1436,7 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
     else if(full) {
         force_update_section_state(alloc_section, region_offset, alloc_light, alloc_full);
     }
-    else if(old_retry < retry_threshold && retry_time >= retry_threshold) {
+    else if(old_retry < low_threshold && retry_time >= low_threshold) {
         force_update_section_state(alloc_section, region_offset, alloc_heavy, alloc_light);
         // printf("make region %d heavy\n", region_offset);
     } 

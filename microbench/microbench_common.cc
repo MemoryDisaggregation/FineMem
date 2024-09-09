@@ -14,8 +14,8 @@
 #include <gperftools/profiler.h>
 #include <random>
 
-const int iteration = 200;
-const int free_num = 100;
+const int iteration = 800;
+const int free_num = 200;
 const int epoch = 100;
 
 const int alloc_size = 4096*1024;
@@ -908,7 +908,7 @@ void* worker(void* arg) {
         alloc = (test_allocator*)new rpc_allocator(conn);
         break;
     case share_alloc:
-        alloc = (test_allocator*)new share_allocator(conn, rand()%12);
+        alloc = (test_allocator*)new share_allocator(conn, rand()%(25));
         break;
     case exclusive_alloc:
         alloc = (test_allocator*)new exclusive_allocator(conn);
