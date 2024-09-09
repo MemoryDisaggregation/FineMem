@@ -174,12 +174,14 @@ private:
     ibv_mw** block_mw;
     ibv_mw** backup_mw;
     ServerBlockManager *server_block_manager_;
+    FreeQueueManager *free_queue_manager_;
     uint8_t running;
     uint32_t global_rkey_;
     std::atomic<int> reg_size_;
     std::atomic<uint64_t> heap_pointer_;
 
     std::mutex m_mutex_;
+    std::mutex m_mutex_2;
 
 };
 }

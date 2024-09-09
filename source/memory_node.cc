@@ -32,8 +32,9 @@
 #define REMOTE_MEM_SIZE 4194304
 // #define REMOTE_MEM_SIZE 4096
 // #define REMOTE_MEM_SIZE 131072
+#define POOL_MEM_SIZE (uint64_t)1024*1024*1024
 
-#define INIT_MEM_SIZE ((uint64_t)150*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)50*1024*1024*1024)
 // #define INIT_MEM_SIZE ((uint64_t)10*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
@@ -208,23 +209,54 @@ bool MemoryNode::fill_cache_block(){
 
 bool MemoryNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
     mr_rdma_addr result;
-    if(ring_cache->try_fetch_cache(result)){
-        addr = result.addr; 
-        rkey = result.rkey;
-        return true;
+    std::unique_lock<std::mutex> lock(m_mutex_2);
+    uint64_t alloc_addr=0; uint32_t alloc_rkey;
+    mralloc::mr_rdma_addr new_addr; 
+    if(!free_queue_manager_-> fetch_block(new_addr)){
+        // int old_val = 1; int new_val = 0; 
+        // if(!cas_lock.compare_exchange_weak(old_val, new_val)){
+        //     while(!queue->fetch_block(new_addr)){
+        //         *addr = new_addr.addr;
+        //         *rkey = new_addr.rkey;
+        //         *node = new_addr.node;
+        //         return;
+        //     }
+        // }
+        allocate_and_register_memory(alloc_addr, alloc_rkey, (size_t)1024*1024*1024);
+        free_queue_manager_->fill_block({alloc_addr, alloc_rkey, 0}, (size_t)1024*1024*1024);
+        free_queue_manager_->fetch_block(new_addr);
+        // new_val = 1; old_val = 0;
+        // cas_lock.compare_exchange_weak(old_val, new_val);
     }
-    if(fill_cache_block()){
-        return fetch_mem_block(addr, rkey);
-    }
-    return false;
+    addr = new_addr.addr;
+    rkey = new_addr.rkey;
+    // // *node = new_addr.node;
+    // if(ring_cache->try_fetch_cache(result)){
+    //     addr = result.addr; 
+    //     rkey = result.rkey;
+    //     return true;
+    // }
+    // if(fill_cache_block()){
+    //     return fetch_mem_block(addr, rkey);
+    // }
+    return true;
 }
 
 bool MemoryNode::free_mem_block(uint64_t addr) {
-    mr_rdma_addr new_addr;
-    uint32_t block_id = (addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
-    new_addr.addr = addr; 
-    new_addr.rkey = block_mw[block_id]->rkey;
-    ring_cache->add_cache(new_addr);
+    std::unique_lock<std::mutex> lock(m_mutex_2);
+    bool freed;
+    mralloc::mr_rdma_addr new_addr; 
+    // queue->return_block_no_free({(uint64_t)addr,0,node}, freed);
+    free_queue_manager_->return_block({(uint64_t)addr,mr_recorder[addr-addr%((uint64_t)1024*1024*1024)]->rkey,0}, freed);
+    if(freed){
+        deallocate_and_unregister_memory((uint64_t)addr-(uint64_t)addr%((uint64_t)1024*1024*1024));
+    }
+    
+    // mr_rdma_addr new_addr;
+    // uint32_t block_id = (addr - server_block_manager_->get_heap_start())/ server_block_manager_->get_block_size();
+    // new_addr.addr = addr; 
+    // new_addr.rkey = block_mw[block_id]->rkey;
+    // ring_cache->add_cache(new_addr);
     return true;
 }
 
@@ -283,6 +315,12 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
     ret &= new_cache_region();
 
     simple_cache_watermark = 36;
+
+    free_queue_manager_ = new FreeQueueManager(REMOTE_MEM_SIZE, POOL_MEM_SIZE);
+    mr_rdma_addr addr;
+    addr.node = 0;
+    allocate_and_register_memory(addr.addr, addr.rkey, POOL_MEM_SIZE);
+    free_queue_manager_->init(addr, POOL_MEM_SIZE);
 
     if(!ret) {
         printf("init cache failed\n");
@@ -627,8 +665,10 @@ int MemoryNode::remote_write(volatile WorkerInfo *work_info, uint64_t local_addr
     send_wr.send_flags = IBV_SEND_SIGNALED;
     send_wr.wr.rdma.remote_addr = remote_addr;
     send_wr.wr.rdma.rkey = rkey;
-    if (ibv_post_send(work_info->cm_id->qp, &send_wr, &bad_send_wr)) {
-        perror("ibv_post_send fail");
+    int error_code;
+    if (error_code = ibv_post_send(work_info->cm_id->qp, &send_wr, &bad_send_wr)) {
+        perror("ibv_post_send write fail");
+        printf("error code %d\n", error_code);
         return -1;
     }
 
