@@ -718,6 +718,7 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
                 malloc_record[(int)(time)] += 1;
                 malloc_count_ += 1;
                 allocated ++;
+                // printf("%lu, %u\n", remote_addr[next_idx].addr, remote_addr[next_idx].rkey);
             }
             // for(int i = 0; i < rand_iter; i ++){
             //     char buffer[2][16] = {"aaa", "bbb"};
@@ -747,16 +748,23 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
                 
             }   
         }
-        if (thread_id == 1)
-            conn->remote_print_alloc_info();
+        // if (thread_id == 1)
+        //     conn->remote_print_alloc_info();
             
-        // valid check
+        //valid check
         // char buffer[2][16] = {"aaa", "bbb"};
+        // uint32_t rkey_write_buffer;
+        // uint32_t rkey_read_buffer;
         // char read_buffer[4];
         // for(int i = 0; i < rand_iter; i ++){
-        //     conn->remote_write(buffer[i%2], 64, remote_addr[i].addr, remote_addr[i].rkey);
-        //     conn->remote_read(read_buffer, 4, remote_addr[i].addr, remote_addr[i].rkey);
-        //     assert(read_buffer[0] == buffer[i%2][0]);
+        // //     // conn->remote_write(buffer[i%2], 64, remote_addr[i].addr, remote_addr[i].rkey);
+        // //     // conn->remote_read(read_buffer, 4, remote_addr[i].addr, remote_addr[i].rkey);
+        // //     // assert(read_buffer[0] == buffer[i%2][0]);
+        //     rkey_write_buffer = remote_addr[i].rkey;
+        //     conn->remote_write(&rkey_write_buffer, sizeof(rkey_write_buffer), remote_addr[i].addr, remote_addr[i].rkey);
+        //     conn->remote_read(&rkey_read_buffer, sizeof(rkey_read_buffer), remote_addr[i].addr, remote_addr[i].rkey);
+        //     printf("%lu, %u\n", remote_addr[i].addr, rkey_read_buffer);
+        //     assert(rkey_read_buffer == rkey_write_buffer);
         // }        
         printf("thread %d, epoch %d, malloc time %lf\n", thread_id, j, malloc_avg_time_);
         // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
@@ -799,8 +807,8 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
         free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
         free_count_ += 1;
         // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-        if (thread_id == 1)
-            conn->remote_print_alloc_info();
+        // if (thread_id == 1)
+        //     conn->remote_print_alloc_info();
         if(j > 0){
             pthread_mutex_lock(&file_lock);
             for(int i = 0; i < free_num; i++){
@@ -817,7 +825,7 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
     }
     for(int i = 0; i < rand_iter; i++) {
     	if(remote_addr[i].addr!=-1)
-		alloc->free(remote_addr[i]);
+		    alloc->free(remote_addr[i]);
     }
     alloc->print_state();
     malloc_avg[thread_id] = malloc_avg_time_;

@@ -107,8 +107,8 @@ public:
         remote_read(&rkey, sizeof(rkey), block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(rkey), global_rkey_);
         rkey_table_e new_rkey;
         do{
-            if(rkey.backup_rkey_ == (uint32_t)-1 || rkey.backup_rkey_ == 0){
-                return 0;
+            while(rkey.backup_rkey_ == (uint32_t)-1 || rkey.backup_rkey_ == 0){
+                remote_read(&rkey, sizeof(rkey), block_rkey_ + (region_index*block_per_region + block_offset)*sizeof(rkey), global_rkey_);
             }
             new_rkey.main_rkey_ = rkey.backup_rkey_;
             new_rkey.backup_rkey_ = (uint32_t)-1;
