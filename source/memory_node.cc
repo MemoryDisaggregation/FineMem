@@ -222,8 +222,8 @@ bool MemoryNode::fetch_mem_block(uint64_t &addr, uint32_t &rkey){
         //         return;
         //     }
         // }
-        allocate_and_register_memory(alloc_addr, alloc_rkey, (size_t)1024*1024*1024);
-        free_queue_manager_->fill_block({alloc_addr, alloc_rkey, 0}, (size_t)1024*1024*1024);
+        allocate_and_register_memory(alloc_addr, alloc_rkey, (uint64_t)1024*1024*1024);
+        free_queue_manager_->fill_block({alloc_addr, alloc_rkey, 0}, (uint64_t)1024*1024*1024);
         free_queue_manager_->fetch_block(new_addr);
         // new_val = 1; old_val = 0;
         // cas_lock.compare_exchange_weak(old_val, new_val);
@@ -289,15 +289,18 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
     // assert(size == init_size_ - SERVER_BASE_ADDR + init_addr_); 
     heap_total_size_ = init_size_raw; heap_start_addr_ = init_addr_raw;
     
-    ibv_mr* heap_mr_ = rdma_register_memory((void*)server_base_addr, init_addr_raw - server_base_addr);
-    global_mr_ =
-        ibv_reg_mr(m_pd_, (void*)init_addr_raw, init_size_raw,
-                    IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
-                        IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND);
+    // ibv_mr* heap_mr_ = rdma_register_memory((void*)server_base_addr, init_addr_raw - server_base_addr);
+    ibv_mr* heap_mr_ = rdma_register_memory((void*)server_base_addr, init_addr_ - server_base_addr + init_size_);
+    global_mr_ = heap_mr_;
+    // global_mr_ =
+    //     ibv_reg_mr(m_pd_, (void*)init_addr_raw, init_size_raw,
+    //                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
+    //                     IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_ATOMIC | IBV_ACCESS_MW_BIND);
     if(fusee_enable)
         rpc_fusee_ = new RPC_Fusee(server_base_addr, server_base_addr + META_AREA_LEN, heap_mr_->rkey);
     set_global_rkey(heap_mr_->rkey);
-    heap_pointer_.store(init_addr_raw + init_size_raw + 1024*1024*1024 - 1 - (init_addr_raw + init_size_raw + 1024*1024*1024 - 1) % (1024*1024*1024));
+    heap_pointer_.store((init_addr_raw + 1024*1024*1024 - 1) - (init_addr_raw + 1024*1024*1024 - 1) % (1024*1024*1024));
+    // heap_pointer_.store(init_addr_raw + init_size_raw + 1024*1024*1024 - 1 - (init_addr_raw + init_size_raw + 1024*1024*1024 - 1) % (1024*1024*1024));
     m_mw_handler = (ibv_mw**)malloc(size / base_block_size * sizeof(ibv_mw*));
 
     mw_binded = false;
@@ -321,7 +324,10 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
     addr.node = 0;
     allocate_and_register_memory(addr.addr, addr.rkey, POOL_MEM_SIZE);
     free_queue_manager_->init(addr, POOL_MEM_SIZE);
-
+    // for(int i = 0; i < 48;i ++){
+    //     allocate_and_register_memory(addr.addr, addr.rkey, POOL_MEM_SIZE);
+    //     free_queue_manager_->fill_block(addr, POOL_MEM_SIZE);
+    // }
     if(!ret) {
         printf("init cache failed\n");
         return false;
