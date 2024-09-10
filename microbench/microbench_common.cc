@@ -14,9 +14,9 @@
 #include <gperftools/profiler.h>
 #include <random>
 
-const int iteration = 30;
-const int free_num = 15;
-const int epoch = 5000;
+const int iteration = 60;
+const int free_num = 30;
+const int epoch = 1000;
 
 const int alloc_size = 4096*1024;
 

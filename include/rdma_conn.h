@@ -23,7 +23,7 @@ namespace mralloc {
 
 #define RESOLVE_TIMEOUT_MS 5000
 
-const int retry_threshold = 10;
+	const int retry_threshold = 10;
 // const int retry_threshold = 100000;
 // const int low_threshold = 100000;
 const int low_threshold = 2;
