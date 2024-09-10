@@ -163,7 +163,7 @@ void ComputingNode::woker(int proc) {
                     }
                 }
                 cas_time += result;
-                if(cas_time > 2 && !slow_path) {
+                if(cas_time > retry_threshold && !slow_path) {
                     if((result = m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_light)) < 0){
                         slow_path = true;
                         section_time += (-1)*result;
