@@ -21,7 +21,7 @@ const int epoch = 500;
 const int alloc_size = 4096*1024;
 
 
-enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc, bitmap_alloc };
+enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc, bitmap_alloc, cache_alloc };
 
 enum test_type { stage_test, shuffle_test, short_test, frag_test };
 
@@ -197,38 +197,66 @@ private:
     mralloc::ConnectionManager* conn_;
 };
 
+mralloc::FreeQueueManager* cnode_heap_ = NULL;
+
+mralloc::FreeQueueManager* generate_pool(mralloc::ConnectionManager* conn){
+    mralloc::FreeQueueManager* pool = new mralloc::FreeQueueManager(alloc_size, (size_t)1024*1024*1024);
+    mralloc::mr_rdma_addr new_heap = {0, 0, 0};
+    bool result = conn->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
+    pool->init(new_heap, (size_t)1024*1024*1024);
+    return pool;
+}
+std::mutex mutex_;
+
 class MR_1GB_allocator : test_allocator{
 public:
     MR_1GB_allocator(mralloc::ConnectionManager* conn) {
+        std::unique_lock<std::mutex> lock(mutex_);
         conn_ = conn;
-        heap_ = new mralloc::FreeQueueManager(alloc_size, (size_t)1024*1024*1024);
-        mralloc::mr_rdma_addr new_heap = {0, 0, 0};
-        bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
-        heap_->init(new_heap, (size_t)1024*1024*1024);
-        for(int i = 0; i < 24;i ++){
-            conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
-            heap_->fill_block(new_heap, (size_t)1024*1024*1024);
-        }
+        // if(cnode_heap_ == NULL) {
+            heap_ = generate_pool(conn_);
+            mralloc::mr_rdma_addr new_heap = {0, 0, 0};
+            // for(int i = 0; i < 32;i ++){
+            //     conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
+            //     heap_->fill_block(new_heap, (size_t)1024*1024*1024);
+            // }
+        // }
+        // mralloc::mr_rdma_addr new_heap = {0, 0, 0};
+        // bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
+        // heap_->init(new_heap, (size_t)1024*1024*1024);
     }
     ~MR_1GB_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
-        if(heap_->fetch_block(remote_addr)){
-            return true;
-        } else {
+        // if(cnode_heap_->fetch_block(remote_addr)){
+        //     return true;
+        // } else {
+        //     mralloc::mr_rdma_addr new_heap = {0, 0, 0};
+        //     bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
+        //     if(result) return false;
+        //     cnode_heap_->fill_block(new_heap, (size_t)1024*1024*1024);
+        // }
+        // std::unique_lock<std::mutex> lock(mutex_);
+        if(!heap_->fetch_block(remote_addr)){
             mralloc::mr_rdma_addr new_heap = {0, 0, 0};
-            bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
-            if(result) return false;
+            conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
             heap_->fill_block(new_heap, (size_t)1024*1024*1024);
+            heap_->fetch_block(remote_addr);
         }
-        return heap_->fetch_block(remote_addr);
+        return true;
     };
     bool free(mralloc::mr_rdma_addr remote_addr) override {
-        return !conn_->unregister_remote_memory(remote_addr.addr);
+        // std::unique_lock<std::mutex> lock(mutex_);
+        bool freed;
+        heap_->return_block(remote_addr, freed);
+        if(freed){
+            conn_->unregister_remote_memory((uint64_t)remote_addr.addr-(uint64_t)remote_addr.addr%((uint64_t)1024*1024*1024));
+        }
+        return true;
     };
     bool print_state() override {return false;};
 private:
     mralloc::ConnectionManager* conn_;
-    mralloc::FreeQueueManager* heap_;
+    mralloc::FreeQueueManager* heap_ ;
 };
 
 class rpc_allocator : test_allocator{
@@ -926,7 +954,7 @@ void* worker(void* arg) {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     int id_ = thread_id;
-    CPU_SET(id_*2, &cpuset);
+    CPU_SET(id_, &cpuset);
     pthread_t this_tid = pthread_self();
     uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
     // assert(ret == 0);
@@ -963,6 +991,9 @@ void* worker(void* arg) {
     case bitmap_alloc:
         alloc = (test_allocator*)new bitmap_allocator(conn, 0);
         // alloc = (test_allocator*)new bitmap_allocator(conn, rand());
+        break;
+    case cache_alloc:
+        alloc = (test_allocator*)new MR_1GB_allocator(conn);
         break;
     default:
         break;
@@ -1022,6 +1053,8 @@ int main(int argc, char* argv[]) {
         type = pool_alloc;
     else if (allocator_type == "bitmap")
         type = bitmap_alloc;
+    else if (allocator_type == "cache")
+        type = cache_alloc;
     else {
         printf("allocator type error\n");
         return -1;
