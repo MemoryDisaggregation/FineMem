@@ -339,14 +339,14 @@ bool ComputingNode::start(std::string* addr, std::string* port, uint32_t node_nu
         pthread_t listening_thread;
         // pthread_create(&cache_fill_thread_, NULL, run_cache_filler, this);
         // pthread_create(&recycle_thread_, NULL, run_recycler, this);   
-        worker_param new_param[nprocs];
-        for(int i = 0; i < nprocs; i++) {
-            new_param[i].heap = this; new_param[i].id = i;
-            pthread_create(&woker_thread_[i], NULL, run_woker_thread, &new_param[i]);
+        worker_param new_param[128];
+        for(int i = 0; i < 64; i++) {
+            new_param[i*2].heap = this; new_param[i].id = i*2;
+            pthread_create(&woker_thread_[i*2], NULL, run_woker_thread, &new_param[i*2]);
             // sleep(1);
             usleep(100000);
         }
-        pthread_create(&listening_thread, NULL, run_rpc_thread, this);
+        //pthread_create(&listening_thread, NULL, run_rpc_thread, this);
     }
     return true;
 }

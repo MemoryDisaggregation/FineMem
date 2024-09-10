@@ -731,6 +731,8 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
     mralloc::mr_rdma_addr remote_addr[iteration];
     uint64_t current_index = 0;
     int rand_iter = iteration;
+    struct timeval total_start, total_end;
+    gettimeofday(&total_start, NULL);
     for(int j = 0; j < epoch; j ++) {
         pthread_barrier_wait(&start_barrier);
         int allocated = 0;
@@ -857,6 +859,8 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
         // pthread_barrier_wait(&end_barrier);
 
     }
+    gettimeofday(&total_end, NULL);
+    printf("%d\n", total_end.tv_usec + total_end.tv_sec*1000*1000 - total_start.tv_usec - total_start.tv_sec*1000*1000);
     for(int i=0;i<100000;i++){
         malloc_record_global[i].fetch_add(malloc_record[i]);
         free_record_global[i].fetch_add(free_record[i]);
@@ -924,9 +928,9 @@ void* worker(void* arg) {
     int id_ = thread_id+2;
     CPU_SET(id_, &cpuset);
     pthread_t this_tid = pthread_self();
-    uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    uint64_t ret = pthread_setaffinity_np(this_tid*2, sizeof(cpuset), &cpuset);
     // assert(ret == 0);
-    ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    ret = pthread_getaffinity_np(this_tid*2, sizeof(cpuset), &cpuset);
     for (int i = 0; i < sysconf(_SC_NPROCESSORS_CONF); i ++) {
         if (CPU_ISSET(i, &cpuset)) {
             printf("client %d main process running on core: %d\n",id_ , i);
