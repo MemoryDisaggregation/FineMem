@@ -190,6 +190,22 @@ int ConnectionManager::free_block(uint64_t addr) {
     return ret;  
 }
 
+int ConnectionManager::fetch_block_bitmap(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) {
+    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+    assert(conn != nullptr);
+    int ret = conn->fetch_block_bitmap(block_hint, addr, rkey);
+    m_rpc_conn_queue_->enqueue(conn);
+    return ret;  
+}
+
+int ConnectionManager::free_block_bitmap(uint64_t addr) {
+    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
+    assert(conn != nullptr);
+    int ret = conn->free_block_bitmap(addr);
+    m_rpc_conn_queue_->enqueue(conn);
+    return ret;  
+}
+
 bool ConnectionManager::fetch_exclusive_region_rkey(uint32_t region_index, rkey_table_e* rkey_list) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);

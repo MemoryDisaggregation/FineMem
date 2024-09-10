@@ -10,6 +10,7 @@
 namespace mralloc {
     
     const int retry_threshold = 3;
+    const int low_threshold = 2;
 
     void ServerBlockManager::recovery(int node){
         int counter = 0;
@@ -456,7 +457,7 @@ namespace mralloc {
         if(alloc_region.base_map_ == bitmap32_filled) {
             while(!force_update_section_state(alloc_section, region_index, alloc_full));
         } 
-        else if(old_retry >= retry_threshold && retry_time < retry_threshold) {
+        else if(old_retry >= low_threshold && retry_time < low_threshold) {
             force_update_section_state(alloc_section, region_index, alloc_heavy, alloc_light);
             // printf("make region %d heavy\n", region_index);
         } 
@@ -508,7 +509,7 @@ namespace mralloc {
                 printf("make region %d light failed\n", region_offset);
             }
         } 
-        else if(old_retry < retry_threshold && retry_time >= retry_threshold) {
+        else if(old_retry < low_threshold && retry_time >= low_threshold) {
             force_update_section_state(alloc_section, region_offset, alloc_heavy, alloc_light);
             // printf("make region %d heavy\n", region_offset);
         } 
