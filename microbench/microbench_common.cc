@@ -926,11 +926,11 @@ void* worker(void* arg) {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     int id_ = thread_id;
-    CPU_SET(id_, &cpuset);
+    CPU_SET(id_*2, &cpuset);
     pthread_t this_tid = pthread_self();
-    uint64_t ret = pthread_setaffinity_np(this_tid*2, sizeof(cpuset), &cpuset);
+    uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
     // assert(ret == 0);
-    ret = pthread_getaffinity_np(this_tid*2, sizeof(cpuset), &cpuset);
+    ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
     for (int i = 0; i < sysconf(_SC_NPROCESSORS_CONF); i ++) {
         if (CPU_ISSET(i, &cpuset)) {
             printf("client %d main process running on core: %d\n",id_ , i);

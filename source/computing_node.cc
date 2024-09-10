@@ -340,8 +340,8 @@ bool ComputingNode::start(std::string* addr, std::string* port, uint32_t node_nu
         // pthread_create(&cache_fill_thread_, NULL, run_cache_filler, this);
         // pthread_create(&recycle_thread_, NULL, run_recycler, this);   
         worker_param new_param[128];
-        for(int i = 0; i < 64; i++) {
-            new_param[i*2].heap = this; new_param[i].id = i*2;
+        for(int i = 0; i < 50; i++) {
+            new_param[i*2].heap = this; new_param[i*2].id = i*2;
             pthread_create(&woker_thread_[i*2], NULL, run_woker_thread, &new_param[i*2]);
             // sleep(1);
             usleep(100000);
