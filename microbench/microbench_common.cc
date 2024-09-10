@@ -1062,7 +1062,7 @@ int main(int argc, char* argv[]) {
         pthread_join(running_thread[i], NULL);
     }
     result << "malloc " << std::endl;
-    int p99_num = (iteration-free_num)*thread_num*epoch*0.99;
+    int p99_num = ((free_num)*(epoch-1) + iteration ) *thread_num*0.99;
     int count = 0;
     for(int i=0;i<100000;i++) {
         if(malloc_record_global[i].load() != 0) {
