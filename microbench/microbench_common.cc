@@ -16,7 +16,7 @@
 
 const int iteration = 30;
 const int free_num = 15;
-const int epoch = 500;
+const int epoch = 5000;
 
 const int alloc_size = 4096*1024;
 
