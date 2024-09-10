@@ -14,9 +14,9 @@
 #include <gperftools/profiler.h>
 #include <random>
 
-const int iteration = 200;
-const int free_num = 200;
-const int epoch = 100;
+const int iteration = 30;
+const int free_num = 15;
+const int epoch = 500;
 
 const int alloc_size = 4096*1024;
 
@@ -804,7 +804,7 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
         //     printf("%lu, %u\n", remote_addr[i].addr, rkey_read_buffer);
         //     assert(rkey_read_buffer == rkey_write_buffer);
         // }        
-        printf("thread %d, epoch %d, malloc time %lf\n", thread_id, j, malloc_avg_time_);
+       // printf("thread %d, epoch %d, malloc time %lf\n", thread_id, j, malloc_avg_time_);
         // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         // free
         random_values(random_offsets, rand_val);
@@ -1062,9 +1062,18 @@ int main(int argc, char* argv[]) {
         pthread_join(running_thread[i], NULL);
     }
     result << "malloc " << std::endl;
+    int p99_num = (iteration-free_num)*thread_num*epoch*0.99;
+    int count = 0;
     for(int i=0;i<100000;i++) {
-        if(malloc_record_global[i].load() != 0)
+        if(malloc_record_global[i].load() != 0) {
+            if(count < p99_num){
+                count += malloc_record_global[i].load();
+                if(count >= p99_num) {
+                    printf("%f\n", i-((float)count-p99_num)/malloc_record_global[i].load());
+                }
+            }
             result << i << " " <<malloc_record_global[i].load() << std::endl;
+	    }
     }
     result << "free " << std::endl;
     for(int i=0;i<100000;i++) {
@@ -1084,13 +1093,14 @@ int main(int argc, char* argv[]) {
         if(cas_max[i] > cas_max_final)
             cas_max_final = cas_max[i];
     }
-    printf("total malloc avg: %lfus\n", malloc_avg_final/thread_num);
+    printf("%lf\n", malloc_avg_final/thread_num);
+    // printf("total malloc avg: %lfus\n", malloc_avg_final/thread_num);
     result << "total malloc avg: " << malloc_avg_final/thread_num << std::endl;
-    printf("total free avg: %luus\n", free_avg.load()/thread_num);
+    // printf("total free avg: %luus\n", free_avg.load()/thread_num);
     result << "total free avg: " << free_avg.load()/thread_num << std::endl;
-    printf("total cas avg: %lf\n", cas_avg_final/thread_num);
+    // printf("total cas avg: %lf\n", cas_avg_final/thread_num);
     result << "total cas avg: " << cas_avg_final/thread_num << std::endl;
-    printf("max cas : %d\n", cas_max_final);
+    // printf("max cas : %d\n", cas_max_final);
     result << "max cas :" << cas_max_final << std::endl;
     result.close();
     result_detail.close();
