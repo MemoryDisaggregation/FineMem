@@ -39,6 +39,7 @@ pthread_mutex_t file_lock;
 
 std::atomic<int> malloc_record_global[100000];
 std::atomic<int> free_record_global[100000];
+std::atomic<uint64_t> allocate_size;
 volatile double malloc_avg[128] = {0};
 volatile double cas_avg[128] = {0};
 volatile int cas_max[128] = {0};
@@ -788,6 +789,7 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
                 malloc_record[(int)(time)] += 1;
                 malloc_count_ += 1;
                 allocated ++;
+                allocate_size.fetch_add(1024*1024*4);
                 // printf("%lu, %u\n", remote_addr[next_idx].addr, remote_addr[next_idx].rkey);
             }
             // for(int i = 0; i < rand_iter; i ++){
@@ -815,11 +817,17 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
                 malloc_record[(int)(time)] += 1;
                 malloc_count_ += 1;
                 allocated ++;
-                
+                allocate_size.fetch_add(1024*1024*4);
             }   
         }
-        // if (thread_id == 1)
-        //     conn->remote_print_alloc_info();
+        // printf("malloc %d\n",allocated);
+
+        // if (thread_id == 1){
+        //     uint64_t mem_used;
+        //     conn->remote_print_alloc_info(mem_used);
+        //     printf("%lf, %lu, %lu\n", 1.0*allocate_size.load()/mem_used, allocate_size.load(), mem_used);
+        // }
+            // conn->remote_print_alloc_info();
             
         //valid check
         // char buffer[2][16] = {"aaa", "bbb"};
@@ -839,6 +847,7 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
        // printf("thread %d, epoch %d, malloc time %lf\n", thread_id, j, malloc_avg_time_);
         // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         // free
+        pthread_barrier_wait(&end_barrier);
         random_values(random_offsets, rand_val);
         gettimeofday(&start, NULL);
         int result;        
@@ -855,8 +864,17 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
                     remote_addr[next_idx].addr = -1;
                     remote_addr[next_idx].rkey = -1;
                     allocated++;
+                    allocate_size.fetch_add(-1024*1024*4);
                 }
             }
+            // printf("free %d\n",allocated);
+        // if (thread_id == 1){
+        // getchar();
+        //     uint64_t mem_used;
+        //     conn->remote_print_alloc_info(mem_used);
+        //     printf("%lf, %lu, %lu\n", 1.0*allocate_size.load()/mem_used, allocate_size.load(), mem_used);
+        // getchar();
+        // }
         // } 
         // else {
         //     for(int i = 0; i < free_num; i ++){
@@ -886,7 +904,6 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
             }
             pthread_mutex_unlock(&file_lock);
         }
-        // pthread_barrier_wait(&end_barrier);
 
     }
     gettimeofday(&total_end, NULL);
@@ -1031,6 +1048,7 @@ void* worker(void* arg) {
 }
 
 int main(int argc, char* argv[]) {
+    allocate_size.store(0);
     if(argc < 6){
         printf("Usage: %s <ip> <port> <thread> <allocator> <trace>\n", argv[0]);
         return 0;
