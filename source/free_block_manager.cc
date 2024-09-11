@@ -754,6 +754,7 @@ namespace mralloc {
     }
 
     bool FreeQueueManager::init(mr_rdma_addr addr, uint64_t size){
+        std::unique_lock<std::mutex> lock(m_mutex_);
         if (size != pool_size_){
             printf("Error: FreeQueueManager only support size that is multiple of %ld \n", block_size_);
             return false;
@@ -821,6 +822,9 @@ namespace mralloc {
         mr_rdma_addr index = {0,0,0};
         uint64_t offset;
         do{
+            if(free_block_queue.empty()){
+                return false;
+            }
             addr = free_block_queue.front();
             free_block_queue.pop();
             index.addr = addr.addr; index.node = addr.node;
