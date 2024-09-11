@@ -95,7 +95,7 @@ public:
     bool free_mem_block(uint64_t addr);
 
 
-    void print_alloc_info();
+    uint64_t print_alloc_info();
 
     bool init_mw(ibv_qp* qp, ibv_cq *cq);
     bool bind_mw(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq *cq);

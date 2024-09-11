@@ -460,6 +460,7 @@ void warmup(test_allocator* alloc) {
 }
 
 void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_t thread_id) {
+    uint64_t mem_use;
     unsigned int random_offsets[iteration];
     init_random_values(random_offsets);
     uint64_t malloc_avg_time_ = 0, free_avg_time_ = 0;
@@ -487,7 +488,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         pthread_barrier_wait(&end_barrier);
         printf("epoch %d malloc finish\n", j);
         if (thread_id == 1)
-            conn->remote_print_alloc_info();
+            conn->remote_print_alloc_info(mem_use);
 
         // valid check
         /*
@@ -542,7 +543,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         printf("epoch %d free finish\n", j);
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         if (thread_id == 1)
-            conn->remote_print_alloc_info();
+            conn->remote_print_alloc_info(mem_use);
     }
     for(int i = 0; i < rand_iter; i++) {
 	    if(remote_addr[i].addr!=0)
@@ -560,6 +561,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
 }
 
 void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_t thread_id) {
+    uint64_t mem_use;
     unsigned int random_offsets[iteration];
     init_random_values(random_offsets);
     double malloc_avg_time_ = 0, free_avg_time_ = 0;
@@ -589,7 +591,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             //pthread_barrier_wait(&end_barrier);
             // printf("epoch %d malloc finish\n", j);
             if (thread_id == 1)
-                conn->remote_print_alloc_info();
+                conn->remote_print_alloc_info(mem_use);
                 
             // valid check
             // char buffer[2][16] = {"aaa", "bbb"};
@@ -639,7 +641,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             // if (thread_id == 1)
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             if (thread_id == 1)
-                conn->remote_print_alloc_info();
+                conn->remote_print_alloc_info(mem_use);
             //     conn->remote_print_alloc_info();
         }
     } else {
@@ -709,7 +711,7 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
             //pthread_barrier_wait(&end_barrier);
             // printf("epoch %d malloc finish\n", j);
             if (thread_id == 1)
-                conn->remote_print_alloc_info();
+                conn->remote_print_alloc_info(mem_use);
                 
             time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
             time = time / rand_iter;
@@ -905,6 +907,7 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
 }
 
 void short_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_t thread_id) {
+    uint64_t mem_use;
     uint64_t malloc_avg_time_ = 0, free_avg_time_ = 0;
     uint64_t malloc_count_ = 0, free_count_ = 0;
     struct timeval start, end;
@@ -929,7 +932,7 @@ void short_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         printf("epoch %d malloc finish\n", j);
         
         if (thread_id == 1)
-            conn->remote_print_alloc_info();
+            conn->remote_print_alloc_info(mem_use);
             
         uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
         time = time / rand_iter;

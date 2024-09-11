@@ -34,7 +34,7 @@
 // #define REMOTE_MEM_SIZE 131072
 #define POOL_MEM_SIZE (uint64_t)1024*1024*1024
 
-#define INIT_MEM_SIZE ((uint64_t)50*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)10*1024*1024*1024)
 // #define INIT_MEM_SIZE ((uint64_t)10*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
@@ -66,8 +66,8 @@ void * run_rebinder(void* arg) {
     return NULL;
 } 
 
-void MemoryNode::print_alloc_info() {
-  server_block_manager_->print_section_info(ring_cache->get_length(), reg_size_.load());
+uint64_t MemoryNode::print_alloc_info() {
+  return server_block_manager_->print_section_info(ring_cache->get_length(), reg_size_.load());
 }
 
 /**
@@ -838,7 +838,7 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
                         sizeof(CmdMsgRespBlock), unreg_req->resp_addr,
                         unreg_req->resp_rkey);
         } else if(request->type == MSG_PRINT_INFO){
-            ResponseMsg *resp_msg = (ResponseMsg *)cmd_resp;
+            InfoResponse *resp_msg = (InfoResponse *)cmd_resp;
             print_alloc_info();
             resp_msg->status = RES_OK;
             remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,

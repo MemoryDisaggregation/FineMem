@@ -13,7 +13,7 @@ namespace mralloc {
 #define NOTIFY_IDLE 0x00
 #define MAX_MSG_SIZE 512
 #define MAX_SERVER_WORKER 1
-#define MAX_SERVER_CLIENT 1024
+#define MAX_SERVER_CLIENT 4096
 #define RESOLVE_TIMEOUT_MS 5000
 #define RDMA_TIMEOUT_US 10000000  // 10s
 #define MAX_REMOTE_SIZE (1UL << 25)
@@ -110,6 +110,12 @@ CHECK_RDMA_MSG_SIZE(RebindBlockRequest);
 class RebindBlockResponse : public ResponseMsg {
 public:
     uint32_t rkey;
+};
+CHECK_RDMA_MSG_SIZE(RebindBlockResponse);
+
+class InfoResponse : public ResponseMsg {
+public:
+    uint64_t total_mem;
 };
 CHECK_RDMA_MSG_SIZE(RebindBlockResponse);
 

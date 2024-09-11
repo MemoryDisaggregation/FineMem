@@ -58,7 +58,7 @@ public:
     int remote_rebind_batch(uint64_t *addr, uint32_t *newkey);
     int remote_memzero(uint64_t addr, uint64_t size);
     int remote_fusee_alloc(uint64_t &addr, uint32_t &rkey);
-    int remote_print_alloc_info();
+    int remote_print_alloc_info(uint64_t &mem_usage);
     uint32_t get_rkey() {return m_fusee_rkey;};
     uint32_t get_global_rkey() {return global_rkey_;};
     ibv_qp* get_qp() {return m_cm_id_->qp;};

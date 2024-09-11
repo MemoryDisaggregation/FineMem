@@ -238,10 +238,10 @@ int ConnectionManager::remote_memzero(uint64_t addr, uint64_t size) {
     return ret;
 }
 
-int ConnectionManager::remote_print_alloc_info() {
+int ConnectionManager::remote_print_alloc_info(uint64_t &mem_usage) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    int ret = conn->remote_print_alloc_info();
+    int ret = conn->remote_print_alloc_info(mem_usage);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }

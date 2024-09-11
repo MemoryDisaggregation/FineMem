@@ -235,7 +235,7 @@ public:
 
     bool init(uint64_t meta_addr, uint64_t addr, uint64_t size, uint32_t rkey);
 
-    void print_section_info(int cache, int reg_size) {
+    uint64_t print_section_info(int cache, int reg_size) {
         uint64_t empty=0, exclusive=0;
         uint64_t used = 0;
         for(int i = 0; i< section_num_; i++) {
@@ -261,6 +261,7 @@ public:
         //     }
         // }
         mem_record_ << (used-cache)*4 + reg_size << std::endl;
+        return ((used-cache)*4 + reg_size)*1024*1024;
     }
 
     inline bool check_section(section_e alloc_section, alloc_advise advise, uint32_t offset);

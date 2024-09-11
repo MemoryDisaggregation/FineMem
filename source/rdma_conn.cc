@@ -779,7 +779,7 @@ int RDMAConnection::remote_free_block(uint64_t addr) {
     return 0;
 }
 
-int RDMAConnection::remote_print_alloc_info() {
+int RDMAConnection::remote_print_alloc_info(uint64_t &mem_usage) {
     memset(m_cmd_msg_, 0, sizeof(CmdMsgBlock));
     memset(m_cmd_resp_, 0, sizeof(CmdMsgRespBlock));
     m_cmd_resp_->notify = NOTIFY_IDLE;
@@ -807,11 +807,12 @@ int RDMAConnection::remote_print_alloc_info() {
         return -1;
         }
     }
-    FetchResponse *resp_msg = (FetchResponse *)m_cmd_resp_;
+    InfoResponse *resp_msg = (InfoResponse *)m_cmd_resp_;
     if (resp_msg->status != RES_OK) {
         printf("fetch block block fail\n");
         return -1;
     }
+    mem_usage = resp_msg->total_mem;
     return 0;
 }
 

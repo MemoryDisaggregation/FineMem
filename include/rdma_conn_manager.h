@@ -64,7 +64,7 @@ class ConnectionManager {
     int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size);
     int remote_fetch_block(uint64_t &addr, uint32_t &rkey);
     int remote_free_block(uint64_t addr);
-    int remote_print_alloc_info();
+    int remote_print_alloc_info(uint64_t &mem_usage);
     uint32_t get_global_rkey() {return global_rkey_;};
     RDMAConnection* fetch_connector() {
         return m_rpc_conn_queue_->dequeue();
