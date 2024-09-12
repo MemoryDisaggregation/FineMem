@@ -231,10 +231,10 @@ public:
             cnode_heap_ = generate_pool(conn_);
             mralloc::mr_rdma_addr new_heap = {0, 0, 0};
            
-	    for(int i = 0; i < 12;i ++){
-                 conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
-                 cnode_heap_->fill_block(new_heap, (size_t)1024*1024*1024);
-             }
+	    // for(int i = 0; i < 12;i ++){
+        //          conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
+        //          cnode_heap_->fill_block(new_heap, (size_t)1024*1024*1024);
+        //      }
 	    
         }
     }
