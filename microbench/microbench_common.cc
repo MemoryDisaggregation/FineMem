@@ -36,6 +36,7 @@ std::ofstream malloc_result;
 std::ofstream free_result;
 std::ofstream result_detail;
 pthread_mutex_t file_lock;
+pthread_mutex_t mutex;
 
 std::atomic<int> malloc_record_global[100000];
 std::atomic<int> free_record_global[100000];
@@ -240,7 +241,7 @@ public:
     }
     ~MR_1GB_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
-        std::unique_lock<std::mutex> lock(mutex_);
+        pthread_mutex_lock(&mutex);
         if(cnode_heap_->fetch_block(remote_addr)){
              return true;
         } else {
@@ -256,15 +257,17 @@ public:
            // heap_->fill_block(new_heap, (size_t)1024*1024*1024);
            // heap_->fetch_block(remote_addr);
         //}
+        pthread_mutex_unlock(&mutex);
         return true;
     };
     bool free(mralloc::mr_rdma_addr remote_addr) override {
-        std::unique_lock<std::mutex> lock(mutex_);
+        pthread_mutex_lock(&mutex);
         bool freed;
         cnode_heap_->return_block(remote_addr, freed);
         if(freed){
             conn_->unregister_remote_memory((uint64_t)remote_addr.addr-(uint64_t)remote_addr.addr%((uint64_t)1024*1024*1024));
         }
+        pthread_mutex_unlock(&mutex);
         return true;
     };
     bool print_state() override {return false;};
@@ -1169,6 +1172,7 @@ int main(int argc, char* argv[]) {
         malloc_avg[i] = 0;
     free_avg.store(0);
     pthread_mutex_init(&file_lock, NULL);
+    pthread_mutex_init(&mutex, NULL);
     pthread_barrier_init(&start_barrier, NULL, thread_num);
     pthread_barrier_init(&end_barrier, NULL, thread_num);
     pthread_t running_thread[thread_num];
