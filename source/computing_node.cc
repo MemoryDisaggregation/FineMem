@@ -183,7 +183,7 @@ void ComputingNode::woker(int proc) {
                     uint64_t shm_offset = cpu_cache_->bitmap_malloc(bin_size);
                     *(uint64_t*)((mr_rdma_addr*)cpu_cache_->buffer_[proc].buffer_+1) = shm_offset;
                     bitmap_record record = {shm_offset, bin_size};
-                    // offset_record_[remote_addr] = record;
+                    //offset_record_[remote_addr] = record;
                 }
                 cpu_cache_->buffer_[proc].opcode_ = LegoOpcode::LegoIdle;
                 break;
