@@ -214,39 +214,75 @@ public:
     MR_1GB_allocator(mralloc::ConnectionManager* conn) {
         std::unique_lock<std::mutex> lock(mutex_);
         conn_ = conn;
-        // if(cnode_heap_ == NULL) {
-            heap_ = generate_pool(conn_);
+        if(cnode_heap_ == NULL) {
+            cnode_heap_ = generate_pool(conn_);
             mralloc::mr_rdma_addr new_heap = {0, 0, 0};
-            // for(int i = 0; i < 32;i ++){
-            //     conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
-            //     heap_->fill_block(new_heap, (size_t)1024*1024*1024);
-            // }
-        // }
-        // mralloc::mr_rdma_addr new_heap = {0, 0, 0};
-        // bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
-        // heap_->init(new_heap, (size_t)1024*1024*1024);
+            for(int i = 0; i < 10;i ++){
+                 conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
+                 cnode_heap_->fill_block(new_heap, (size_t)1024*1024*1024);
+             }
+        }
     }
     ~MR_1GB_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
-        // if(cnode_heap_->fetch_block(remote_addr)){
-        //     return true;
-        // } else {
-        //     mralloc::mr_rdma_addr new_heap = {0, 0, 0};
-        //     bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
-        //     if(result) return false;
-        //     cnode_heap_->fill_block(new_heap, (size_t)1024*1024*1024);
-        // }
-        // std::unique_lock<std::mutex> lock(mutex_);
-        if(!heap_->fetch_block(remote_addr)){
-            mralloc::mr_rdma_addr new_heap = {0, 0, 0};
-            conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
-            heap_->fill_block(new_heap, (size_t)1024*1024*1024);
-            heap_->fetch_block(remote_addr);
-        }
+        std::unique_lock<std::mutex> lock(mutex_);
+        if(cnode_heap_->fetch_block(remote_addr)){
+             return true;
+        } else {
+             mralloc::mr_rdma_addr new_heap = {0, 0, 0};
+             bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
+             if(result) return false;
+             cnode_heap_->fill_block(new_heap, (size_t)1024*1024*1024);
+             cnode_heap_->fetch_block(remote_addr); 
+	    }
+        //if(!heap_->fetch_block(remote_addr)){
+          //  mralloc::mr_rdma_addr new_heap = {0, 0, 0};
+           // conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
+           // heap_->fill_block(new_heap, (size_t)1024*1024*1024);
+           // heap_->fetch_block(remote_addr);
+        //}
         return true;
     };
     bool free(mralloc::mr_rdma_addr remote_addr) override {
+        std::unique_lock<std::mutex> lock(mutex_);
+        bool freed;
+        cnode_heap_->return_block(remote_addr, freed);
+        if(freed){
+            conn_->unregister_remote_memory((uint64_t)remote_addr.addr-(uint64_t)remote_addr.addr%((uint64_t)1024*1024*1024));
+        }
+        return true;
+    };
+    bool print_state() override {return false;};
+private:
+    mralloc::ConnectionManager* conn_;
+    mralloc::FreeQueueManager* heap_ ;
+};
+
+
+class MR_128MB_allocator : test_allocator{
+public:
+    MR_128MB_allocator(mralloc::ConnectionManager* conn) {
         // std::unique_lock<std::mutex> lock(mutex_);
+        conn_ = conn;
+        heap_ = new mralloc::FreeQueueManager(alloc_size, (size_t)128*1024*1024);
+         mralloc::mr_rdma_addr new_heap = {0, 0, 0};
+         bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)128*1024*1024);
+         heap_->init(new_heap, (size_t)128*1024*1024);
+    }
+    ~MR_128MB_allocator() {};
+    bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
+        if(heap_->fetch_block(remote_addr)){
+             return true;
+        } else {
+             mralloc::mr_rdma_addr new_heap = {0, 0, 0};
+             bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)128*1024*1024);
+             if(result) return false;
+             heap_->fill_block(new_heap, (size_t)128*1024*1024);
+             heap_->fetch_block(remote_addr); 
+	    }
+        return true;
+    };
+    bool free(mralloc::mr_rdma_addr remote_addr) override {
         bool freed;
         heap_->return_block(remote_addr, freed);
         if(freed){
@@ -259,6 +295,7 @@ private:
     mralloc::ConnectionManager* conn_;
     mralloc::FreeQueueManager* heap_ ;
 };
+
 
 class rpc_allocator : test_allocator{
 public:
