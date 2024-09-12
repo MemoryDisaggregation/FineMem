@@ -320,10 +320,10 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
     simple_cache_watermark = 36;
 
     free_queue_manager_ = new FreeQueueManager(REMOTE_MEM_SIZE, POOL_MEM_SIZE);
-    mr_rdma_addr addr;
-    addr.node = 0;
-    allocate_and_register_memory(addr.addr, addr.rkey, POOL_MEM_SIZE);
-    free_queue_manager_->init(addr, POOL_MEM_SIZE);
+    // mr_rdma_addr addr;
+    // addr.node = 0;
+    // allocate_and_register_memory(addr.addr, addr.rkey, POOL_MEM_SIZE);
+    // free_queue_manager_->init(addr, POOL_MEM_SIZE);
     // for(int i = 0; i < 48;i ++){
     //     allocate_and_register_memory(addr.addr, addr.rkey, POOL_MEM_SIZE);
     //     free_queue_manager_->fill_block(addr, POOL_MEM_SIZE);
@@ -332,7 +332,7 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
         printf("init cache failed\n");
         return false;
     }
-
+    
     return true;
 }
 
@@ -617,13 +617,19 @@ int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
     /* align mem */
     // uint64_t mem = (uint64_t)malloc(size);
     // addr = mem;
-    uint64_t p = heap_pointer_.load();
-    uint64_t new_p = p + size;
-    // new_p = new_p - new_p%(1024*1024*1024);
-    do{
-        new_p = p +size;
+    uint64_t p;
+    if(free_addr_.empty()){
+        p = heap_pointer_.load();
+        uint64_t new_p = p + size;
         // new_p = new_p - new_p%(1024*1024*1024);
-    }while(!heap_pointer_.compare_exchange_weak(p, new_p));
+        do{
+            new_p = p +size;
+            // new_p = new_p - new_p%(1024*1024*1024);
+        }while(!heap_pointer_.compare_exchange_weak(p, new_p));
+    } else {
+        p = free_addr_.front();
+        free_addr_.pop();
+    }
     addr = (uint64_t)mmap((void*)p, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED |MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
     // printf("%lx\n", addr);
     assert(addr == p);
@@ -648,6 +654,7 @@ int MemoryNode::deallocate_and_unregister_memory(uint64_t addr) {
     reg_size_.fetch_sub(mr_recorder[addr]->length / 1024 / 1024);
     ibv_dereg_mr(mr_recorder[addr]);
     munmap((void*)addr, mr_recorder[addr]->length);
+    free_addr_.push(addr);
     mr_recorder[addr]=NULL;
     // free((void*)addr);
     return 0;
@@ -839,7 +846,7 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
                         unreg_req->resp_rkey);
         } else if(request->type == MSG_PRINT_INFO){
             InfoResponse *resp_msg = (InfoResponse *)cmd_resp;
-            print_alloc_info();
+            resp_msg->total_mem = print_alloc_info();
             resp_msg->status = RES_OK;
             remote_write(work_info, (uint64_t)cmd_resp, resp_mr->lkey,
                         sizeof(CmdMsgRespBlock), request->resp_addr,

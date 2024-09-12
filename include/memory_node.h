@@ -183,5 +183,7 @@ private:
     std::mutex m_mutex_;
     std::mutex m_mutex_2;
 
+    std::queue<uint64_t> free_addr_;
+
 };
 }

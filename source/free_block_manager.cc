@@ -13,6 +13,26 @@ namespace mralloc {
     const int low_threshold = 2;
 
     void ServerBlockManager::recovery(int node){
+        if(node == 0) {
+            section_e init_section_header = {0,0};
+            region_e init_region_header = {0, 0, 0, 0, 0, 1, 0};
+
+            for(int i = 0; i < section_num_; i++) {
+                section_header_[i].store(init_section_header);
+            }
+            
+            for(int i = 0; i < region_num_; i++) {
+                init_region_header.exclusive_ = 0;
+                region_header_[i].store(init_region_header);
+            }
+            block_e blank = {0,0};
+            for(uint64_t i = 0; i < block_num_; i++) {
+                block_rkey_[i].store({0,0});
+                block_header_[i].store(blank);
+                memset(&block_header_[i], 0, sizeof(uint64_t));
+            }
+            return;
+        }
         int counter = 0;
         for(int i = 0; i < region_num_; i++) {
             uint64_t flush_map = 0;
