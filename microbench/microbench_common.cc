@@ -46,6 +46,19 @@ volatile int cas_max[128] = {0};
 std::atomic<uint64_t> free_avg;
 std::atomic<uint64_t> id;
 
+void* run_woker_thread(void* arg){
+    std::ofstream result;
+    result.open("mem_trace");
+    mralloc::ConnectionManager* conn = (mralloc::ConnectionManager*)arg;
+    while(1){
+      uint64_t remote_usage;
+      conn->remote_print_alloc_info(remote_usage);
+      result << remote_usage/1024/1024 << "," << allocate_size.load()/1024/1024 << std::endl;
+      usleep(100000);
+    }
+    return NULL;
+}
+
 static void
 init_random_values (unsigned int* random_offsets)
 {
@@ -217,10 +230,12 @@ public:
         if(cnode_heap_ == NULL) {
             cnode_heap_ = generate_pool(conn_);
             mralloc::mr_rdma_addr new_heap = {0, 0, 0};
-            for(int i = 0; i < 10;i ++){
+           /* 
+	    for(int i = 0; i < 12;i ++){
                  conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
                  cnode_heap_->fill_block(new_heap, (size_t)1024*1024*1024);
              }
+	     */
         }
     }
     ~MR_1GB_allocator() {};
@@ -268,6 +283,11 @@ public:
          mralloc::mr_rdma_addr new_heap = {0, 0, 0};
          bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)128*1024*1024);
          heap_->init(new_heap, (size_t)128*1024*1024);
+	 /*for(int i=0;i<2;i++){
+         bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)128*1024*1024);
+         heap_->fill_block(new_heap, (size_t)128*1024*1024);
+	 
+	 }*/
     }
     ~MR_128MB_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
@@ -1158,6 +1178,10 @@ int main(int argc, char* argv[]) {
         conn[i]->init(ip, port, 1, 1, 1);
         pthread_create(&running_thread[i], NULL, worker, conn[i]);
     }
+    mralloc::ConnectionManager* listen_conn = new mralloc::ConnectionManager();
+    listen_conn->init(ip, port, 1, 1, 1 );
+    pthread_t listen_thread;
+    pthread_create(&listen_thread, NULL, run_woker_thread, listen_conn;)
     for(int i = 0; i < thread_num; i++) {
         pthread_join(running_thread[i], NULL);
     }

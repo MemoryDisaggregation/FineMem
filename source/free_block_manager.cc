@@ -864,14 +864,14 @@ namespace mralloc {
         index.addr -= index.addr % pool_size_;
         free_bitmap_[index][offset/64] &= ~((uint64_t)1<<(offset%64));
         all_free = true;
-        for(int i = 0; i < pool_size_/block_size_/64 + 1; i++) {
+        for(int i = 0; i < pool_size_/block_size_/64 ; i++) {
             if(free_bitmap_[index][i] != 0){
                 all_free=false;
                 break;
             }
         }
         if(all_free){
-            for(int i = 0; i < pool_size_/block_size_/64 + 1; i++) {
+            for(int i = 0; i < pool_size_/block_size_/64 ; i++) {
                 free_bitmap_[index][i] = ~((uint64_t)0);
             }   
         }
