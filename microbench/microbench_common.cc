@@ -1181,7 +1181,7 @@ int main(int argc, char* argv[]) {
     mralloc::ConnectionManager* listen_conn = new mralloc::ConnectionManager();
     listen_conn->init(ip, port, 1, 1, 1 );
     pthread_t listen_thread;
-    pthread_create(&listen_thread, NULL, run_woker_thread, listen_conn;)
+    pthread_create(&listen_thread, NULL, run_woker_thread, listen_conn);
     for(int i = 0; i < thread_num; i++) {
         pthread_join(running_thread[i], NULL);
     }
