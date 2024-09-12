@@ -230,12 +230,12 @@ public:
         if(cnode_heap_ == NULL) {
             cnode_heap_ = generate_pool(conn_);
             mralloc::mr_rdma_addr new_heap = {0, 0, 0};
-           /* 
+           
 	    for(int i = 0; i < 12;i ++){
                  conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
                  cnode_heap_->fill_block(new_heap, (size_t)1024*1024*1024);
              }
-	     */
+	    
         }
     }
     ~MR_1GB_allocator() {};
@@ -1181,7 +1181,7 @@ int main(int argc, char* argv[]) {
     mralloc::ConnectionManager* listen_conn = new mralloc::ConnectionManager();
     listen_conn->init(ip, port, 1, 1, 1 );
     pthread_t listen_thread;
-    pthread_create(&listen_thread, NULL, run_woker_thread, listen_conn);
+    // pthread_create(&listen_thread, NULL, run_woker_thread, listen_conn);
     for(int i = 0; i < thread_num; i++) {
         pthread_join(running_thread[i], NULL);
     }
