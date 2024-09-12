@@ -306,7 +306,7 @@ public:
         bool freed;
         heap_->return_block(remote_addr, freed);
         if(freed){
-            conn_->unregister_remote_memory((uint64_t)remote_addr.addr-(uint64_t)remote_addr.addr%((uint64_t)1024*1024*1024));
+            conn_->unregister_remote_memory((uint64_t)remote_addr.addr-(uint64_t)remote_addr.addr%((uint64_t)128*1024*1024));
         }
         return true;
     };
