@@ -822,7 +822,7 @@ namespace mralloc {
         //     raw_size += size;
         //     return true;
         // } else 
-        free_bitmap_[{addr.addr-addr.addr%((uint64_t)pool_size_), 0, addr.node}] = new uint64_t[1024];
+        free_bitmap_[{addr.addr-addr.addr%((uint64_t)pool_size_), 0, addr.node}] = new uint64_t[1024]();
         for(uint64_t i = 0; i < size / block_size_; i++){
             free_block_queue.push({addr.addr + i * block_size_, addr.rkey, addr.node});
         }
@@ -850,7 +850,7 @@ namespace mralloc {
             index.addr = addr.addr; index.node = addr.node;
             offset = index.addr % pool_size_ / block_size_;
             index.addr -= index.addr % pool_size_;
-        }while((free_bitmap_[index][offset/64] & (uint64_t)1<<(offset%64)) != 0);
+        }while(free_bitmap_.find(index) == free_bitmap_.end());
         free_bitmap_[index][offset/64] |= (uint64_t)1<<(offset%64);
         total_used += block_size_;
         return true;
@@ -871,9 +871,11 @@ namespace mralloc {
             }
         }
         if(all_free){
-            for(int i = 0; i < pool_size_/block_size_/64 ; i++) {
-                free_bitmap_[index][i] = ~((uint64_t)0);
-            }   
+            delete free_bitmap_[index];
+            free_bitmap_.erase(index);
+            // for(int i = 0; i < pool_size_/block_size_/64 ; i++) {
+            //     free_bitmap_[index][i] = ~((uint64_t)0);
+            // }   
         }
         total_used -= block_size_;
         return true;
