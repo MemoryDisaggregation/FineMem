@@ -21,7 +21,7 @@ const int epoch = 1000;
 const int alloc_size = 4096*1024;
 
 
-enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc, bitmap_alloc, cache_alloc };
+enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc, bitmap_alloc, cache_alloc, cache_thread };
 
 enum test_type { stage_test, shuffle_test, short_test, frag_test };
 
@@ -1052,6 +1052,9 @@ void* worker(void* arg) {
     case cache_alloc:
         alloc = (test_allocator*)new MR_1GB_allocator(conn);
         break;
+    case cache_thread:
+        alloc = (test_allocator*)new MR_128MB_allocator(conn);
+        break;
     default:
         break;
     }
@@ -1113,6 +1116,8 @@ int main(int argc, char* argv[]) {
         type = bitmap_alloc;
     else if (allocator_type == "cache")
         type = cache_alloc;
+    else if (allocator_type == "thread")
+        type = cache_thread;
     else {
         printf("allocator type error\n");
         return -1;
