@@ -320,11 +320,11 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
     simple_cache_watermark = 36;
 
     free_queue_manager_ = new FreeQueueManager(REMOTE_MEM_SIZE, POOL_MEM_SIZE);
-    // mr_rdma_addr addr;
+    mr_rdma_addr addr;
     // addr.node = 0;
     // allocate_and_register_memory(addr.addr, addr.rkey, POOL_MEM_SIZE);
     // free_queue_manager_->init(addr, POOL_MEM_SIZE);
-    // for(int i = 0; i < 48;i ++){
+    // for(int i = 0; i < 192;i ++){
     //     allocate_and_register_memory(addr.addr, addr.rkey, POOL_MEM_SIZE);
     //     free_queue_manager_->fill_block(addr, POOL_MEM_SIZE);
     // }
@@ -649,9 +649,11 @@ int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
 int MemoryNode::deallocate_and_unregister_memory(uint64_t addr) {
     std::unique_lock<std::mutex> lock(m_mutex_);
     if(mr_recorder[addr] == NULL) {
+        printf("no free!\n");
         return 0;
     }
     reg_size_.fetch_sub(mr_recorder[addr]->length / 1024 / 1024);
+    // printf("%d\n", reg_size_.load());
     ibv_dereg_mr(mr_recorder[addr]);
     munmap((void*)addr, mr_recorder[addr]->length);
     free_addr_.push(addr);
