@@ -15,7 +15,7 @@
 #include <random>
 
 const int iteration = 60;
-const int free_num = 30;
+const int free_num = 20;
 const int epoch = 1000;
 
 const int alloc_size = 4096*1024;
