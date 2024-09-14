@@ -822,7 +822,7 @@ namespace mralloc {
         //     raw_size += size;
         //     return true;
         // } else 
-        free_bitmap_[{addr.addr-addr.addr%((uint64_t)pool_size_), 0, addr.node}] = (uint64_t*)calloc(1024, sizeof(uint64_t));
+        free_bitmap_[{addr.addr-addr.addr%((uint64_t)pool_size_), 0, addr.node}] = (uint64_t*)calloc(2048, sizeof(uint64_t));
         for(uint64_t i = 0; i < size / block_size_; i++){
             free_block_queue.push({addr.addr + i * block_size_, addr.rkey, addr.node});
         }

@@ -17,6 +17,9 @@
 
 #define MEM_ALIGN_SIZE 4096
 
+const bool use_reg = false;
+const bool use_1GB = false;
+const bool use_40GB = false;
 // #define REMOTE_MEM_SIZE 134217728
 // #define REMOTE_MEM_SIZE 16777216
 // #define REMOTE_MEM_SIZE 67108864
@@ -34,7 +37,7 @@
 // #define REMOTE_MEM_SIZE 131072
 #define POOL_MEM_SIZE (uint64_t)1024*1024*1024
 
-#define INIT_MEM_SIZE ((uint64_t)10*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)80*1024*1024*1024)
 // #define INIT_MEM_SIZE ((uint64_t)10*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
@@ -167,13 +170,22 @@ void MemoryNode::rebinder() {
     uint64_t block_num = server_block_manager_->get_block_num();
     ibv_mw* swap;
     while(1) {
+        // struct timeval start, end;
+        // gettimeofday(&start, NULL);
+        // int counter = 0;
         for(int i = 0; i < block_num; i ++) {
             if(server_block_manager_->get_backup_rkey(i)== (uint32_t)-1){
+                bind_mw(block_mw[i], 0, server_block_manager_->get_block_size(), rebinder_qp, rebinder_cq);
                 bind_mw(block_mw[i], server_block_manager_->get_block_addr(i), server_block_manager_->get_block_size(), rebinder_qp, rebinder_cq);
                 server_block_manager_->set_backup_rkey(i, block_mw[i]->rkey);
                 swap = block_mw[i]; block_mw[i] = backup_mw[i]; backup_mw[i] = swap;
+                // counter++;
             }
         }
+        // gettimeofday(&end, NULL);
+        // uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
+        // if(counter > 0)
+        //     printf("mw_bind cost on %d is %lu\n", counter,time);
     }
 }
 
@@ -247,7 +259,7 @@ bool MemoryNode::free_mem_block(uint64_t addr) {
     bool freed;
     mralloc::mr_rdma_addr new_addr; 
     // queue->return_block_no_free({(uint64_t)addr,0,node}, freed);
-    free_queue_manager_->return_block({(uint64_t)addr,mr_recorder[addr-addr%((uint64_t)1024*1024*1024)]->rkey,0}, freed);
+    free_queue_manager_->return_block_no_free({(uint64_t)addr,mr_recorder[addr-addr%((uint64_t)1024*1024*1024)]->rkey,0}, freed);
     if(freed){
         deallocate_and_unregister_memory((uint64_t)addr-(uint64_t)addr%((uint64_t)1024*1024*1024));
     }
@@ -299,8 +311,8 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
     if(fusee_enable)
         rpc_fusee_ = new RPC_Fusee(server_base_addr, server_base_addr + META_AREA_LEN, heap_mr_->rkey);
     set_global_rkey(heap_mr_->rkey);
-    heap_pointer_.store((init_addr_raw + 1024*1024*1024 - 1) - (init_addr_raw + 1024*1024*1024 - 1) % (1024*1024*1024));
-    // heap_pointer_.store(init_addr_raw + init_size_raw + 1024*1024*1024 - 1 - (init_addr_raw + init_size_raw + 1024*1024*1024 - 1) % (1024*1024*1024));
+    // heap_pointer_.store((init_addr_raw + 1024*1024*1024 - 1) - (init_addr_raw + 1024*1024*1024 - 1) % (1024*1024*1024));
+    heap_pointer_.store(init_addr_raw + init_size_raw + 1024*1024*1024 - 1 - (init_addr_raw + init_size_raw + 1024*1024*1024 - 1) % (1024*1024*1024));
     m_mw_handler = (ibv_mw**)malloc(size / base_block_size * sizeof(ibv_mw*));
 
     mw_binded = false;
@@ -321,13 +333,15 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
 
     free_queue_manager_ = new FreeQueueManager(REMOTE_MEM_SIZE, POOL_MEM_SIZE);
     mr_rdma_addr addr;
-    // addr.node = 0;
-    // allocate_and_register_memory(addr.addr, addr.rkey, POOL_MEM_SIZE);
-    // free_queue_manager_->init(addr, POOL_MEM_SIZE);
-    // for(int i = 0; i < 192;i ++){
-    //     allocate_and_register_memory(addr.addr, addr.rkey, POOL_MEM_SIZE);
-    //     free_queue_manager_->fill_block(addr, POOL_MEM_SIZE);
-    // }
+    addr.node = 0;
+    allocate_and_register_memory(addr.addr, addr.rkey, POOL_MEM_SIZE);
+    free_queue_manager_->init(addr, POOL_MEM_SIZE);
+    if(use_40GB){
+        for(int i = 0; i < 79;i ++){
+            allocate_and_register_memory(addr.addr, addr.rkey, POOL_MEM_SIZE);
+            free_queue_manager_->fill_block(addr, POOL_MEM_SIZE);
+        }
+    }
     if(!ret) {
         printf("init cache failed\n");
         return false;
@@ -537,6 +551,66 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
             server_block_manager_->set_backup_rkey(i, get_global_rkey());
         }
     } else {
+        // for(int i = 0; i < block_num_; i++){
+        //     uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
+        //     block_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
+        //     backup_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
+        // }
+        // struct timeval start, end;
+        // // for(int i = 0; i < block_num_; i++){
+        // //     uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
+        // //     // bind_mw(block_mw[i], 0, server_block_manager_->get_block_size(), qp, cq);
+        // //     bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
+        // //     server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
+        // // }
+        // gettimeofday(&start, NULL);
+        // for(int i = 0; i < 25600; i++){
+        //     uint64_t block_addr_ = server_block_manager_->get_block_addr(0);
+        //     // bind_mw(block_mw[i], 0, server_block_manager_->get_block_size(), qp, cq);
+        //     bind_mw(block_mw[0], block_addr_, 1024*1024*1024*100, qp, cq);
+        //     // server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
+        // }
+        // gettimeofday(&end, NULL);
+        // uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
+        // printf("mw_bind cost on %d is %lu\n", block_num_, time);
+        // uint64_t addr_record[25600];
+        // ibv_mr* mr_record[25600];
+        // gettimeofday(&start, NULL);
+        // for(int i = 0; i < 1; i++){
+        //     addr_record[i] = (uint64_t)mmap(NULL, (uint64_t)1024*1024*1024*100, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
+        //     if(addr_record[i]==0 || addr_record[i] ==-1){
+        //         printf("error\n");
+        //     }
+        //     uint32_t rkey;
+        //     // allocate_and_register_memory(addr_record[i], rkey, 1024*1024*4);
+        //     mr_record[i] = rdma_register_memory((void *)addr_record[i], (uint64_t)1024*1024*1024*100);
+        //     // server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
+        // }
+        // // for(int i = 0; i < 1; i++){
+        // //     addr_record[i] = (uint64_t)mmap(NULL, (uint64_t)1024*1024*1024*100, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
+        // //     if(addr_record[i]==0 || addr_record[i] ==-1){
+        // //         printf("error\n");
+        // //     }
+        // //     uint32_t rkey;
+        // //     // allocate_and_register_memory(addr_record[i], rkey, 1024*1024*4);
+        // //     mr_record[i] = rdma_register_memory((void *)addr_record[i], (uint64_t)1024*1024*1024*100);
+        // //     // server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
+        // // }
+        // // for(int i = 0; i < 25600; i++){
+        // //     // deallocate_and_unregister_memory((addr_record[i]));
+        // //     ibv_dereg_mr(mr_record[i]);
+        // //     munmap((void*)addr_record[i], 1024*1024*4);
+        // //     // mr_record[i] = rdma_register_memory((void *)addr_record[i], 1024*1024*4);
+        // //     // server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
+        // // }
+        // gettimeofday(&end, NULL);
+        // time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
+        // printf("mw_reg bost on %d is %lu\n", block_num_, time);
+        // for(int i = 0; i < block_num_; i++){
+        //     uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
+        //     bind_mw(backup_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
+        //     server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
+        // }
         for(int i = 0; i < block_num_; i++){
             uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
             block_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
@@ -630,10 +704,13 @@ int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
         p = free_addr_.front();
         free_addr_.pop();
     }
-    addr = (uint64_t)mmap((void*)p, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED |MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
+    addr = p;
+    // addr = (uint64_t)mmap((void*)p, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED |MAP_ANONYMOUS, -1, 0);
+    // if(!use_reg)
+        addr = (uint64_t)mmap((void*)p, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED |MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
     // printf("%lx\n", addr);
     assert(addr == p);
-    struct ibv_mr *mr = rdma_register_memory((void *)addr, size);
+    struct ibv_mr *mr = rdma_register_memory((void *)p, size);
     reg_size_.fetch_add(size / 1024 / 1024);
     // printf("%lx\n", addr);
     if (!mr) {
