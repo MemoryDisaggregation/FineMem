@@ -238,16 +238,24 @@ public:
     uint64_t print_section_info(int cache, int reg_size) {
         uint64_t empty=0, exclusive=0;
         uint64_t used = 0;
+        double utilization = 0;
+        uint64_t managed = 0;
         for(int i = 0; i< section_num_; i++) {
             uint32_t empty_map = section_header_[i].load().alloc_map_ | section_header_[i].load().frag_map_;
             uint32_t exclusive_map = ~section_header_[i].load().alloc_map_ | ~section_header_[i].load().frag_map_;
+            uint32_t use_counter;
             for(int j = 0; j < region_per_section; j ++) {
                 // if(empty_map%2 == 0) {
                 //     empty += 1;
                 // } else if(exclusive_map%2 == 0) {
                 //     exclusive += 1;
                 // } else {
-                used += block_per_region - free_bit_in_bitmap32(region_header_[i*region_per_section + j].load().base_map_);
+                use_counter = block_per_region - free_bit_in_bitmap32(region_header_[i*region_per_section + j].load().base_map_);
+                used += use_counter;
+                if(use_counter > 0){
+                    managed += 1;
+                    utilization += 1.0*use_counter/block_per_region;
+                }
                 // }
                 empty_map >>= 1;
                 exclusive_map >>= 1;
@@ -260,8 +268,8 @@ public:
         //         used ++;
         //     }
         // }
-        mem_record_ << (used-cache)*4 + reg_size << std::endl;
-        return ((used-cache)*4 + reg_size)*1024*1024;
+        mem_record_ << 1.0*managed/(section_num_*region_per_section) << "," << utilization/managed << ", "<< (used-cache)*4 + reg_size << std::endl;
+        return (used-cache)*4 + reg_size*1024*1024;
     }
 
     inline bool check_section(section_e alloc_section, alloc_advise advise, uint32_t offset);

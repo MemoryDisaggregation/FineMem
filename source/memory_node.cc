@@ -19,7 +19,7 @@
 
 const bool use_reg = false;
 const bool use_1GB = false;
-const bool use_40GB = false;
+const bool use_40GB = true;
 // #define REMOTE_MEM_SIZE 134217728
 // #define REMOTE_MEM_SIZE 16777216
 // #define REMOTE_MEM_SIZE 67108864
@@ -150,7 +150,7 @@ bool MemoryNode::start(const std::string addr, const std::string port, const std
       return false;
     }
 
-    if (rdma_listen(m_listen_id_, 1024)) {
+    if (rdma_listen(m_listen_id_, 2048)) {
       perror("rdma_listen fail");
       return false;
     }
@@ -311,8 +311,8 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
     if(fusee_enable)
         rpc_fusee_ = new RPC_Fusee(server_base_addr, server_base_addr + META_AREA_LEN, heap_mr_->rkey);
     set_global_rkey(heap_mr_->rkey);
-    // heap_pointer_.store((init_addr_raw + 1024*1024*1024 - 1) - (init_addr_raw + 1024*1024*1024 - 1) % (1024*1024*1024));
-    heap_pointer_.store(init_addr_raw + init_size_raw + 1024*1024*1024 - 1 - (init_addr_raw + init_size_raw + 1024*1024*1024 - 1) % (1024*1024*1024));
+    heap_pointer_.store((init_addr_raw + 1024*1024*1024 - 1) - (init_addr_raw + 1024*1024*1024 - 1) % (1024*1024*1024));
+    // heap_pointer_.store(init_addr_raw + init_size_raw + 1024*1024*1024 - 1 - (init_addr_raw + init_size_raw + 1024*1024*1024 - 1) % (1024*1024*1024));
     m_mw_handler = (ibv_mw**)malloc(size / base_block_size * sizeof(ibv_mw*));
 
     mw_binded = false;
@@ -706,7 +706,7 @@ int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
     }
     addr = p;
     // addr = (uint64_t)mmap((void*)p, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED |MAP_ANONYMOUS, -1, 0);
-    // if(!use_reg)
+    if(!use_reg)
         addr = (uint64_t)mmap((void*)p, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED |MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
     // printf("%lx\n", addr);
     assert(addr == p);
