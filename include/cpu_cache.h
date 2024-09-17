@@ -8,23 +8,134 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <sys/types.h>
 #include <unistd.h>
 #include <assert.h>
 #include <fcntl.h>
+#include <sys/sem.h>
+#include <semaphore.h>
 
 #pragma once
 
 namespace mralloc {
 
-// TODO: Add rseq support
-// TODO: change to fifo pipe?
-// TODO:
+#ifdef FAULT_INJECTION
+std::mt19937 mt_rand = std::mt19937(std::random_device{}());
+std::uniform_int_distribution<int> dis = std::uniform_int_distribution<int>(1, 50);
+#endif
 
-const uint32_t nprocs = 48;
-const uint32_t max_alloc_item = 256;
-const uint32_t max_free_item = 1024;
-const uint32_t max_class_free_item = 512;
+#ifdef FAULT_INJECTION
+    #define POTENTIAL_FAULT    \
+        if(dis(mt_rand) == 1)  \
+        {                      \
+            _exit(0);           \
+        }                      
+#else
+    #define POTENTIAL_FAULT
+#endif
+
+typedef enum mi_malloc_kind_e {
+    MI_MALLOC_NORMAL,
+    MI_MALLOC_SHADOW
+} mi_malloc_kind_t;
+
+// thread id's
+typedef size_t     mi_threadid_t;
+
+typedef union mi_page_flags_s {
+  uint8_t full_aligned;
+  struct {
+    uint8_t in_full : 1;
+    uint8_t has_aligned : 1;
+  } x;
+} mi_page_flags_t;
+
+typedef uintptr_t mi_thread_free_t;
+
+typedef enum mi_page_kind_e {
+  MI_PAGE_SMALL,    // small blocks go into 64KiB pages inside a segment
+  MI_PAGE_MEDIUM,   // medium blocks go into 512KiB pages inside a segment
+  MI_PAGE_LARGE,    // larger blocks go into a single page spanning a whole segment
+  MI_PAGE_HUGE      // huge blocks (>512KiB) are put into a single page in a segment of the exact size (but still 2MiB aligned)
+} mi_page_kind_t;
+
+typedef struct mi_page_migrate {
+  // "owned" by the segment
+  uint8_t               segment_idx;       // index in the segment `pages` array, `page == &segment->pages[page->segment_idx]`
+  uint8_t               segment_in_use:1;  // `true` if the segment allocated this page
+  uint8_t               is_committed:1;    // `true` if the page virtual memory is committed
+  uint8_t               is_zero_init:1;    // `true` if the page was initially zero initialized
+
+  // layout like this to optimize access in `mi_malloc` and `mi_free`
+  uint16_t              capacity;          // number of blocks committed, must be the first field, see `segment.c:page_clear`
+  uint16_t              reserved;          // number of blocks reserved in memory
+  mi_page_flags_t       flags;             // `in_full` and `has_aligned` flags (8 bits)
+  uint8_t               free_is_zero:1;    // `true` if the blocks in the free list are zero initialized
+  uint8_t               retire_expire:7;   // expiration count for retired blocks
+
+  uint64_t           free[128];              // list of available free blocks (`malloc` allocates from this list)
+  uint32_t              used;              // number of blocks in use (including blocks in `local_free` and `thread_free`)
+  uint32_t              xblock_size;       // size available in each block (always `>0`)
+  uint64_t           local_free[128];        // list of deferred free blocks by this thread (migrates to `free`)
+  uint64_t          remote_free[128];
+
+  #if (MI_ENCODE_FREELIST || MI_PADDING)
+  uintptr_t             keys[2];           // two random keys to encode the free lists (see `_mi_block_next`) or padding canary
+  #endif
+
+  uint64_t  xthread_free[128];  // list of deferred free blocks freed by other threads
+  uintptr_t        xheap;
+
+  struct mi_page_s*     next;              // next page owned by this thread with the same `block_size`
+  struct mi_page_s*     prev;              // previous page owned by this thread with the same `block_size`
+    mi_malloc_kind_t    malloc_kind;
+    pthread_mutex_t mutex;
+    void* page_start;
+} mi_page_t;
+
+typedef struct mi_segment_migrate {
+  // constant fields
+  bool                 allow_decommit;
+  bool                 allow_purge;
+  uintptr_t             segment_start;
+  size_t               segment_size;     // for huge pages this may be different from `MI_SEGMENT_SIZE`
+  
+  // segment fields
+  struct mi_segment_s* abandoned_next;
+  struct mi_segment_s* next;             // must be the first segment field after abandoned_next -- see `segment.c:segment_init`
+  struct mi_segment_s* prev;
+
+  size_t               abandoned;        // abandoned pages (i.e. the original owning thread stopped) (`abandoned <= used`)
+  size_t               abandoned_visits; // count how often this segment is visited in the abandoned list (to force reclaim if it is too long)
+
+  size_t               used;             // count of pages in use (`used <= capacity`)
+  size_t               capacity;         // count of available pages (`#free + used`)
+  size_t               segment_info_size;// space we are using from the first page for segment meta-data and possible guard pages.
+  uintptr_t            cookie;           // verify addresses in secure mode: `_mi_ptr_cookie(segment) == segment->cookie`
+
+  // layout like this to optimize access in `mi_free`
+  size_t                 page_shift;     // `1 << page_shift` == the page sizes == `page->block_size * page->reserved` (unless the first page, then `-segment_info_size`).
+  mi_threadid_t thread_id;      // unique id of the thread owning this segment
+  mi_page_kind_t       page_kind;        // kind of pages: small, medium, large, or huge
+  mi_malloc_kind_t      malloc_kind;
+  mi_page_migrate            pages[64];         // up to `MI_SMALL_PAGES_PER_SEGMENT` pages
+};
+
+const uint64_t BITMAP_SIZE = (uint64_t)1024*1024*1024*16;
+const uint32_t nprocs = 144;
+const uint32_t max_alloc_item = 16;
+const uint32_t max_free_item = 16;
+
+enum LegoOpcode {LegoIdle, LegoFindSeg, LegoFindSegSucc, LegoReg, LegoAlloc, LegoFree, LegoDereg, LegoRemoteFree, LegoTransfer};
+
+struct CpuBuffer {
+    LegoOpcode opcode_;
+    char buffer_[1024*1024];
+    uint64_t doorbell_id;
+    uint64_t retbell_id;
+    uint64_t lock_id;
+};
 
 template <typename T>
 class ring_buffer{
@@ -57,9 +168,9 @@ public:
     void add_cache(T value){
         // host side fill cache, add write pointer
         volatile uint32_t writer = *writer_;
-	while(get_length() >= max_length_ - 1){
-		printf("busy wait\n");
-	}
+	    while(get_length() >= max_length_ - 1){
+		    printf("busy wait\n");
+	    }
         if(get_length() < max_length_-1){
             buffer_[writer] = value;        
             *writer_ = (writer + 1) % max_length_;
@@ -277,6 +388,9 @@ public:
     bool operator!=(mr_rdma_addr &compare) {
         return addr != compare.addr && rkey != compare.rkey && node != compare.node;
     }
+    bool operator<(const mr_rdma_addr &compare) const {
+        return node < compare.node || (node == compare.node && addr < compare.addr) ;
+    }
     mr_rdma_addr& operator=(mr_rdma_addr &value) {
         this->addr = value.addr;
         this->rkey = value.rkey;
@@ -288,221 +402,215 @@ public:
     uint32_t node;
 } ;
 
-const uint32_t class_num = 16;
-
 class cpu_cache{
 public:
+    
+    CpuBuffer* buffer_;
+    std::atomic<uint64_t>* bitmap_;
+    uint64_t current_index = 0;
 
-    struct cpu_cache_storage {
-        uint64_t block_size;
-        mr_rdma_addr items[nprocs][max_alloc_item];
-        mr_rdma_addr free_items[nprocs][max_free_item];
-        mr_rdma_addr class_items[class_num][max_alloc_item];
-        mr_rdma_addr class_free_items[class_num][max_class_free_item];
-
-        uint32_t reader[nprocs];
-        std::atomic<uint32_t> class_reader[class_num];
-        uint32_t free_reader[nprocs];
-        std::atomic<uint32_t> class_free_reader[nprocs];
-
-        uint32_t writer[nprocs];
-        std::atomic<uint32_t> class_writer[class_num];
-        uint32_t free_writer[nprocs];
-        std::atomic<uint32_t> class_free_writer[nprocs];
-    };
+    sem_t* doorbell[nprocs]; 
+    sem_t* retbell[nprocs];
+    sem_t* lock[nprocs];
 
     cpu_cache() {
-        this->null = {0,0};
         int fd = shm_open("/cpu_cache", O_RDWR, 0);
-        if (fd == -1) {
+        int bitmap_fd = shm_open("/bitmaps", O_RDWR, 0);
+        if (fd == -1 || bitmap_fd == -1) {
             perror("init failed, no computing node running");
         } else {
             int port_flag = PROT_READ | PROT_WRITE;
             int mm_flag   = MAP_SHARED; 
-            cpu_cache_content_ = (cpu_cache_storage*)mmap(NULL, sizeof(cpu_cache_storage), port_flag, mm_flag, fd, 0);
-            cache_size_ = cpu_cache_content_->block_size;
+            buffer_ = (CpuBuffer*)mmap(NULL, sizeof(CpuBuffer)*nprocs, port_flag, mm_flag, fd, 0);   
+            bitmap_ = (std::atomic<uint64_t>*)mmap(NULL, BITMAP_SIZE, port_flag, mm_flag, fd, 0);
             for(int i = 0; i < nprocs; i++) {
-                alloc_ring[i] = new ring_buffer<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->items[i], mr_rdma_addr(-1, -1, -1), 
-                    &cpu_cache_content_->reader[i], &cpu_cache_content_->writer[i]);
-                free_ring[i] = new ring_buffer<mr_rdma_addr>(max_free_item, cpu_cache_content_->free_items[i], mr_rdma_addr(-1, -1, -1), 
-                    &cpu_cache_content_->free_reader[i], &cpu_cache_content_->free_writer[i]);
-                
-            }
-            for(int i = 0; i < class_num; i++) {
-                class_ring[i] = new ring_buffer_atomic<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->class_items[i], mr_rdma_addr(-1, -1, -1), 
-                    &cpu_cache_content_->class_reader[i], &cpu_cache_content_->class_writer[i]);
-                class_free_ring[i] = new ring_buffer_atomic<mr_rdma_addr>(max_class_free_item, cpu_cache_content_->class_free_items[i], mr_rdma_addr(-1, -1, -1), 
-                    &cpu_cache_content_->class_free_reader[i], &cpu_cache_content_->class_free_writer[i]);
+                doorbell[i] = sem_open(std::to_string(buffer_[i].doorbell_id).c_str(), O_CREAT, 0666, 0);
+                retbell[i] = sem_open(std::to_string(buffer_[i].retbell_id).c_str(), O_CREAT, 0666, 0);
+                lock[i] = sem_open(std::to_string(buffer_[i].lock_id).c_str(), O_CREAT, 0666, 1);
             }
         }
         
     }
 
-    cpu_cache(uint64_t cache_size) : cache_size_(cache_size) {
+    cpu_cache(uint64_t cache_size) {
         int port_flag = PROT_READ | PROT_WRITE;
         int mm_flag   = MAP_SHARED; 
         int fd = shm_open("/cpu_cache", O_RDWR, 0);
-        if(fd==-1){
+        int bitmap_fd = shm_open("/bitmaps", O_RDWR, 0);
+        if(fd==-1 || bitmap_fd==-1){
             fd = shm_open("/cpu_cache", O_CREAT | O_EXCL | O_RDWR, 0600);
-            if(ftruncate(fd, sizeof(cpu_cache_storage))){
+            bitmap_fd = shm_open("/bitmaps", O_CREAT | O_EXCL | O_RDWR, 0600);
+            if(ftruncate(fd, sizeof(CpuBuffer)*nprocs)){
                 perror("create shared memory failed");
             }
-            cpu_cache_content_ = (cpu_cache_storage*)mmap(NULL, sizeof(cpu_cache_storage), port_flag, mm_flag, fd, 0);
+            if(ftruncate(bitmap_fd, BITMAP_SIZE)){
+                perror("create shared memory failed");
+            }
+            buffer_ = (CpuBuffer*)mmap(NULL, sizeof(CpuBuffer)*nprocs, port_flag, mm_flag, fd, 0);
+            bitmap_ = (std::atomic<uint64_t>*)mmap(NULL, BITMAP_SIZE, port_flag, mm_flag, fd, 0);
             for(int i = 0; i < nprocs; i++) {
-                alloc_ring[i] = new ring_buffer<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->items[i], mr_rdma_addr(-1, -1, -1), 
-                    &cpu_cache_content_->reader[i], &cpu_cache_content_->writer[i]);
-                alloc_ring[i]->clear();
-
-                free_ring[i] = new ring_buffer<mr_rdma_addr>(max_free_item, cpu_cache_content_->free_items[i], mr_rdma_addr(-1, -1, -1), 
-                    &cpu_cache_content_->free_reader[i], &cpu_cache_content_->free_writer[i]);
-                free_ring[i]->clear();
+                buffer_[i].doorbell_id = i+114514;
+                buffer_[i].retbell_id = i+nprocs+114514;
+                buffer_[i].lock_id = i+2*nprocs+114514;
+                buffer_[i].opcode_ = LegoOpcode::LegoIdle;
+                memset(buffer_[i].buffer_, 0, 1024*1024);
+                doorbell[i] = sem_open(std::to_string(buffer_[i].doorbell_id).c_str(), O_CREAT, 0666, 0);
+                retbell[i] = sem_open(std::to_string(buffer_[i].retbell_id).c_str(), O_CREAT, 0666, 0);
+                lock[i] = sem_open(std::to_string(buffer_[i].lock_id).c_str(), O_CREAT, 0666, 1);
             }
-            for(int i = 0; i < class_num; i++) {
-                class_ring[i] = new ring_buffer_atomic<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->class_items[i], mr_rdma_addr(-1, -1, -1), 
-                    &cpu_cache_content_->class_reader[i], &cpu_cache_content_->class_writer[i]);
-                class_ring[i]->clear();
-
-                class_free_ring[i] = new ring_buffer_atomic<mr_rdma_addr>(max_class_free_item, cpu_cache_content_->class_free_items[i], mr_rdma_addr(-1, -1, -1), 
-                    &cpu_cache_content_->class_free_reader[i], &cpu_cache_content_->class_free_writer[i]);
-                class_free_ring[i]->clear();
-            }
-            cpu_cache_content_->block_size = cache_size_;
         }
         else {
-            cpu_cache_content_ = (cpu_cache_storage*)mmap(NULL, sizeof(cpu_cache_storage), port_flag, mm_flag, fd, 0);
-            assert(cache_size_ == cpu_cache_content_->block_size);
-            cache_size_ = cpu_cache_content_->block_size;
+            buffer_ = (CpuBuffer*)mmap(NULL, sizeof(CpuBuffer)*nprocs, port_flag, mm_flag, fd, 0);
             for(int i = 0; i < nprocs; i++) {
-                alloc_ring[i] = new ring_buffer<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->items[i], mr_rdma_addr(-1, -1, -1), 
-                    &cpu_cache_content_->reader[i], &cpu_cache_content_->writer[i]);
-                free_ring[i] = new ring_buffer<mr_rdma_addr>(max_free_item, cpu_cache_content_->free_items[i], mr_rdma_addr(-1, -1, -1), 
-                    &cpu_cache_content_->free_reader[i], &cpu_cache_content_->free_writer[i]);
-                
-            }
-            for(int i = 0; i < class_num; i++) {
-                class_ring[i] = new ring_buffer_atomic<mr_rdma_addr>(max_alloc_item, cpu_cache_content_->class_items[i], mr_rdma_addr(-1, -1, -1), 
-                    &cpu_cache_content_->class_reader[i], &cpu_cache_content_->class_writer[i]);
-                class_free_ring[i] = new ring_buffer_atomic<mr_rdma_addr>(max_class_free_item, cpu_cache_content_->class_free_items[i], mr_rdma_addr(-1, -1, -1), 
-                    &cpu_cache_content_->class_free_reader[i], &cpu_cache_content_->class_free_writer[i]);
+                doorbell[i] = sem_open(std::to_string(buffer_[i].doorbell_id).c_str(), O_CREAT, 0666, 0);
+                retbell[i] = sem_open(std::to_string(buffer_[i].retbell_id).c_str(), O_CREAT, 0666, 0);
+                lock[i] = sem_open(std::to_string(buffer_[i].lock_id).c_str(), O_CREAT, 0666, 1);
             }
         }
     }
 
     ~cpu_cache(){
-        if(cpu_cache_content_)
-            munmap(cpu_cache_content_, sizeof(cpu_cache_storage));
+        if(buffer_)
+            munmap(buffer_, sizeof(CpuBuffer)*nprocs);
     }
 
-    uint64_t get_cache_size(){
-        // cache size maybe different, but static
-        return cache_size_;
+    uint64_t bitmap_malloc(uint64_t bin_size){
+        uint64_t allocate_index = current_index;
+        if(bin_size <= 16*1024)
+            current_index += (64*1024/bin_size);
+        else if (bin_size <= 128*1024)
+            current_index += (512*1024/bin_size);
+        else if (bin_size <= 2*1024*1024)
+            current_index += (4*1024*1024/bin_size);
+        return allocate_index;
     }
 
     void free_cache(){
         // only the global host side need call this, to free all cpu_cache 
-        if(cpu_cache_content_)
-            munmap(cpu_cache_content_, sizeof(cpu_cache_storage));
+        for(int i=0; i<nprocs; i++){
+            sem_close(doorbell[i]);
+            sem_unlink(std::to_string(buffer_[i].doorbell_id).c_str());
+            sem_close(retbell[i]);
+            sem_unlink(std::to_string(buffer_[i].retbell_id).c_str());
+            sem_close(lock[i]);
+            sem_unlink(std::to_string(buffer_[i].lock_id).c_str());
+        }
+        if(buffer_)
+            munmap(buffer_,  sizeof(CpuBuffer)*nprocs);
         shm_unlink("/cpu_cache");
-        for(int i = 0; i < nprocs; i++) {
-            delete(alloc_ring[i]);
-            delete(free_ring[i]);
-        }
-        for(int i = 0; i < class_num; i++) {
-            delete(class_ring[i]);
-        }
     }
 
-    bool fetch_cache(mr_rdma_addr &addr){
-        // just fetch one block in the current cpu_id --> ring buffer
+    bool malloc(uint64_t bin_size, mr_rdma_addr &addr, uint64_t &shm_index){
         unsigned nproc;
         if((nproc = sched_getcpu()) == -1){
             printf("sched_getcpu bad \n");
             return false;
         }
-        bool ret = alloc_ring[nproc]->force_fetch_cache(addr);
-        return ret;
+        sem_wait(lock[nproc]);
+        buffer_[nproc].opcode_ = LegoOpcode::LegoAlloc;
+        *(uint64_t*)buffer_[nproc].buffer_ = bin_size;
+        sem_post(doorbell[nproc]);
+        // printf("send request to %d\n", nproc);
+        sem_wait(retbell[nproc]);
+        // printf("recieve from %d\n", nproc);
+        addr = *(mr_rdma_addr*)buffer_[nproc].buffer_;
+        shm_index = *(uint64_t*)((mr_rdma_addr*)buffer_[nproc].buffer_+1);
+        sem_post(lock[nproc]);
+        return true;
     }
-
-    bool fetch_cache(uint32_t nproc, mr_rdma_addr &addr){
-        // just fetch one block in the current cpu_id --> ring buffer
-        bool ret = alloc_ring[nproc]->force_fetch_cache(addr);
-        return ret;
-    }
-
-    uint64_t fetch_free_cache(uint32_t nproc, mr_rdma_addr* addr_list) {
-        return free_ring[nproc]->try_fetch_batch_all(addr_list);
-    }
-
-    bool fetch_class_cache(uint16_t block_class, mr_rdma_addr &addr){
-        // just fetch one block in the current cpu_id --> ring buffer
-        bool ret = class_ring[block_class]->force_fetch_cache(addr);
-        return ret;
-    }
-
-    uint64_t fetch_class_free_cache(uint32_t nproc, mr_rdma_addr* addr_list) {
-        return class_free_ring[nproc]->try_fetch_batch_all(addr_list);
-    }
-
-    void add_cache(uint32_t nproc, mr_rdma_addr &addr){
-        // host side fill cache, add write pointer
-        alloc_ring[nproc]->add_cache(addr);
-    }
-
-    void add_batch(uint32_t nproc, mr_rdma_addr* value, uint64_t num){
-        // host side fill cache, add write pointer
-        alloc_ring[nproc]->add_batch(value, num);
-    }
-
-    void add_class_batch(uint32_t class_, mr_rdma_addr* value, uint64_t num){
-        // host side fill cache, add write pointer
-        class_ring[class_]->add_batch(value, num);
-    }
-
-    void add_free_cache(mr_rdma_addr addr) {
+    
+    bool try_find_segment(uint64_t bin_size, mi_segment_migrate& segment){
         unsigned nproc;
         if((nproc = sched_getcpu()) == -1){
             printf("sched_getcpu bad \n");
-            return;
+            return false;
         }
-        free_ring[nproc]->add_cache(addr);
+        sem_wait(lock[nproc]);
+        buffer_[nproc].opcode_ = LegoOpcode::LegoFindSeg;
+        *(uint64_t*)buffer_[nproc].buffer_ = bin_size;
+        sem_post(doorbell[nproc]);
+        // printf("send request to %d\n", nproc);
+        sem_wait(retbell[nproc]);
+        // printf("recieve from %d\n", nproc);
+        if(buffer_[nproc].opcode_ == LegoOpcode::LegoFindSegSucc){
+            //TODO: copy a full segment, with its bitmaps
+            sem_post(lock[nproc]);
+            return true;
+        } else {
+            sem_post(lock[nproc]);
+            return false;
+        }
+        return false;
     }
 
-    void add_free_cache(unsigned nproc, mr_rdma_addr addr) {
-        free_ring[nproc]->add_cache(addr);
+    bool free(mr_rdma_addr addr){
+        unsigned nproc;
+        if((nproc = sched_getcpu()) == -1){
+            printf("sched_getcpu bad \n");
+            return false;
+        }
+        sem_wait(lock[nproc]);
+        buffer_[nproc].opcode_ = LegoOpcode::LegoFree;
+        *(mr_rdma_addr*)buffer_[nproc].buffer_ = addr;
+        sem_post(doorbell[nproc]);
+        // printf("send request to %d\n", nproc);
+        sem_wait(retbell[nproc]);
+        // printf("recieve from %d\n", nproc);
+        sem_post(lock[nproc]);
+        return true;
     }
 
-    void add_class_cache(uint16_t block_class, mr_rdma_addr addr) {
-        class_ring[block_class]->add_cache(addr);
+    bool remote_free(mr_rdma_addr addr){
+        unsigned nproc;
+        if((nproc = sched_getcpu()) == -1){
+            printf("sched_getcpu bad \n");
+            return false;
+        }
+        sem_wait(lock[nproc]);
+        buffer_[nproc].opcode_ = LegoOpcode::LegoRemoteFree;
+        *(mr_rdma_addr*)buffer_[nproc].buffer_ = addr;
+        sem_post(doorbell[nproc]);
+        // printf("send request to %d\n", nproc);
+        sem_wait(retbell[nproc]);
+        // printf("recieve from %d\n", nproc);
+        sem_post(lock[nproc]);
+        return true;
     }
 
-    void add_class_free_cache(uint16_t block_class, mr_rdma_addr addr) {
-        class_free_ring[block_class]->add_cache(addr);
+    bool registe(uint16_t process_id){
+        unsigned nproc;
+        if((nproc = sched_getcpu()) == -1){
+            printf("sched_getcpu bad \n");
+            return false;
+        }
+        sem_wait(lock[nproc]);
+        buffer_[nproc].opcode_ = LegoOpcode::LegoReg;
+        *(uint16_t*)buffer_[nproc].buffer_ = process_id;
+        sem_post(doorbell[nproc]);
+        // printf("send request to %d\n", nproc);
+        sem_wait(retbell[nproc]);
+        // printf("recieve from %d\n", nproc);
+        sem_post(lock[nproc]);
+        return true;
     }
 
-    inline uint32_t get_length(uint32_t nproc) {
-        return alloc_ring[nproc]->get_length();
+    bool deregiste(uint16_t process_id){
+        unsigned nproc;
+        if((nproc = sched_getcpu()) == -1){
+            printf("sched_getcpu bad \n");
+            return false;
+        }
+        sem_wait(lock[nproc]);
+        buffer_[nproc].opcode_ = LegoOpcode::LegoDereg;
+        *(uint16_t*)buffer_[nproc].buffer_ = process_id;
+        sem_post(doorbell[nproc]);
+        // printf("send request to %d\n", nproc);
+        sem_wait(retbell[nproc]);
+        // printf("recieve from %d\n", nproc);
+        sem_post(lock[nproc]);
+        return true;
     }
 
-    inline uint32_t get_free_length(uint32_t nproc) {
-        return free_ring[nproc]->get_length();
-    }
-
-    inline uint32_t get_class_length(uint32_t nproc) {
-        return class_ring[nproc]->get_length();
-    }
-    
-    inline uint32_t get_class_free_length(uint32_t nproc) {
-        return class_ring[nproc]->get_length();
-    }
-
-private:
-    cpu_cache_storage* cpu_cache_content_;
-    uint64_t cache_size_;
-    ring_buffer<mr_rdma_addr>* alloc_ring[nprocs];
-    ring_buffer_atomic<mr_rdma_addr>* class_ring[nprocs];
-    ring_buffer<mr_rdma_addr>* free_ring[nprocs];
-    ring_buffer_atomic<mr_rdma_addr>* class_free_ring[nprocs];
-    mr_rdma_addr_ null;
 };
 
 }

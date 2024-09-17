@@ -7,4 +7,5 @@ target_link_libraries(microbench_common
     ibverbs
     rdmacm
     rt
+    profiler
 )

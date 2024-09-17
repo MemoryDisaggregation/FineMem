@@ -5,6 +5,7 @@
 #include <bits/stdint-uintn.h>
 #include <stdint.h>
 #include <chrono>
+#include <pthread.h>
 
 namespace mralloc {
 
@@ -12,9 +13,9 @@ namespace mralloc {
 #define NOTIFY_IDLE 0x00
 #define MAX_MSG_SIZE 512
 #define MAX_SERVER_WORKER 1
-#define MAX_SERVER_CLIENT 1024
+#define MAX_SERVER_CLIENT 4096
 #define RESOLVE_TIMEOUT_MS 5000
-#define RDMA_TIMEOUT_US 10000000  // 10s
+#define RDMA_TIMEOUT_US (uint64_t)100000000  // 10s
 #define MAX_REMOTE_SIZE (1UL << 25)
 
 #define TIME_NOW (std::chrono::high_resolution_clock::now())
@@ -28,8 +29,27 @@ enum ResStatus { RES_OK, RES_FAIL };
 
 enum ConnMethod {CONN_RPC, CONN_ONESIDE, CONN_FUSEE};
 
+enum MRType:uint64_t {MR_IDLE, MR_FREE, MR_TRANSFER};
+
 #define CHECK_RDMA_MSG_SIZE(T) \
     static_assert(sizeof(T) < MAX_MSG_SIZE, #T " msg size is too big!")
+
+// buffer size = 8 MiB
+struct MsgBuffer {
+    MRType msg_type[8];
+    void* buffer;
+};
+
+struct PublicInfo {
+    uint64_t pid_alive[1024];
+    uint16_t id_node_map[1024];
+    MsgBuffer node_buffer[128];
+};
+
+struct CNodeInit {
+    uint16_t node_id;
+    uint8_t access_type;
+};
 
 struct PData {
     uint64_t buf_addr;
@@ -81,29 +101,21 @@ public:
 };
 CHECK_RDMA_MSG_SIZE(FreeFastRequest);
 
-class ClassBindRequest : public RequestsMsg{
-public:
-    uint32_t region_offset;
-    uint16_t block_class;
-};
-CHECK_RDMA_MSG_SIZE(ClassBindRequest);
-
-class ClassBindResponse : public ResponseMsg {
-public:
-    uint32_t rkey;
-};
-CHECK_RDMA_MSG_SIZE(ClassBindResponse);
-
 class RebindBlockRequest : public RequestsMsg{
 public:
     uint64_t addr;
-    uint16_t block_class;
 };
 CHECK_RDMA_MSG_SIZE(RebindBlockRequest);
 
 class RebindBlockResponse : public ResponseMsg {
 public:
     uint32_t rkey;
+};
+CHECK_RDMA_MSG_SIZE(RebindBlockResponse);
+
+class InfoResponse : public ResponseMsg {
+public:
+    uint64_t total_mem;
 };
 CHECK_RDMA_MSG_SIZE(RebindBlockResponse);
 
@@ -177,5 +189,6 @@ CHECK_RDMA_MSG_SIZE(UnregisterRequest);
 
 struct UnregisterResponse : public ResponseMsg {};
 CHECK_RDMA_MSG_SIZE(UnregisterResponse);
+
 
 }  // namespace kv

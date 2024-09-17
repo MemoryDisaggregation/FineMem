@@ -79,18 +79,18 @@ int main(int argc, char* argv[]){
     }
     bool multitest = false;
     if(!multitest) {
-        mralloc::ComputingNode* heap = new mralloc::ComputingNode(true, true, true);
+        mralloc::ComputingNode* heap = new mralloc::ComputingNode(true, true, true, config.node_id);
         heap->start(ip, port, config.memory_node_num);
 
         // before the real client running, make a test of iter times allocation
         // << single thread, local test, fetch remote memory >>
-        int iter = 100;
+        int iter = 0;
         mralloc::mr_rdma_addr addr;
         char buffer[2][64*1024] = {"aaa", "bbb"};
         char read_buffer[4];
         struct timeval start, end;
         gettimeofday(&start, NULL);
-        while(iter--){
+        while(0){
             heap->fetch_mem_block(addr);
             heap->show_ring_length();
             // std::cout << "write addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
@@ -123,7 +123,7 @@ int main(int argc, char* argv[]){
         pthread_barrier_init(&end_barrier, NULL, thread_num);
         pthread_t running_thread[thread_num];
         for(int i = 0; i < thread_num; i++) {
-            client[i] = new mralloc::ComputingNode(false, false, true);
+            client[i] = new mralloc::ComputingNode(false, false, true, 0);
             client[i]->start(ip, port, config.memory_node_num);
             printf("thread %d\n init success\n", i);
             pthread_create(&running_thread[i], NULL, fetch_mem, client[i]);

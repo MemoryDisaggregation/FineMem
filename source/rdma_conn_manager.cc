@@ -7,7 +7,7 @@ namespace mralloc {
 
 int ConnectionManager::init(const std::string ip, const std::string port,
                             uint32_t rpc_conn_num,
-                            uint32_t one_sided_conn_num) {
+                            uint32_t one_sided_conn_num, uint16_t node_id) {
   m_rpc_conn_queue_ = new ConnQue();
   m_one_sided_conn_queue_ = new ConnQue();
   if (rpc_conn_num > MAX_SERVER_WORKER * MAX_SERVER_CLIENT) {
@@ -20,7 +20,7 @@ int ConnectionManager::init(const std::string ip, const std::string port,
 
   for (uint32_t i = 0; i < rpc_conn_num; i++) {
     RDMAConnection *conn = new RDMAConnection();
-    if (conn->init(ip, port, CONN_RPC)) {
+    if (conn->init(ip, port, CONN_RPC, node_id)) {
       return -1;
     }
     m_one_side_info_ = conn->get_one_side_info();
@@ -34,18 +34,16 @@ int ConnectionManager::init(const std::string ip, const std::string port,
     section_num_ = region_num_ / region_per_section;
 
     section_header_ = m_one_side_info_.section_header_;
-    section_class_header_ = (uint64_t)((section_e*)section_header_ + section_num_);
-    region_header_ = (uint64_t)((section_class_e*)section_class_header_ + block_class_num*section_num_);
+    region_header_ = (uint64_t)((section_e*)section_header_ + section_num_);
     block_rkey_ = (uint64_t)((region_e*)region_header_ + region_num_);
-    class_block_rkey_ = (uint64_t)((uint32_t*)block_rkey_ + block_num_);
-    block_header_ = (uint64_t)((uint32_t*)class_block_rkey_ + block_num_);
-    backup_rkey_ = (uint64_t)((uint64_t*)block_header_ + block_num_);
+    block_header_ = (uint64_t)((rkey_table_e*)block_rkey_ + block_num_);
+    public_info_ = (PublicInfo*)((uint64_t*)block_header_ + block_num_);
     heap_start_ = m_one_side_info_.heap_start_;
   }
 
   for (uint32_t i = 0; i < one_sided_conn_num; i++) {
     RDMAConnection *conn = new RDMAConnection();
-    if (conn->init(ip, port, CONN_ONESIDE)) {
+    if (conn->init(ip, port, CONN_ONESIDE, node_id)) {
       return -1;
     }
     m_one_sided_conn_queue_->enqueue(conn);
@@ -113,10 +111,10 @@ int ConnectionManager::remote_fetch_block(uint64_t &addr, uint32_t &rkey) {
   return ret;
 }
 
-int ConnectionManager::fetch_region_batch(region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive, uint32_t region_index) {
+int ConnectionManager::fetch_region_batch(section_e &alloc_section, region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive, uint32_t region_index) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    int ret = conn->fetch_region_batch(alloc_region, addr, num, is_exclusive, region_index);
+    int ret = conn->fetch_region_batch(alloc_section, alloc_region, addr, num, is_exclusive, region_index);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }
@@ -137,68 +135,41 @@ int ConnectionManager::remote_mw(uint64_t addr, uint32_t rkey, uint64_t size, ui
   return ret;
 }
 
-bool ConnectionManager::update_section(uint32_t region_index, alloc_advise advise, alloc_advise compare) {
+bool ConnectionManager::force_update_section_state(section_e &section, uint32_t region_index, alloc_advise advise) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    bool ret = conn->update_section(region_index, advise, compare);
+    bool ret = conn->force_update_section_state(section, region_index, advise);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }
-bool ConnectionManager::find_section(uint16_t block_class, section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
+int ConnectionManager::find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    bool ret = conn->find_section(block_class, alloc_section, section_offset, advise);
+    int ret = conn->find_section(alloc_section, section_offset, advise);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }
 
-bool ConnectionManager::fetch_large_region(section_e &alloc_section, uint32_t section_offset, uint64_t region_num, uint64_t &addr) {
+int ConnectionManager::fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    bool ret = conn->fetch_large_region(alloc_section, section_offset, region_num, addr);
+    int ret = conn->fetch_region(alloc_section, section_offset, shared, use_chance, alloc_region, region_index);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }
-bool ConnectionManager::fetch_region(section_e &alloc_section, uint32_t section_offset, uint32_t block_class, bool shared, region_e &alloc_region, uint32_t &region_index) {
+
+bool ConnectionManager::force_update_region_state(region_e &alloc_region, uint32_t region_index, bool is_exclusive, bool on_use) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    bool ret = conn->fetch_region(alloc_section, section_offset, block_class, shared, alloc_region, region_index);
-    m_rpc_conn_queue_->enqueue(conn);
-    return ret;
-}
-bool ConnectionManager::try_add_section_class(uint32_t section_offset, uint32_t block_class, uint32_t region_index) {
-    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
-    assert(conn != nullptr);
-    bool ret = conn->try_add_section_class(section_offset, block_class, region_index);
-    m_rpc_conn_queue_->enqueue(conn);
-    return ret;    
-}
-bool ConnectionManager::set_region_exclusive(region_e &alloc_region, uint32_t region_index) {
-    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
-    assert(conn != nullptr);
-    bool ret = conn->set_region_exclusive(alloc_region, region_index);
-    m_rpc_conn_queue_->enqueue(conn);
-    return ret;      
-}
-bool ConnectionManager::set_region_empty(region_e &alloc_region, uint32_t region_index) {
-    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
-    assert(conn != nullptr);
-    bool ret = conn->set_region_empty(alloc_region, region_index);
+    bool ret = conn->force_update_region_state(alloc_region, region_index, is_exclusive, on_use);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;      
 }
 
-bool ConnectionManager::init_region_class(region_e &alloc_region, uint32_t block_class, bool is_exclusive, uint32_t region_index) {
+int ConnectionManager::fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    bool ret = conn->init_region_class(alloc_region, block_class, is_exclusive, region_index);
-    m_rpc_conn_queue_->enqueue(conn);
-    return ret;        
-}
-int ConnectionManager::fetch_region_block(region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
-    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
-    assert(conn != nullptr);
-    int ret = conn->fetch_region_block(alloc_region, addr, rkey, is_exclusive, region_index);
+    int ret = conn->fetch_region_block(alloc_section, alloc_region, addr, rkey, is_exclusive, region_index);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;  
 }
@@ -211,47 +182,31 @@ int ConnectionManager::fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_
     return ret;  
 }
 
-bool ConnectionManager::free_block(uint64_t addr) {
+int ConnectionManager::free_block(uint64_t addr) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    bool ret = conn->free_block(addr);
+    int ret = conn->free_block(addr);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;  
 }
 
-bool ConnectionManager::fetch_block(uint16_t block_class, uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) {
+int ConnectionManager::fetch_block_bitmap(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    bool ret = conn->fetch_block(block_class, block_hint, addr, rkey);
+    int ret = conn->fetch_block_bitmap(block_hint, addr, rkey);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;  
 }
 
-bool ConnectionManager::free_block(uint16_t block_class, uint64_t addr) {
+int ConnectionManager::free_block_bitmap(uint64_t addr) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    bool ret = conn->free_block(block_class, addr);
+    int ret = conn->free_block_bitmap(addr);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;  
 }
 
-bool ConnectionManager::fetch_region_class_block(region_e &alloc_region, uint32_t block_class, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
-    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
-    assert(conn != nullptr);
-    bool ret = conn->fetch_region_class_block(alloc_region, block_class, addr, rkey, is_exclusive, region_index);
-    m_rpc_conn_queue_->enqueue(conn);
-    return ret;      
-}
-
-int ConnectionManager::fetch_region_class_batch(region_e &alloc_region, uint32_t block_class, mr_rdma_addr* addr, uint64_t num, bool is_exclusive, uint32_t region_index) {
-    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
-    assert(conn != nullptr);
-    int ret = conn->fetch_region_class_batch(alloc_region, block_class, addr, num, is_exclusive, region_index);
-    m_rpc_conn_queue_->enqueue(conn);
-    return ret;      
-}
-
-bool ConnectionManager::fetch_exclusive_region_rkey(uint32_t region_index, uint32_t* rkey_list) {
+bool ConnectionManager::fetch_exclusive_region_rkey(uint32_t region_index, rkey_table_e* rkey_list) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
     bool ret = conn->fetch_exclusive_region_rkey(region_index, rkey_list);
@@ -259,18 +214,10 @@ bool ConnectionManager::fetch_exclusive_region_rkey(uint32_t region_index, uint3
     return ret;
 }
 
-bool ConnectionManager::fetch_class_region_rkey(uint32_t region_index, uint32_t* rkey_list) {
+int ConnectionManager::remote_rebind(uint64_t addr, uint32_t &newkey) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    bool ret = conn->fetch_class_region_rkey(region_index, rkey_list);
-    m_rpc_conn_queue_->enqueue(conn);
-    return ret;
-}
-
-int ConnectionManager::remote_rebind(uint64_t addr, uint32_t block_class, uint32_t &newkey) {
-    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
-    assert(conn != nullptr);
-    int ret = conn->remote_rebind(addr, block_class, newkey);
+    int ret = conn->remote_rebind(addr, newkey);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }
@@ -283,14 +230,6 @@ int ConnectionManager::remote_rebind_batch(uint64_t *addr, uint32_t *newkey) {
     return ret;
 }
 
-int ConnectionManager::remote_class_bind(uint32_t region_offset, uint16_t block_class) {
-    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
-    assert(conn != nullptr);
-    int ret = conn->remote_class_bind(region_offset, block_class);
-    m_rpc_conn_queue_->enqueue(conn);
-    return ret;
-}
-
 int ConnectionManager::remote_memzero(uint64_t addr, uint64_t size) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
@@ -299,14 +238,13 @@ int ConnectionManager::remote_memzero(uint64_t addr, uint64_t size) {
     return ret;
 }
 
-int ConnectionManager::remote_print_alloc_info() {
+int ConnectionManager::remote_print_alloc_info(uint64_t &mem_usage) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    int ret = conn->remote_print_alloc_info();
+    int ret = conn->remote_print_alloc_info(mem_usage);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }
-
 
 int ConnectionManager::free_region_block(uint64_t addr, bool is_exclusive) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
