@@ -1,6 +1,6 @@
-# LegoAlloc - Main Repo
+# FineMem - Main Repo
 
-> All source codes of LegoHeap and FuDM are avaliable here, while we are still working on complete the documents. And the source code of LegoAlloc-User, LegoAlloc-Swap and LegoAlloc-KV stores at other repos, which we will refer in this repo future.
+> All source codes of FineMem are avaliable here, while we are still working on complete the documents. And the source code of FineMem-User, FineMem-Swap and FineMem-KV stores at other repos, which we will refer in this repo future.
 
 > I'm not an expert of C++ or RDMA, but I'll try my best to help anyone who wants to build and run this system. And I'm glad to see any advise or comments about this project. Wish one day we can see DM's large scale deployment on actual cloud enviroments.
 
@@ -22,7 +22,7 @@
 
 ## Run
 
-### Memory-side LegoAlloc:
+### Memory-side FineMem:
 
 using `ibdev2netdev` to show which RNIC(with status UP) you can use.
 
@@ -44,7 +44,7 @@ using `ibdev2netdev` to show which RNIC(with status UP) you can use.
 
 ```
 > cd ./build/microbench
-> ./microbench_common 10.10.1.1<server RDMA IP> 1234<server port> 48<thread number> <the allocator type from "cxl", "fusee", "share"(FuDM), "pool"(LegoHeap), "exclusive"> <the benchmark from "shuffle" and "stage">
+> ./microbench_common 10.10.1.1<server RDMA IP> 1234<server port> 48<thread number> <the allocator type from "cxl", "fusee", "share"(FineMem Raw), "pool"(FineMem with Service), "exclusive"> <the benchmark from "shuffle" and "stage">
 ```
 
 ## Code content
@@ -67,7 +67,7 @@ using `ibdev2netdev` to show which RNIC(with status UP) you can use.
   
   ./source/computing_node.cc: LegoHeap
   
-  ./source/memory_node.cc: LegoAlloc memory server 
+  ./source/memory_node.cc: FineMem memory server 
 
   ./source/free_block_manager.cc: FuDM metadata 
 
