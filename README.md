@@ -2,8 +2,6 @@
 
 > All source codes of FineMem are avaliable here, while we are still working on complete the documents. And the source code of FineMem-User, FineMem-Swap and FineMem-KV stores at other repos, which we will refer in this repo future.
 
-> I'm not an expert of C++ or RDMA, but I'll try my best to help anyone who wants to build and run this system. And I'm glad to see any advise or comments about this project. Wish one day we can see DM's large scale deployment on actual cloud enviroments.
-
 🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧This repo is still under constructing🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧
 
 ## Build 
@@ -33,7 +31,7 @@ using `ibdev2netdev` to show which RNIC(with status UP) you can use.
 ```
 
 
-### Compute-side LegoHeap:
+### Compute-side FineMem service:
 
 ```
 > cd ./build/source
