@@ -53,23 +53,23 @@ using `ibdev2netdev` to show which RNIC(with status UP) you can use.
 
   ./include/msg.h: the RDMA connection settings/RPC packet content defines
   
-  ./include/rdma_conn.h: FuDM communication
+  ./include/rdma_conn.h: FineMem communication
   
-  ./include/rdma_conn_manager.h: FuDM communication manager
+  ./include/rdma_conn_manager.h: FineMem communication manager
   
-  ./include/free_block_magnaer.h: FuDM metadata
+  ./include/free_block_magnaer.h: FineMem metadata
   
 
 
 * Important source files:
   
-  ./source/computing_node.cc: LegoHeap
+  ./source/computing_node.cc: FineMem compute node daemon
   
   ./source/memory_node.cc: FineMem memory server 
 
-  ./source/free_block_manager.cc: FuDM metadata 
+  ./source/free_block_manager.cc: FineMem metadata 
 
-  ./source/rdma_conn.cc: FuDM communication
+  ./source/rdma_conn.cc: FineMem communication
 
 
 * Others:
