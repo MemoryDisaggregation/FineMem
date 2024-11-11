@@ -268,7 +268,7 @@ public:
         //         used ++;
         //     }
         // }
-        mem_record_ << 1.0*managed/(section_num_*region_per_section) << "," << utilization/managed << ", "<< (used-cache)*4 + reg_size << std::endl;
+        mem_record_ << 1.0*managed/(section_num_*region_per_section) << "," << utilization/managed << ", "<< (used-cache)*4 + (long long)reg_size*1024*1024 << std::endl;
         return (used-cache)*4 + reg_size*1024*1024;
     }
 

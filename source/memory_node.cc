@@ -19,7 +19,7 @@
 
 const bool use_reg = false;
 const bool use_1GB = false;
-const bool use_40GB = true;
+const bool use_40GB = false;
 // #define REMOTE_MEM_SIZE 134217728
 // #define REMOTE_MEM_SIZE 16777216
 // #define REMOTE_MEM_SIZE 67108864
@@ -29,15 +29,15 @@ const bool use_40GB = true;
 // #define REMOTE_MEM_SIZE 262144
 // #define REMOTE_MEM_SIZE 65536
 // #define REMOTE_MEM_SIZE 33554432
-// #define REMOTE_MEM_SIZE 2097152
+#define REMOTE_MEM_SIZE 2097152
 // #define REMOTE_MEM_SIZE 1048576
 // #define REMOTE_MEM_SIZE 524288
-#define REMOTE_MEM_SIZE 4194304
+// #define REMOTE_MEM_SIZE 65536
 // #define REMOTE_MEM_SIZE 4096
 // #define REMOTE_MEM_SIZE 131072
 #define POOL_MEM_SIZE (uint64_t)1024*1024*1024
 
-#define INIT_MEM_SIZE ((uint64_t)80*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)40*1024*1024*1024)
 // #define INIT_MEM_SIZE ((uint64_t)10*1024*1024*1024)
 
 // #define SERVER_BASE_ADDR (uint64_t)0xfe00000
@@ -544,7 +544,7 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
     backup_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
     
     // When use global rkey: application not support multiple rkey or evaluation the side-effect of memory window
-    bool use_global_rkey = false;
+    bool use_global_rkey = true;
     if(use_global_rkey){
         for(int i = 0; i < block_num_; i++){
             server_block_manager_->set_block_rkey(i, get_global_rkey());
@@ -694,7 +694,8 @@ int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
     uint64_t p;
     if(free_addr_.empty()){
         p = heap_pointer_.load();
-        uint64_t new_p = p + size;
+        addr = p;
+        uint64_t new_p;
         // new_p = new_p - new_p%(1024*1024*1024);
         do{
             new_p = p +size;
@@ -703,11 +704,12 @@ int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
     } else {
         p = free_addr_.front();
         free_addr_.pop();
+        addr = p;
     }
-    addr = p;
     // addr = (uint64_t)mmap((void*)p, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED |MAP_ANONYMOUS, -1, 0);
-    if(!use_reg)
-        addr = (uint64_t)mmap((void*)p, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED |MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
+    // if(!use_reg)
+    // addr = (uint64_t)mmap((void*)p, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED |MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
+    addr = (uint64_t)mmap((void*)p, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED |MAP_ANONYMOUS , -1, 0);
     // printf("%lx\n", addr);
     assert(addr == p);
     struct ibv_mr *mr = rdma_register_memory((void *)p, size);
