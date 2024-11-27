@@ -199,7 +199,7 @@ bool MemoryNode::new_cache_section(){
 }
 
 bool MemoryNode::new_cache_region() {
-    while(!server_block_manager_->fetch_region(current_section_, current_section_index_, true, true, current_region_, current_region_index_) ) {
+    while(!server_block_manager_->fetch_region(current_section_, current_section_index_, true, true, current_region_, current_region_index_, 0) ) {
         if(!new_cache_section())
             return false;
     }
@@ -210,7 +210,7 @@ bool MemoryNode::fill_cache_block(){
     uint32_t length = ring_cache->get_length();
     for(int i = 0; i<simple_cache_watermark - length; i++){
         mr_rdma_addr addr;
-        while(!server_block_manager_->fetch_region_block(current_section_, current_region_, addr.addr, addr.rkey, false, current_region_index_)) {
+        while(!server_block_manager_->fetch_region_block(current_section_, current_region_, addr.addr, addr.rkey, false, current_region_index_, 0)) {
             // fetch new region
             new_cache_region();
         }

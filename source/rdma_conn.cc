@@ -1048,7 +1048,7 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
 }
 
 // find an avalible region, exclusive, single
-int RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index) {
+int RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) {
     int retry_time = 0;
     if(shared == false) {
         // both variant and single allocation with exclusive will fetch a full empty block and full use it
@@ -1092,8 +1092,8 @@ int RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_offs
         do {
             retry_time++;
             int rand_val = mt()%32;
-            uint32_t random_frag = (alloc_section.frag_map_ >> (32 - rand_val) | (alloc_section.frag_map_ << rand_val));
-            uint32_t random_alloc = (alloc_section.alloc_map_ >> (32 - rand_val) | (alloc_section.alloc_map_ << rand_val));
+            uint32_t random_frag = ((alloc_section.frag_map_|skip_mask) >> (32 - rand_val) | ((alloc_section.frag_map_|skip_mask) << rand_val));
+            uint32_t random_alloc = ((alloc_section.alloc_map_|skip_mask) >> (32 - rand_val) | ((alloc_section.alloc_map_|skip_mask) << rand_val));
             empty_map = random_frag | random_alloc;
             chance_map = ~random_frag | random_alloc;
             normal_map = random_frag | ~random_alloc;
@@ -1163,7 +1163,7 @@ bool RDMAConnection::force_update_region_state(region_e &alloc_region, uint32_t 
 // the core function of fetch a single block from a region
 // the user must check the state if CAS failed, and must update state if some condition occurs
 // I know this is ugly to convert client id as conn_id_+1 (why +1? because server give the number from 0, and I don't want to modify the RPC framework anymore :( 
-int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
+int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index, uint16_t block_class) {
     int index, retry_time = 0; region_e new_region;
     
     // [Stage 0] flush log
@@ -1171,8 +1171,8 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
     if(alloc_region.last_modify_id_ != 0){
         if((alloc_region.base_map_ & ((uint32_t)1<<alloc_region.last_offset_)) == 1 ){
             // malloc
-            block_e old_block = {0, (alloc_region.last_timestamp_ +126) % 127 + 1};
-            block_e new_block = {node_id_, alloc_region.last_timestamp_};
+            block_e old_block = {0, (alloc_region.last_timestamp_ +126) % 127 + 1, 1<<alloc_region.num};
+            block_e new_block = {node_id_, alloc_region.last_timestamp_, 1<<alloc_region.num};
             do {
                 int distant = abs((long)old_block.timestamp_ - (long)new_block.timestamp_);
                 bool outdate = distant > 64 ? (old_block.timestamp_ <= new_block.timestamp_) : (old_block.timestamp_ >= new_block.timestamp_);
@@ -1182,8 +1182,8 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
             } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * alloc_region.last_offset_, global_rkey_));
         } else {
             //free
-            block_e old_block = {alloc_region.last_modify_id_, (alloc_region.last_timestamp_ +126) % 127 + 1};
-            block_e new_block = {0, alloc_region.last_timestamp_};
+            block_e old_block = {alloc_region.last_modify_id_, (alloc_region.last_timestamp_ +126) % 127 + 1, 1<<alloc_region.num};
+            block_e new_block = {0, alloc_region.last_timestamp_, 1<<alloc_region.num};
             do {
                 int distant = abs((long)old_block.timestamp_ - (long)new_block.timestamp_);
                 bool outdate = distant > 64 ? (old_block.timestamp_ <= new_block.timestamp_) : (old_block.timestamp_ >= new_block.timestamp_);
@@ -1202,17 +1202,39 @@ int RDMAConnection::fetch_region_block(section_e &alloc_section, region_e &alloc
             return retry_time*(-1);
         } 
         new_region = alloc_region;
-        if((index = find_free_index_from_bitmap32_tail(alloc_region.base_map_)) == -1) {
-            force_update_section_state(alloc_section, region_index, alloc_full);
-            return retry_time*(-1);
+        if(block_class == 0){
+            if((index = find_free_index_from_bitmap32_tail(alloc_region.base_map_)) == -1) {
+                force_update_section_state(alloc_section, region_index, alloc_full);
+                return retry_time*(-1);
+            }
+            new_region.base_map_ |= (uint32_t)1<<index;
         }
-        new_region.base_map_ |= (uint32_t)1<<index;
+        else if(block_class > 0){
+            int block_num = 1<<(block_class);
+            int size = 1<<(block_num+1);
+            uint32_t search_map = alloc_region.base_map_;
+            index = 0;
+            while(search_map % size != 0 && index < 64){
+                search_map >>= block_num;
+                index += block_num;
+            }
+            if(index >= 32){
+                if((index = find_free_index_from_bitmap32_tail(alloc_region.base_map_)) == -1) {
+                   force_update_section_state(alloc_section, region_index, alloc_full);
+                }
+                return retry_time*(-1);
+            }
+            for(int i = 0; i < block_num; i++){
+                new_region.base_map_ |= (uint32_t)1<<(index+i);
+            }
+        }
         retry_counter_ = new_region.retry_;
         new_region.retry_ = (retry_time>=retry_threshold)? 2: ((retry_time >= low_threshold)? 1:0);
         new_region.last_offset_ = index;
         if (alloc_region.base_map_ & ((uint32_t)1<<alloc_region.last_offset_) == 0) 
             new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 127 + 1;
         new_region.last_modify_id_ = node_id_;
+        new_region.num = block_class;
     } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_));
     // if(mt()%1000 == 1){
     //     printf("stall happend\n");
@@ -1365,7 +1387,7 @@ int RDMAConnection::free_region_batch(uint32_t region_offset, uint32_t free_bitm
     return 0;
 }
 
-int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
+int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive, uint16_t block_class) {
     uint32_t region_offset = (addr - heap_start_) / region_size_;
     uint32_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
     region_e region, new_region;
@@ -1405,7 +1427,11 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
 
     bool full = (region.base_map_ == bitmap32_filled);
     uint32_t new_rkey;
-    if((region.base_map_ & ((uint32_t)1<<region_block_offset)) == 0) {
+    uint32_t mask = 0;
+    for (int i = 0; i<(1<<block_class); i++){
+        mask += (uint32_t)1<<i;
+    }
+    if((region.base_map_ & ((uint32_t)mask<<region_block_offset)) == 0) {
         printf("already freed\n");
         return -1;
     } 
@@ -1413,7 +1439,7 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive) {
         full = (region.base_map_ == bitmap32_filled);
         retry_time++;
         new_region = region;
-        new_region.base_map_ &= ~(uint32_t)((uint32_t)1<<region_block_offset);
+        new_region.base_map_ &= ~(uint32_t)((uint32_t)mask<<region_block_offset);
         if ( new_region.base_map_ == (bitmap32)0 ) {
             new_region.on_use_ = 0;
             new_region.exclusive_ = 0;

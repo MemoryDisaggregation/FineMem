@@ -78,9 +78,9 @@ class ConnectionManager {
     bool force_update_region_state(region_e &alloc_region, uint32_t region_index, bool is_exclusive, bool on_use);
     int find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
 
-    int fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index) ;
+    int fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) ;
 
-    int fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) ;
+    int fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index, uint16_t block_class) ;
     int fetch_region_batch(section_e &alloc_section, region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive, uint32_t region_index);
     
     int fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
@@ -90,7 +90,7 @@ class ConnectionManager {
     int free_region_batch(uint32_t region_offset, uint32_t free_bitmap, bool is_exclusive);
 
     bool fetch_exclusive_region_rkey(uint32_t region_index, rkey_table_e* rkey_list);
-    int free_region_block(uint64_t addr, bool is_exclusive) ;
+    int free_region_block(uint64_t addr, bool is_exclusive, uint16_t block_class) ;
 
     inline uint32_t get_addr_region_index(uint64_t addr) {return (addr-heap_start_) / region_size_;};
     inline uint32_t get_addr_region_offset(uint64_t addr) {return (addr-heap_start_) % region_size_ / block_size_;};

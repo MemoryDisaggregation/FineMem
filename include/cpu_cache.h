@@ -399,7 +399,8 @@ public:
     }
     uint64_t addr;
     uint32_t rkey;
-    uint32_t node;
+    uint16_t node;
+    uint16_t size;
 } ;
 
 class cpu_cache{

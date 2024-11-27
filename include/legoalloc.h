@@ -20,9 +20,6 @@ public:
     int read(void *ptr, uint64_t size, extend_addr remote_addr){}
     int write(void *ptr, uint64_t size, extend_addr remote_addr){}
     extend_addr malloc(uint64_t size){
-        if(nodes[round_]->get_block_size() == size){
-            nodes[round_]
-        }
     }
 
 private:

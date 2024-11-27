@@ -81,14 +81,17 @@ struct region_e {
     uint16_t on_use_ : 1;
     uint16_t last_offset_ : 5;
     uint16_t last_timestamp_ : 7;
-    uint16_t last_modify_id_;
+    uint16_t num : 3;
+    uint16_t last_modify_id_ : 13;
 };
 
 typedef std::atomic<region_e> region;
 
 struct block_e {
     uint64_t client_id_ : 16;
-    uint64_t timestamp_ : 48;
+    uint64_t timestamp_ : 16;
+    uint64_t size_ : 32;
+
 };
 
 typedef std::atomic<block_e> block;
@@ -279,15 +282,15 @@ public:
     bool force_update_region_state(region_e &alloc_region, uint32_t region_index, bool is_exclusive, bool on_use);
     int find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
 
-    int fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index) ;
-    int free_region_block(uint64_t addr, bool is_exclusive);
+    int fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) ;
+    int free_region_block(uint64_t addr, bool is_exclusive, uint16_t block_class);
 
     inline uint64_t get_section_region_addr(uint32_t section_offset, uint32_t region_offset) {return heap_start_ + section_offset*section_size_ + region_offset * region_size_ ;};
     inline uint64_t get_region_addr(uint32_t region_index) {return heap_start_ + region_index * region_size_;};
     inline uint64_t get_region_block_addr(uint32_t region_index, uint32_t block_offset) {return heap_start_ + region_index * region_size_ + block_offset * block_size_;} ;
     inline uint32_t get_region_block_rkey(uint32_t region_index, uint32_t block_offset) {return block_rkey_[region_index*block_per_region + block_offset].load().main_rkey_;};
 
-    int fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) ;
+    int fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index, uint16_t block_class) ;
 
     inline bool set_block_rkey(uint64_t index, uint32_t rkey) {
         rkey_table_e table = block_rkey_[index].load();

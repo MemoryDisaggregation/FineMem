@@ -340,7 +340,7 @@ namespace mralloc {
         }
     }
 
-    int ServerBlockManager::fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index) {
+    int ServerBlockManager::fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) {
         int retry_time = 0;
         if(shared == false) {
             // force use unclassed one to alloc single block
@@ -442,7 +442,7 @@ namespace mralloc {
         return true;
     }
 
-    int ServerBlockManager::fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
+    int ServerBlockManager::fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index, uint16_t block_class) {
         int index, retry_time =0; region_e new_region;
         // uint8_t old_length, new_length;
         do{
@@ -488,7 +488,7 @@ namespace mralloc {
         return retry_time;
     }
 
-    int ServerBlockManager::free_region_block(uint64_t addr, bool is_exclusive) {
+    int ServerBlockManager::free_region_block(uint64_t addr, bool is_exclusive, uint16_t block_class) {
         uint32_t region_offset = (addr - heap_start_) / region_size_;
         uint32_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
         region_e new_region, region = region_header_[region_offset].load();

@@ -150,10 +150,10 @@ int ConnectionManager::find_section(section_e &alloc_section, uint32_t &section_
     return ret;
 }
 
-int ConnectionManager::fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index) {
+int ConnectionManager::fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    int ret = conn->fetch_region(alloc_section, section_offset, shared, use_chance, alloc_region, region_index);
+    int ret = conn->fetch_region(alloc_section, section_offset, shared, use_chance, alloc_region, region_index, skip_mask);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }
@@ -166,10 +166,10 @@ bool ConnectionManager::force_update_region_state(region_e &alloc_region, uint32
     return ret;      
 }
 
-int ConnectionManager::fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index) {
+int ConnectionManager::fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index, uint16_t block_class) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    int ret = conn->fetch_region_block(alloc_section, alloc_region, addr, rkey, is_exclusive, region_index);
+    int ret = conn->fetch_region_block(alloc_section, alloc_region, addr, rkey, is_exclusive, region_index, block_class);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;  
 }
@@ -246,10 +246,10 @@ int ConnectionManager::remote_print_alloc_info(uint64_t &mem_usage) {
     return ret;
 }
 
-int ConnectionManager::free_region_block(uint64_t addr, bool is_exclusive) {
+int ConnectionManager::free_region_block(uint64_t addr, bool is_exclusive, uint16_t block_class) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    int ret = conn->free_region_block(addr, is_exclusive);
+    int ret = conn->free_region_block(addr, is_exclusive, block_class);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }
