@@ -15,96 +15,6 @@
 
 namespace mralloc {
 
-void* run_rpc_thread(void* arg){
-    ComputingNode* heap = (ComputingNode*)arg;
-    heap->listenser();
-    return NULL;
-}
-
-void ComputingNode::listenser() {
-    section_e section_;
-    uint32_t section_index_;
-    region_e region_;
-    uint32_t region_index_;
-    uint32_t node_ = current_node_;
-    std::vector<ConnectionManager*> m_rdma_conn;
-    for(int i = 0; i < node_num_; i++){
-        m_rdma_conn.push_back(new ConnectionManager());
-        if (m_rdma_conn[i] == nullptr) return;
-        if (m_rdma_conn[i]->init(ips[i], ports[i], 1, 1, node_id_)) return;
-        sleep(1);
-    }
-    while(1) {
-        MsgBuffer msg_buffer_;
-        void* full_content;
-        MRType type;
-        for(int i = 0; i < node_num_; i++){
-            m_rdma_conn[i]->remote_read((void*)&msg_buffer_, sizeof(MsgBuffer), 
-                (uint64_t)node_info_[i].public_info_ + 1024*sizeof(uint64_t) + 1024*sizeof(uint16_t) + node_id_*sizeof(MsgBuffer), global_rkey_[i]);
-            for(int j = 0; j < 8; j++){
-                type = msg_buffer_.msg_type[j];
-                if(type == MRType::MR_FREE) {
-                    mr_rdma_addr free_addr;
-                    m_rdma_conn[i]->remote_read((void*)&free_addr, sizeof(mr_rdma_addr),
-                        (uint64_t)msg_buffer_.buffer, 
-                        global_rkey_[i]);
-                    assert(free_addr.addr != 0 && free_addr.rkey != 0);
-                    mr_rdma_addr addr_empty;
-                    memset((void*)&addr_empty, 0, sizeof(mr_rdma_addr));
-                    
-                    //set buffer to empty
-                    m_rdma_conn[i]->remote_write((void*)&addr_empty, sizeof(mr_rdma_addr),
-                        (uint64_t)msg_buffer_.buffer, 
-                        global_rkey_[i]);
-
-                    //set opcode to empty
-                    MRType newtype = MRType::MR_IDLE;
-                    m_rdma_conn[i]->remote_write((uint64_t*)&newtype, sizeof(MRType), 
-                            (uint64_t)node_info_[free_addr.node].public_info_ + 1024*sizeof(uint64_t) + 1024*sizeof(uint16_t) + node_id_*sizeof(MsgBuffer) + sizeof(MRType)*j,
-                            global_rkey_[free_addr.node]);    
-                    
-
-                    //TODO: update the free info to a page bitmap
-                    mr_rdma_addr block_addr = free_addr;
-                    uint64_t block_offset = block_addr.addr % node_info_[free_addr.node].block_size_;
-                    block_addr.addr -= block_offset;
-                    bitmap_record record = offset_record_[block_addr];
-                    uint64_t bitmap_index = block_offset / record.bin_size /64;
-                    uint64_t bitmap_offset = block_offset / record.bin_size %64;
-                    uint64_t bitmap = cpu_cache_->bitmap_[record.offset + bitmap_index].load();
-                    uint64_t new_bitmap= bitmap & ((uint64_t)1<<bitmap_offset);
-                    do{
-                        new_bitmap= bitmap & ((uint64_t)1<<bitmap_offset);
-                    }while(!cpu_cache_->bitmap_[record.offset + bitmap_index].compare_exchange_weak(bitmap,new_bitmap));
-
-                } else if(type == MRType::MR_TRANSFER) {
-                    //TODO: read a segment and add it to local heap
-
-                }
-            }
-        }
-    }
-    return;
-}
-
-
-void* run_woker_thread(void* arg){
-    worker_param* param = (worker_param*)arg;
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(param->id, &cpuset);
-    pthread_t this_tid = pthread_self();
-    uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
-    ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
-    for (int i = 0; i < sysconf(_SC_NPROCESSORS_CONF); i ++) {
-        if (CPU_ISSET(i, &cpuset)) {
-            printf("filler running on core: %d\n" , i);
-        }
-    }
-    param->heap->woker(param->id);
-    return NULL;
-}
-
 void ComputingNode::woker(int proc) {
     section_e section_;
     uint32_t section_index_;
@@ -125,7 +35,18 @@ void ComputingNode::woker(int proc) {
         sem_wait(cpu_cache_->doorbell[proc]);
         // printf("recieve request from %d\n", proc);
         switch(cpu_cache_->buffer_[proc].opcode_){
-            
+            /*  allocation class: 
+                0 --> 1 --> 4KB <====== using layer 2
+                1 --> 2 --> 8KB
+                2 --> 4 --> 16KB
+                3 --> 8 --> 32KB
+                4 --> 16 --> 64KB
+                5 --> 32 --> 128KB <====== using layer 1
+                6 --> 64 --> 256KB
+                7 --> 128 --> 512KB
+                8 --> 256 --> 1MB
+                9 --> 512 --> 2MB <====== using array
+            */
             case LegoOpcode::LegoAlloc: {
                 uint16_t bin_size = *(uint64_t*)cpu_cache_->buffer_[proc].buffer_;
                 // if(bin_size != 0){
@@ -429,103 +350,6 @@ void ComputingNode::pre_fetcher() {
         } else {his_length = 0;idle_cycle = 0;}
     }
 }
-
-// void ComputingNode::recycler() {
-//     uint64_t addr, length;
-//     mr_rdma_addr batch_addr[max_free_item];
-//     int recycle_counter = 0; uint64_t recycle_addr[32]; uint32_t new_rkey[32];
-//     while(running) {
-//         int free_num;
-// 	    int total_free = 0;
-// 	    do{
-// 	        free_num = 0; 
-//             for(int i = 0; i < nprocs; i++){
-//                 if((length = cpu_cache_->fetch_free_cache(i, batch_addr)) != 0) {
-//                     free_num += length;
-//                     for(int j = 0; j < length; j++){
-//                         uint64_t region_offset = (batch_addr[j].addr - node_info_[batch_addr[j].node].heap_start_) / node_info_[batch_addr[j].node].region_size_;
-//                         uint64_t region_block_offset = (batch_addr[j].addr - node_info_[batch_addr[j].node].heap_start_) 
-//                             % node_info_[batch_addr[j].node].region_size_ / node_info_[batch_addr[j].node].block_size_;
-//                         uint32_t new_key = m_rdma_conn_[batch_addr[j].node]->rebind_region_block_rkey(region_offset, region_block_offset);
-//                         if(new_key != 0) {
-//                             mr_rdma_addr result; 
-//                             result = batch_addr[j]; 
-//                             exclusive_region_[batch_addr[j].node][region_offset].rkey[region_block_offset] = new_key;
-//                             result.rkey = new_key;
-//                             ring_cache->add_cache(result);
-//                         } else {
-//                             printf("Do not use batch for rebind anymore\n");
-//                             // if(recycle_counter > 31) {
-//                             //     recycle_counter = 0;
-//                             //     free_mem_block_fast_batch(recycle_addr);
-//                             // }
-//                             // recycle_addr[recycle_counter] = batch_addr[j];
-//                             // recycle_counter ++;
-//                         }
-//                     }
-//                 }
-//             }
-// 	        total_free += free_num;
-//         }while(free_num >= 8);
-//     }
-// }
-
-// void ComputingNode::print_cpu_cache() {
-//     for(int i = 0;i < nprocs; i++) {
-//         if(cpu_cache_watermark[i] != 1 || cpu_cache_->get_length(i) != 1)
-//             printf("%d:%d/%u\t", i, cpu_cache_->get_length(i), cpu_cache_watermark[i]);
-//     }
-//     printf("\n");
-
-// }
-
-// // a infinite loop worker
-// void ComputingNode::cache_filler() {
-//   // scan the cpu cache and refill them
-//     time_stamp_ = 0; uint64_t update = 0;
-
-//     for(int i=0; i<nprocs; i++) {
-//         cpu_cache_watermark[i] = 1;
-//     }
-//     uint64_t init_addr_ = -1; uint32_t init_rkey_ = -1;
-//     mr_rdma_addr batch_addr[64];
-//     while(running) {
-//         update = 0;
-//         for(int i = 0; i < nprocs; i++){
-//             int free_ = cpu_cache_->get_length(i);
-//             // empty    --> fill and +1
-//             // 1 left   --> fill
-//             // > 1 left --> fill and -1
-//             if(free_ == 0){
-//                 if (cpu_cache_watermark[i] < 8)
-//                     cpu_cache_watermark[i] += 1;
-//                 while(!ring_cache->try_fetch_batch(batch_addr, cpu_cache_watermark[i])){
-//                     time_stamp_ += 1;
-//                 }
-//                 cpu_cache_->add_batch(i, batch_addr, cpu_cache_watermark[i]);
-//                 update += cpu_cache_watermark[i];
-//             }
-//             else if(free_ < cpu_cache_watermark[i] && free_ > 1) {
-//                 if(cpu_cache_watermark[1] > 1)
-//                     cpu_cache_watermark[i] -= 1;
-//                 while(!ring_cache->try_fetch_batch(batch_addr, cpu_cache_watermark[i]-free_)){
-//                     time_stamp_ += 1;
-//                 }
-//                 cpu_cache_->add_batch(i, batch_addr, cpu_cache_watermark[i]-free_);
-//                 update += cpu_cache_watermark[i] - free_;
-//             } else if(cpu_cache_watermark[i] > 1 && free_ == 1) {
-//                 while(!ring_cache->try_fetch_batch(batch_addr, cpu_cache_watermark[i]-free_)){
-//                     time_stamp_ += 1;
-// 		}
-//                 cpu_cache_->add_batch(i, batch_addr, cpu_cache_watermark[i]-free_);
-//                 update += cpu_cache_watermark[i] - free_;
-//             } 
-//         }
-//         if(update) {
-//             time_stamp_ += 1;
-//         }
-//     }
-// }
 
 bool ComputingNode::new_cache_section(alloc_advise advise, uint32_t node){
     if(!m_rdma_conn_[node]->find_section(current_section_, current_section_index_, advise) ) {
