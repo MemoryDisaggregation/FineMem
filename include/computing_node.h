@@ -91,7 +91,6 @@ public:
 
     void woker(int proc);
     void listenser();
-    void pre_fetcher() ;
     void cache_filler() ;
     void print_cpu_cache() ;
     void recycler() ;
@@ -100,8 +99,6 @@ public:
         printf("ring length:%u\n", ring_cache->get_length());
         return ;
     }
-    void increase_watermark(int &upper_bound);
-    void decrease_watermark(int &upper_bound);
 
     inline uint64_t get_region_block_addr(uint32_t region_index, uint32_t block_offset, uint32_t node) {
         return node_info_[node].heap_start_ + region_index * node_info_[node].region_size_ 

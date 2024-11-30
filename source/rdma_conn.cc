@@ -857,13 +857,13 @@ int RDMAConnection::remote_fusee_alloc(uint64_t &addr, uint32_t &rkey){
 inline bool RDMAConnection::check_section(section_e alloc_section, alloc_advise advise, uint32_t offset) {
     switch (advise) {
     case alloc_empty:
-        return ((~alloc_section.alloc_map_ & ~alloc_section.frag_map_) & (bitmap32)1<< offset) != 0;
+        return ((~alloc_section.alloc_map_ & ~alloc_section.frag_map_) & (bitmap16)1<< offset) != 0;
     case alloc_light:
-        return ((alloc_section.alloc_map_ & ~alloc_section.frag_map_) & (bitmap32)1<< offset) != 0;
+        return ((alloc_section.alloc_map_ & ~alloc_section.frag_map_) & (bitmap16)1<< offset) != 0;
     case alloc_heavy:
-        return ((~alloc_section.alloc_map_ & alloc_section.frag_map_) & (bitmap32)1<< offset) != 0;
+        return ((~alloc_section.alloc_map_ & alloc_section.frag_map_) & (bitmap16)1<< offset) != 0;
     case alloc_full:
-        return ((alloc_section.alloc_map_ & alloc_section.frag_map_) & (bitmap32)1<< offset) != 0;
+        return ((alloc_section.alloc_map_ & alloc_section.frag_map_) & (bitmap16)1<< offset) != 0;
     }
     return false;
 }
@@ -883,8 +883,8 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
                 return false;
             }
             section_new = section;
-            section_new.alloc_map_ |= (bitmap32)1 << region_offset;
-            section_new.frag_map_ |= (bitmap32)1 << region_offset;
+            section_new.alloc_map_ |= (bitmap16)1 << region_offset;
+            section_new.frag_map_ |= (bitmap16)1 << region_offset;
         }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section, section_metadata_addr(section_offset), global_rkey_));
         return true;
     } else if(advise == alloc_empty) {
@@ -895,8 +895,8 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
                 return false;
             }
             section_new = section;
-            section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
-            section_new.frag_map_ &= ~((bitmap32)1 << region_offset);
+            section_new.alloc_map_ &= ~((bitmap16)1 << region_offset);
+            section_new.frag_map_ &= ~((bitmap16)1 << region_offset);
         }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section, section_metadata_addr(section_offset), global_rkey_));
         return true;
     } else if(advise == alloc_light) {
@@ -907,8 +907,8 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
                 return false;
             }
             section_new = section;
-            section_new.frag_map_ &= ~((bitmap32)1 << region_offset);
-            section_new.alloc_map_ |= (bitmap32)1 << region_offset;
+            section_new.frag_map_ &= ~((bitmap16)1 << region_offset);
+            section_new.alloc_map_ |= (bitmap16)1 << region_offset;
         }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section, section_metadata_addr(section_offset), global_rkey_));
         return true;
     } else if(advise == alloc_heavy) {
@@ -919,8 +919,8 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
                 return false;
             }
             section_new = section;
-            section_new.frag_map_ |= (bitmap32)1 << region_offset;
-            section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
+            section_new.frag_map_ |= (bitmap16)1 << region_offset;
+            section_new.alloc_map_ &= ~((bitmap16)1 << region_offset);
         }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section, section_metadata_addr(section_offset), global_rkey_));
         return true;
     }
@@ -943,8 +943,8 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
                 return false;
             }
             section_new = section;
-            section_new.alloc_map_ |= (bitmap32)1 << region_offset;
-            section_new.frag_map_ |= (bitmap32)1 << region_offset;
+            section_new.alloc_map_ |= (bitmap16)1 << region_offset;
+            section_new.frag_map_ |= (bitmap16)1 << region_offset;
         }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section, section_metadata_addr(section_offset), global_rkey_));
         return true;
     } else if(advise == alloc_empty) {
@@ -955,8 +955,8 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
                 return false;
             }
             section_new = section;
-            section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
-            section_new.frag_map_ &= ~((bitmap32)1 << region_offset);
+            section_new.alloc_map_ &= ~((bitmap16)1 << region_offset);
+            section_new.frag_map_ &= ~((bitmap16)1 << region_offset);
         }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section, section_metadata_addr(section_offset), global_rkey_));
         return true;
     } else if(advise == alloc_light) {
@@ -967,8 +967,8 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
                 return false;
             }
             section_new = section;
-            section_new.frag_map_ &= ~((bitmap32)1 << region_offset);
-            section_new.alloc_map_ |= (bitmap32)1 << region_offset;
+            section_new.frag_map_ &= ~((bitmap16)1 << region_offset);
+            section_new.alloc_map_ |= (bitmap16)1 << region_offset;
         }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section, section_metadata_addr(section_offset), global_rkey_));
         return true;
     } else if(advise == alloc_heavy) {
@@ -979,8 +979,8 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
                 return false;
             }
             section_new = section;
-            section_new.frag_map_ |= (bitmap32)1 << region_offset;
-            section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
+            section_new.frag_map_ |= (bitmap16)1 << region_offset;
+            section_new.alloc_map_ &= ~((bitmap16)1 << region_offset);
         }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section, section_metadata_addr(section_offset), global_rkey_));
         return true;
     }
@@ -1002,7 +1002,7 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
             retry_time++;
             remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
             for(int j = 0; j < fetch; j ++) {
-                if((section[j].frag_map_ & section[j].alloc_map_) != ~(uint32_t)0){
+                if((section[j].frag_map_ & section[j].alloc_map_) != ~(uint16_t)0){
                     alloc_section = section[j];
                     section_offset = index + j;
                     return retry_time;
@@ -1018,7 +1018,7 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
             retry_time++;
             remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
             for(int j = 0; j < fetch; j ++) {
-                if((section[j].frag_map_ ) != ~(uint32_t)0){
+                if((section[j].frag_map_ ) != ~(uint16_t)0){
                     alloc_section = section[j];
                     section_offset = index + j;
                     return retry_time;
@@ -1034,7 +1034,7 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
             retry_time++;
             remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
             for(int j = 0; j < fetch; j ++) {
-                if((section[j].frag_map_ | section[j].alloc_map_) != ~(uint32_t)0){
+                if((section[j].frag_map_ | section[j].alloc_map_) != ~(uint16_t)0){
                     alloc_section = section[j];
                     section_offset = index + j;
                     return retry_time;
@@ -1050,96 +1050,61 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
 // find an avalible region, exclusive, single
 int RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) {
     int retry_time = 0;
-    if(shared == false) {
-        // both variant and single allocation with exclusive will fetch a full empty block and full use it
-        section_e new_section;
-        uint32_t free_map;
-        int index;
-        do {
-            retry_time++;
-            free_map = alloc_section.frag_map_ | alloc_section.alloc_map_;
-            if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
-                return retry_time*(-1);
-            }
+    bool on_empty = false;
+    section_e new_section;
+    uint16_t empty_map, chance_map, normal_map;
+    int index;
+    // skip a read, only read at CAS failed
+    // remote_read(&alloc_section, sizeof(section_e), section_metadata_addr(section_offset), global_rkey_);
+    do {
+        retry_time++;
+        int rand_val = mt()%16;
+        uint16_t random_frag = ((alloc_section.frag_map_|skip_mask) >> (16 - rand_val) | ((alloc_section.frag_map_|skip_mask) << rand_val));
+        uint16_t random_alloc = ((alloc_section.alloc_map_|skip_mask) >> (16 - rand_val) | ((alloc_section.alloc_map_|skip_mask) << rand_val));
+        empty_map = random_frag | random_alloc;
+        chance_map = ~random_frag | random_alloc;
+        normal_map = random_frag | ~random_alloc;
+        if( (index = find_free_index_from_bitmap16_tail(normal_map)) != -1 ){
+            // no modify on map status
+            index = (index - rand_val + 16) % 16;
             new_section = alloc_section;
-            new_section.alloc_map_ |= ((uint32_t)1<<index);
-            new_section.frag_map_ |= ((uint32_t)1<<index);
-        }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_));
-        alloc_section = new_section;
-        region_e region_new, region_old;
-        remote_read(&region_old, sizeof(region_e), region_metadata_addr(section_offset*region_per_section+index), global_rkey_);
-        region_index = section_offset*region_per_section+index;
-        do {
-            retry_time++;
-            region_new = region_old;
-            if(region_new.exclusive_ == 1) {
-                printf("impossible problem: exclusive is already set\n");
-                return retry_time*(-1);
-            }
-            region_new.exclusive_ = 1;
-            region_new.on_use_ = 1;
-        }while(!remote_CAS(*(uint64_t*)&region_new, (uint64_t*)&region_old, region_metadata_addr(region_index), global_rkey_));
-        region_old = region_new;
-        alloc_region = region_old;
-        return retry_time;
-    } else {
-        bool on_empty = false;
-        section_e new_section;
-        uint32_t empty_map, chance_map, normal_map;
-        int index;
-        // skip a read, only read at CAS failed
-        // remote_read(&alloc_section, sizeof(section_e), section_metadata_addr(section_offset), global_rkey_);
-        do {
-            retry_time++;
-            int rand_val = mt()%32;
-            uint32_t random_frag = ((alloc_section.frag_map_|skip_mask) >> (32 - rand_val) | ((alloc_section.frag_map_|skip_mask) << rand_val));
-            uint32_t random_alloc = ((alloc_section.alloc_map_|skip_mask) >> (32 - rand_val) | ((alloc_section.alloc_map_|skip_mask) << rand_val));
-            empty_map = random_frag | random_alloc;
-            chance_map = ~random_frag | random_alloc;
-            normal_map = random_frag | ~random_alloc;
-            if( (index = find_free_index_from_bitmap32_tail(normal_map)) != -1 ){
-                // no modify on map status
-                index = (index - rand_val + 32) % 32;
-                new_section = alloc_section;
-                // raise_bit(new_section.alloc_map_, new_section.frag_map_, index);    
-                on_empty = false;
-            } else if( (index = find_free_index_from_bitmap32_tail(empty_map)) != -1 ){
-                // mark the empty map to allocated
-                index = (index - rand_val + 32) % 32;
-                new_section = alloc_section;
-                raise_bit(new_section.alloc_map_, new_section.frag_map_, index);    
-                on_empty = true;
-            } 
-            else if( use_chance && (index = find_free_index_from_bitmap32_tail(chance_map)) != -1 ){
-                // mark the chance map to full
-                index = (index - rand_val + 32) % 32;
-                new_section = alloc_section;
-                on_empty = false;
-                // raise_bit(new_section.alloc_map_, new_section.frag_map_, index);
-            } 
-            else {
-                return retry_time*(-1);
-            }
-        }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_));
-        region_e region_new;
-        alloc_section = new_section;
-        region_index = section_offset*region_per_section+index;
-        // read region info
-        remote_read(&alloc_region, sizeof(region_e), region_metadata_addr(region_index), global_rkey_);
-        if (on_empty) {
-            do {
-                retry_time++;
-                region_new = alloc_region;
-                if(region_new.on_use_ == 1) {
-                    printf("impossible problem: on_use is already set\n");
-                    return retry_time*(-1);
-                }
-                region_new.on_use_ = 1;
-            }while(!remote_CAS(*(uint64_t*)&region_new, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_));
+            // raise_bit(new_section.alloc_map_, new_section.frag_map_, index);    
+            on_empty = false;
+        } else if( (index = find_free_index_from_bitmap16_tail(empty_map)) != -1 ){
+            // mark the empty map to allocated
+            index = (index - rand_val + 16) % 16;
+            new_section = alloc_section;
+            raise_bit(new_section.alloc_map_, new_section.frag_map_, index);    
+            on_empty = true;
+        } 
+        else if( use_chance && (index = find_free_index_from_bitmap16_tail(chance_map)) != -1 ){
+            // mark the chance map to full
+            index = (index - rand_val + 16) % 16;
+            new_section = alloc_section;
+            on_empty = false;
+            // raise_bit(new_section.alloc_map_, new_section.frag_map_, index);
+        } 
+        else {
+            return retry_time*(-1);
         }
-        return retry_time;
+    }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_));
+    region_e region_new;
+    alloc_section = new_section;
+    region_index = section_offset*region_per_section+index;
+    // read region info
+    remote_read(&alloc_region, sizeof(region_e), region_metadata_addr(region_index), global_rkey_);
+    if (on_empty) {
+        do {
+            retry_time++;
+            region_new = alloc_region;
+            if(region_new.on_use_ == 1) {
+                printf("impossible problem: on_use is already set\n");
+                return retry_time*(-1);
+            }
+            region_new.on_use_ = 1;
+        }while(!remote_CAS(*(uint64_t*)&region_new, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_));
     }
-    return 0;
+    return retry_time;
 }
 
 // Why region need an exclusive bit?

@@ -75,7 +75,6 @@ public:
     inline bool check_section(section_e alloc_section, alloc_advise advise, uint32_t offset);
     bool force_update_section_state(section_e &section, uint32_t region_index, alloc_advise advise);
     bool force_update_section_state(section_e &section, uint32_t region_index, alloc_advise advise, alloc_advise compare);
-    bool force_update_region_state(region_e &alloc_region, uint32_t region_index, bool is_exclusive, bool on_use);
     int find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
 
     int fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) ;

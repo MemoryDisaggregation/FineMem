@@ -22,7 +22,6 @@ namespace mralloc {
             }
             
             for(int i = 0; i < region_num_; i++) {
-                init_region_header.exclusive_ = 0;
                 region_header_[i].store(init_region_header);
             }
             block_e blank = {0,0};
@@ -60,8 +59,8 @@ namespace mralloc {
                 do{
                     int offset = i/block_per_region%region_per_section;
                     new_sect = sect;
-                    new_sect.alloc_map_ &= ~((uint32_t)1<<(offset));
-                    new_sect.frag_map_ &= ~((uint32_t)1<<(offset));
+                    new_sect.alloc_map_ &= ~((uint16_t)1<<(offset));
+                    new_sect.frag_map_ &= ~((uint16_t)1<<(offset));
                 }while(!section_header_[i/block_per_region/region_per_section].compare_exchange_weak(sect, new_sect));
             }
         } 
@@ -142,15 +141,15 @@ namespace mralloc {
             printf("metadata out of bound\n");
         }
 
-        section_e init_section_header = {0,0};
-        region_e init_region_header = {0, 0, 0, 0, 0, 1, 0};
+        // [TODO] Why there is a 1?
+        section_e init_section_header = {0,0  , 0, 0, 0, 0, 1, 0, 0};
+        region_e init_region_header = {0, 0, 0, 0, 0, 1, 0, 0};
 
         for(int i = 0; i < section_num_; i++) {
             section_header_[i].store(init_section_header);
         }
         
         for(int i = 0; i < region_num_; i++) {
-            init_region_header.exclusive_ = 0;
             region_header_[i].store(init_region_header);
         }
         block_e blank = {0,0};
@@ -166,13 +165,13 @@ namespace mralloc {
     inline bool ServerBlockManager::check_section(section_e alloc_section, alloc_advise advise, uint32_t offset) {
         switch (advise) {
         case alloc_empty:
-            return ((~alloc_section.alloc_map_ & ~alloc_section.frag_map_) & (bitmap32)1<< offset) != 0;
+            return ((~alloc_section.alloc_map_ & ~alloc_section.frag_map_) & (bitmap16)1<< offset) != 0;
         case alloc_light:
-            return ((alloc_section.alloc_map_ & ~alloc_section.frag_map_) & (bitmap32)1<< offset) != 0;
+            return ((alloc_section.alloc_map_ & ~alloc_section.frag_map_) & (bitmap16)1<< offset) != 0;
         case alloc_heavy:
-            return ((~alloc_section.alloc_map_ & alloc_section.frag_map_) & (bitmap32)1<< offset) != 0;
+            return ((~alloc_section.alloc_map_ & alloc_section.frag_map_) & (bitmap16)1<< offset) != 0;
         case alloc_full:
-            return ((alloc_section.alloc_map_ & alloc_section.frag_map_) & (bitmap32)1<< offset) != 0;
+            return ((alloc_section.alloc_map_ & alloc_section.frag_map_) & (bitmap16)1<< offset) != 0;
         }   
         return false;
     }
@@ -190,8 +189,8 @@ namespace mralloc {
                     return false;
                 }
                 section_new = section;
-                section_new.alloc_map_ |= (uint32_t)1 << region_offset;
-                section_new.frag_map_ |= (uint32_t)1 << region_offset;
+                section_new.alloc_map_ |= (uint16_t)1 << region_offset;
+                section_new.frag_map_ |= (uint16_t)1 << region_offset;
             }while(!section_header_[section_offset].compare_exchange_strong(section, section_new));
             return true;
         } else if(advise == alloc_empty) {
@@ -202,8 +201,8 @@ namespace mralloc {
                     return false;
                 }
                 section_new = section;
-                section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
-                section_new.frag_map_ &= ~((bitmap32)1 << region_offset);
+                section_new.alloc_map_ &= ~((bitmap16)1 << region_offset);
+                section_new.frag_map_ &= ~((bitmap16)1 << region_offset);
             }while(!section_header_[section_offset].compare_exchange_strong(section, section_new));
             return true;
         } else if(advise == alloc_light) {
@@ -214,8 +213,8 @@ namespace mralloc {
                     return false;
                 }
                 section_new = section;
-                section_new.frag_map_ &= ~((bitmap32)1 << region_offset);
-                section_new.alloc_map_ |= (uint32_t)1 << region_offset;
+                section_new.frag_map_ &= ~((bitmap16)1 << region_offset);
+                section_new.alloc_map_ |= (uint16_t)1 << region_offset;
             }while(!section_header_[section_offset].compare_exchange_strong(section, section_new));
             return true;
         } else if(advise == alloc_heavy) {
@@ -226,8 +225,8 @@ namespace mralloc {
                     return false;
                 }
                 section_new = section;
-                section_new.frag_map_ |= (uint32_t)1 << region_offset;
-                section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
+                section_new.frag_map_ |= (uint16_t)1 << region_offset;
+                section_new.alloc_map_ &= ~((bitmap16)1 << region_offset);
             }while(!section_header_[section_offset].compare_exchange_strong(section, section_new));
             return true;
         }
@@ -247,8 +246,8 @@ namespace mralloc {
                     return false;
                 }
                 section_new = section;
-                section_new.alloc_map_ |= (uint32_t)1 << region_offset;
-                section_new.frag_map_ |= (uint32_t)1 << region_offset;
+                section_new.alloc_map_ |= (uint16_t)1 << region_offset;
+                section_new.frag_map_ |= (uint16_t)1 << region_offset;
             }while(!section_header_[section_offset].compare_exchange_strong(section, section_new));
             return true;
         } else if(advise == alloc_empty) {
@@ -259,8 +258,8 @@ namespace mralloc {
                     return false;
                 }
                 section_new = section;
-                section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
-                section_new.frag_map_ &= ~((bitmap32)1 << region_offset);
+                section_new.alloc_map_ &= ~((bitmap16)1 << region_offset);
+                section_new.frag_map_ &= ~((bitmap16)1 << region_offset);
             }while(!section_header_[section_offset].compare_exchange_strong(section, section_new));
             return true;
         } else if(advise == alloc_light) {
@@ -271,8 +270,8 @@ namespace mralloc {
                     return false;
                 }
                 section_new = section;
-                section_new.frag_map_ &= ~((bitmap32)1 << region_offset);
-                section_new.alloc_map_ |= (uint32_t)1 << region_offset;
+                section_new.frag_map_ &= ~((bitmap16)1 << region_offset);
+                section_new.alloc_map_ |= (uint16_t)1 << region_offset;
             }while(!section_header_[section_offset].compare_exchange_strong(section, section_new));
             return true;
         } else if(advise == alloc_heavy) {
@@ -283,8 +282,8 @@ namespace mralloc {
                     return false;
                 }
                 section_new = section;
-                section_new.frag_map_ |= (uint32_t)1 << region_offset;
-                section_new.alloc_map_ &= ~((bitmap32)1 << region_offset);
+                section_new.frag_map_ |= (uint16_t)1 << region_offset;
+                section_new.alloc_map_ &= ~((bitmap16)1 << region_offset);
             }while(!section_header_[section_offset].compare_exchange_strong(section, section_new));
             return true;
         }
@@ -302,7 +301,7 @@ namespace mralloc {
                 retry_time++;
                 for(int j = 0; j < fetch; j++) {
                     section = section_header_[index+j].load();
-                    if((section.frag_map_ & section.alloc_map_) != ~(uint32_t)0){
+                    if((section.frag_map_ & section.alloc_map_) != ~(uint16_t)0){
                         alloc_section = section;
                         section_offset = index + j;
                         return true;
@@ -316,7 +315,7 @@ namespace mralloc {
                 retry_time++;
                 for(int j = 0; j < fetch; j++) {
                     section = section_header_[index+j].load();
-                    if((section.frag_map_) != ~(uint32_t)0){
+                    if((section.frag_map_) != ~(uint16_t)0){
                         alloc_section = section;
                         section_offset = index + j;
                         return true;
@@ -329,7 +328,7 @@ namespace mralloc {
             while(remain > 0) {
                 for(int j = 0; j < fetch; j++) {
                     section = section_header_[index+j].load();
-                    if((section.frag_map_ | section.alloc_map_) != ~(uint32_t)0){
+                    if((section.frag_map_ | section.alloc_map_) != ~(uint16_t)0){
                         alloc_section = section;
                         section_offset = index + j;
                         return true;
@@ -340,12 +339,12 @@ namespace mralloc {
         }
     }
 
-    int ServerBlockManager::fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) {
+    int ServerBlockManager::fetch_region(section_e &alloc_section, uint32_t section_offset, uint16_t size_class, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) {
         int retry_time = 0;
         if(shared == false) {
             // force use unclassed one to alloc single block
             section_e new_section;
-            uint32_t free_map;
+            uint16_t free_map;
             int index;
             do {
                 retry_time++;
@@ -354,8 +353,8 @@ namespace mralloc {
                     return retry_time*(-1);
                 }
                 new_section = alloc_section;
-                new_section.alloc_map_ |= ((uint32_t)1<<index);
-                new_section.frag_map_ |= ((uint32_t)1<<index);
+                new_section.alloc_map_ |= ((uint16_t)1<<index);
+                new_section.frag_map_ |= ((uint16_t)1<<index);
             }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
             alloc_section = new_section;
             region_e region_new, region_old;
@@ -377,30 +376,30 @@ namespace mralloc {
         } else {
             bool on_empty = false;
             section_e new_section;
-            uint32_t empty_map, chance_map, normal_map;
+            uint16_t empty_map, chance_map, normal_map;
             int index;
             do {
                 retry_time++;
-                int rand_val = mt()%32;
-                uint32_t random_frag = (alloc_section.frag_map_ >> (32 - rand_val) | (alloc_section.frag_map_ << rand_val));
-                uint32_t random_alloc = (alloc_section.alloc_map_ >> (32 - rand_val) | (alloc_section.alloc_map_ << rand_val));
+                int rand_val = mt()%16;
+                uint16_t random_frag = (alloc_section.frag_map_ >> (16 - rand_val) | (alloc_section.frag_map_ << rand_val));
+                uint16_t random_alloc = (alloc_section.alloc_map_ >> (16 - rand_val) | (alloc_section.alloc_map_ << rand_val));
                 empty_map = random_frag | random_alloc;
                 chance_map = ~random_frag | random_alloc;
                 normal_map = random_frag | ~random_alloc;
-                if( (index = find_free_index_from_bitmap32_tail(normal_map)) != -1 ){
+                if( (index = find_free_index_from_bitmap16_tail(normal_map)) != -1 ){
                     // no modify on map status
-                    index = (index - rand_val + 32) % 32;
+                    index = (index - rand_val + 16) % 16;
                     new_section = alloc_section;
                     on_empty = false;
-                } else if( (index = find_free_index_from_bitmap32_tail(empty_map)) != -1 ){
+                } else if( (index = find_free_index_from_bitmap16_tail(empty_map)) != -1 ){
                     // mark the chance map to full
-                    index = (index - rand_val + 32) % 32;
+                    index = (index - rand_val + 16) % 16;
                     new_section = alloc_section;
                     raise_bit(new_section.alloc_map_, new_section.frag_map_, index);
                     on_empty = true;
-                } else if( (index = find_free_index_from_bitmap32_tail(chance_map)) != -1 ){
+                } else if( (index = find_free_index_from_bitmap16_tail(chance_map)) != -1 ){
                     // mark the empty map to allocated
-                    index = (index - rand_val + 32) % 32;
+                    index = (index - rand_val + 16) % 16;
                     new_section = alloc_section;
                     on_empty = false;
                 } else {

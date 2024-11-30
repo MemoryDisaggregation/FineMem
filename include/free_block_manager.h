@@ -58,15 +58,14 @@ struct large_block {
     uint64_t offset;
 };
 
-/*
+/* section the same as region
 */
 struct section_e {
     bitmap16 frag_map_;
     bitmap16 alloc_map_;
     // max_length, 1~32 
     uint16_t retry_ : 2;
-    // if exclusive_ = 0, this whole 1GB region is exclusive to some client
-    // or it is used by an allocation of multiple GB memory
+    // [TODO] no used?
     uint16_t exclusive_ : 1;
     // on use to check whether it has been freed
     uint16_t on_use_ : 1;
@@ -87,8 +86,7 @@ struct region_e {
     bitmap32 base_map_;
     // max_length, 1~32 
     uint16_t retry_ : 2;
-    // if exclusive_ = 0, this whole 1GB region is exclusive to some client
-    // or it is used by an allocation of multiple GB memory
+    // [TODO] no used?
     uint16_t exclusive_ : 1;
     // on use to check whether it has been freed
     uint16_t on_use_ : 1;
@@ -257,22 +255,16 @@ public:
         double utilization = 0;
         uint64_t managed = 0;
         for(int i = 0; i< section_num_; i++) {
-            uint32_t empty_map = section_header_[i].load().alloc_map_ | section_header_[i].load().frag_map_;
-            uint32_t exclusive_map = ~section_header_[i].load().alloc_map_ | ~section_header_[i].load().frag_map_;
+            uint16_t empty_map = section_header_[i].load().alloc_map_ | section_header_[i].load().frag_map_;
+            uint16_t exclusive_map = ~section_header_[i].load().alloc_map_ | ~section_header_[i].load().frag_map_;
             uint32_t use_counter;
             for(int j = 0; j < region_per_section; j ++) {
-                // if(empty_map%2 == 0) {
-                //     empty += 1;
-                // } else if(exclusive_map%2 == 0) {
-                //     exclusive += 1;
-                // } else {
                 use_counter = block_per_region - free_bit_in_bitmap32(region_header_[i*region_per_section + j].load().base_map_);
                 used += use_counter;
                 if(use_counter > 0){
                     managed += 1;
                     utilization += 1.0*use_counter/block_per_region;
                 }
-                // }
                 empty_map >>= 1;
                 exclusive_map >>= 1;
             }
@@ -292,7 +284,6 @@ public:
     uint64_t get_heap_start() {return heap_start_;};
     bool force_update_section_state(section_e &section, uint32_t region_index, alloc_advise advise);
     bool force_update_section_state(section_e &section, uint32_t region_index, alloc_advise advise, alloc_advise compare);
-    bool force_update_region_state(region_e &alloc_region, uint32_t region_index, bool is_exclusive, bool on_use);
     int find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
 
     int fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) ;
