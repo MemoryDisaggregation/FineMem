@@ -988,13 +988,16 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
 }
 
 // find a new section avaliable for an allocation with advise(usually alloc_full)
-int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
+int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, alloc_advise advise) {
     int retry_time = 0;
     section_e section[8] = {0,0};
     section_offset += 1;
     int offset = (section_offset)%section_num_;
-    // int offset = (section_offset+mt())%section_num_;
     // each epoch fetch 8 sections, 8*8B = 64Byte
+    if(size_class >= 9) {
+        // Search for several section with full 00
+        // Lock, update, and finally release
+    }
     if (advise == alloc_heavy) {
         int remain = section_num_, fetch = (offset + 8) > section_num_ ? (section_num_ - offset):8, index = offset;
         // if there are not fully alloc_full, this section can be used
@@ -1048,7 +1051,7 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
 }
 
 // find an avalible region, exclusive, single
-int RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) {
+int RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_offset, uint16_t size_class, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) {
     int retry_time = 0;
     bool on_empty = false;
     section_e new_section;
@@ -1056,73 +1059,71 @@ int RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_offs
     int index;
     // skip a read, only read at CAS failed
     // remote_read(&alloc_section, sizeof(section_e), section_metadata_addr(section_offset), global_rkey_);
-    do {
-        retry_time++;
-        int rand_val = mt()%16;
-        uint16_t random_frag = ((alloc_section.frag_map_|skip_mask) >> (16 - rand_val) | ((alloc_section.frag_map_|skip_mask) << rand_val));
-        uint16_t random_alloc = ((alloc_section.alloc_map_|skip_mask) >> (16 - rand_val) | ((alloc_section.alloc_map_|skip_mask) << rand_val));
-        empty_map = random_frag | random_alloc;
-        chance_map = ~random_frag | random_alloc;
-        normal_map = random_frag | ~random_alloc;
-        if( (index = find_free_index_from_bitmap16_tail(normal_map)) != -1 ){
-            // no modify on map status
-            index = (index - rand_val + 16) % 16;
-            new_section = alloc_section;
-            // raise_bit(new_section.alloc_map_, new_section.frag_map_, index);    
-            on_empty = false;
-        } else if( (index = find_free_index_from_bitmap16_tail(empty_map)) != -1 ){
-            // mark the empty map to allocated
-            index = (index - rand_val + 16) % 16;
-            new_section = alloc_section;
-            raise_bit(new_section.alloc_map_, new_section.frag_map_, index);    
-            on_empty = true;
-        } 
-        else if( use_chance && (index = find_free_index_from_bitmap16_tail(chance_map)) != -1 ){
-            // mark the chance map to full
-            index = (index - rand_val + 16) % 16;
-            new_section = alloc_section;
-            on_empty = false;
-            // raise_bit(new_section.alloc_map_, new_section.frag_map_, index);
-        } 
-        else {
-            return retry_time*(-1);
-        }
-    }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_));
-    region_e region_new;
-    alloc_section = new_section;
-    region_index = section_offset*region_per_section+index;
-    // read region info
-    remote_read(&alloc_region, sizeof(region_e), region_metadata_addr(region_index), global_rkey_);
-    if (on_empty) {
+    // int region_require_num, region_require_size;
+    if(size_class < 5) {
+        // fetch single region
+        // scan whole chunks
+        int block_require_num = 1<<(size_class);
+        int block_require_size = 1<<(block_require_num);
         do {
             retry_time++;
-            region_new = alloc_region;
-            if(region_new.on_use_ == 1) {
-                printf("impossible problem: on_use is already set\n");
+            int rand_val = mt()%16;
+            uint16_t random_frag = ((alloc_section.frag_map_|skip_mask) >> (16 - rand_val) | ((alloc_section.frag_map_|skip_mask) << rand_val));
+            uint16_t random_alloc = ((alloc_section.alloc_map_|skip_mask) >> (16 - rand_val) | ((alloc_section.alloc_map_|skip_mask) << rand_val));
+            empty_map = random_frag | random_alloc;
+            chance_map = ~random_frag | random_alloc;
+            normal_map = random_frag | ~random_alloc;
+            if( (index = find_free_index_from_bitmap16_tail(normal_map)) != -1 ){
+                // no modify on map status
+                index = (index - rand_val + 16) % 16;
+                new_section = alloc_section;
+                // raise_bit(new_section.alloc_map_, new_section.frag_map_, index);    
+                on_empty = false;
+            } else if( (index = find_free_index_from_bitmap16_tail(empty_map)) != -1 ){
+                // mark the empty map to allocated
+                index = (index - rand_val + 16) % 16;
+                new_section = alloc_section;
+                raise_bit(new_section.alloc_map_, new_section.frag_map_, index);    
+                on_empty = true;
+            } 
+            else if( use_chance && (index = find_free_index_from_bitmap16_tail(chance_map)) != -1 ){
+                // mark the chance map to full
+                index = (index - rand_val + 16) % 16;
+                new_section = alloc_section;
+                on_empty = false;
+                // raise_bit(new_section.alloc_map_, new_section.frag_map_, index);
+            } 
+            else {
                 return retry_time*(-1);
             }
-            region_new.on_use_ = 1;
-        }while(!remote_CAS(*(uint64_t*)&region_new, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_));
-    }
-    return retry_time;
-}
-
-// Why region need an exclusive bit?
-// Because someone can incorrectly use an exclusive region after a region is set as empty but a user not known and further use this region info
-// To immediately find its exclusive, this state will be marked in the region info, importantly
-bool RDMAConnection::force_update_region_state(region_e &alloc_region, uint32_t region_index, bool is_exclusive, bool on_use) {
-    region_e new_region;
-    do {
-        new_region = alloc_region;
-        if(new_region.exclusive_ == is_exclusive) {
-            printf("impossible situation: exclusive has already been set\n");
-            return false;
+        }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_));
+        region_e region_new;
+        alloc_section = new_section;
+        region_index = section_offset*region_per_section+index;
+        // read region info
+        remote_read(&alloc_region, sizeof(region_e), region_metadata_addr(region_index), global_rkey_);
+        if (on_empty) {
+            do {
+                retry_time++;
+                region_new = alloc_region;
+                if(region_new.on_use_ == 1) {
+                    printf("impossible problem: on_use is already set\n");
+                    return retry_time*(-1);
+                }
+                region_new.on_use_ = 1;
+            }while(!remote_CAS(*(uint64_t*)&region_new, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_));
         }
-        new_region.on_use_ = on_use;
-        new_region.exclusive_ = is_exclusive;
-    } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_));
-    alloc_region = new_region;
-    return true;
+        return retry_time;
+    } else if(size_class < 9){
+        // fetch multiple regions
+        // just set the section as 11
+        int region_require_num = 1<<(size_class - 5);
+        int region_require_size = 1<<(region_require_num);
+
+    } else {
+        // should be solved at find section?
+    }
+    return 0;
 }
 
 // the core function of fetch a single block from a region

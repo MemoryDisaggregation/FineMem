@@ -154,21 +154,21 @@ inline int find_free_index_from_bitmap32_lead(uint32_t bitmap) {
     return 31-__builtin_clz(~bitmap);
 }
 
-inline void raise_bit(uint32_t &alloc_map, uint32_t & frag_map, uint32_t index){
+inline void raise_bit(uint16_t &alloc_map, uint16_t & frag_map, uint16_t index){
     if((alloc_map >> index) % 2 == 0) {
-        alloc_map |= (uint32_t)1<<index;
+        alloc_map |= (uint16_t)1<<index;
     } else {
-        alloc_map &= ~((uint32_t)1<<index);
-        frag_map |= (uint32_t)1<<index;
+        alloc_map &= ~((uint16_t)1<<index);
+        frag_map |= (uint16_t)1<<index;
     }
 }
 
-inline void down_bit(uint32_t &alloc_map, uint32_t & frag_map, uint32_t index){
+inline void down_bit(uint16_t &alloc_map, uint16_t & frag_map, uint16_t index){
     if((alloc_map >> index) % 2 == 1) {
-        alloc_map &= ~((uint32_t)1<<index);
+        alloc_map &= ~((uint16_t)1<<index);
     } else {
-        frag_map &= ~((uint32_t)1<<index);
-        alloc_map |= (uint32_t)1<<index;
+        frag_map &= ~((uint16_t)1<<index);
+        alloc_map |= (uint16_t)1<<index;
     }
 }
 
@@ -284,9 +284,9 @@ public:
     uint64_t get_heap_start() {return heap_start_;};
     bool force_update_section_state(section_e &section, uint32_t region_index, alloc_advise advise);
     bool force_update_section_state(section_e &section, uint32_t region_index, alloc_advise advise, alloc_advise compare);
-    int find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
+    int find_section(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, alloc_advise advise) ;
 
-    int fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) ;
+    int fetch_region(section_e &alloc_section, uint32_t section_offset, uint16_t size_class, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) ;
     int free_region_block(uint64_t addr, bool is_exclusive, uint16_t block_class);
 
     inline uint64_t get_section_region_addr(uint32_t section_offset, uint32_t region_offset) {return heap_start_ + section_offset*section_size_ + region_offset * region_size_ ;};

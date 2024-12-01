@@ -28,12 +28,11 @@ void ComputingNode::woker(int proc) {
         if (m_rdma_conn[i]->init(ips[i], ports[i], 1, 1, node_id_)) return;
         sleep(1);
     }
-    m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_light);
+    m_rdma_conn[node_]->find_section(section_, section_index_, 0, mralloc::alloc_light);
     m_rdma_conn[node_]->fetch_region(section_, section_index_, 
-                            true, false, region_, region_index_, 0);
+                            0, false, region_, region_index_, 0);
     while(1){
         sem_wait(cpu_cache_->doorbell[proc]);
-        // printf("recieve request from %d\n", proc);
         switch(cpu_cache_->buffer_[proc].opcode_){
             /*  allocation class: 
                 0 --> 1 --> 4KB <====== using layer 2
@@ -60,9 +59,9 @@ void ComputingNode::woker(int proc) {
                 while((result = m_rdma_conn[node_]->fetch_region_block(section_, region_, remote_addr.addr, remote_addr.rkey, false, region_index_, bin_size)) < 0){
                     cas_time += (-1)*result;
                     if(!slow_path){
-                        while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, true, false, region_, region_index_, 0)) < 0){
+                        while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, bin_size, false, region_, region_index_, 0)) < 0){
                             region_time += (-1)*result;
-                            if((result = m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_light)) < 0){
+                            if((result = m_rdma_conn[node_]->find_section(section_, section_index_, bin_size, mralloc::alloc_light)) < 0){
                                 slow_path = true;
                                 section_time += (-1)*result;
                                 break;
@@ -70,9 +69,9 @@ void ComputingNode::woker(int proc) {
                         }
                         region_time += result;
                     } else {
-                        while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, true, true, region_, region_index_, 0)) < 0){
+                        while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, bin_size, true, region_, region_index_, 0)) < 0){
                             region_time += (-1)*result;
-                            if((result = m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_heavy)) < 0){
+                            if((result = m_rdma_conn[node_]->find_section(section_, section_index_, bin_size, mralloc::alloc_heavy)) < 0){
                                 section_time += (-1)*result;
                                 node_ = (node_+1) % node_num_;
                                 remote_addr.node = node_;
@@ -85,13 +84,13 @@ void ComputingNode::woker(int proc) {
                 }
                 cas_time += result;
                 if(cas_time > retry_threshold && !slow_path) {
-                    if((result = m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_light)) < 0){
+                    if((result = m_rdma_conn[node_]->find_section(section_, section_index_, bin_size, mralloc::alloc_light)) < 0){
                         slow_path = true;
                         section_time += (-1)*result;
                     }else section_time += result;
-                    while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, true, false, region_, region_index_, 0)) < 0){
+                    while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, bin_size, false, region_, region_index_, 0)) < 0){
                         region_time += (-1)*result;
-                        if((result = m_rdma_conn[node_]->find_section(section_, section_index_, mralloc::alloc_light)) < 0){
+                        if((result = m_rdma_conn[node_]->find_section(section_, section_index_, bin_size, mralloc::alloc_light)) < 0){
                             slow_path = true;
                             section_time += (-1)*result;
                             break;
@@ -247,7 +246,7 @@ bool ComputingNode::start(std::string* addr, std::string* port, uint32_t node_nu
 }
 
 bool ComputingNode::new_cache_section(alloc_advise advise, uint32_t node){
-    if(!m_rdma_conn_[node]->find_section(current_section_, current_section_index_, advise) ) {
+    if(!m_rdma_conn_[node]->find_section(current_section_, current_section_index_, 0, advise) ) {
         printf("cannot find avaliable section\n");
         return false;
     }
@@ -256,7 +255,7 @@ bool ComputingNode::new_cache_section(alloc_advise advise, uint32_t node){
 }
 
 bool ComputingNode::new_backup_section(uint32_t node){
-    if(!m_rdma_conn_[node]->find_section(backup_section_, backup_section_index_, alloc_light) ) {
+    if(!m_rdma_conn_[node]->find_section(backup_section_, backup_section_index_, 0, alloc_light) ) {
         printf("cannot find avaliable backup section\n");
         return false;
     }
@@ -267,7 +266,7 @@ bool ComputingNode::new_backup_section(uint32_t node){
 bool ComputingNode::new_cache_region() {
     // exclusive, and fetch rkey must
     region_e new_region; uint32_t new_region_index;
-    while(!m_rdma_conn_[current_node_]->fetch_region(current_section_, current_section_index_, false, false, new_region, new_region_index, 0) ) {
+    while(!m_rdma_conn_[current_node_]->fetch_region(current_section_, current_section_index_, 0, false, new_region, new_region_index, 0) ) {
         if(!new_cache_section(alloc_empty, current_node_)){
             current_node_ = (current_node_+1) % node_num_;
             printf("[cache single region] try to scan next node %d\n", current_node_);
@@ -282,7 +281,7 @@ bool ComputingNode::new_cache_region() {
 
 bool ComputingNode::new_backup_region() {
         // exclusive, and fetch rkey must
-    while(!m_rdma_conn_[backup_node_]->fetch_region(backup_section_, backup_section_index_, true, true, backup_region_, backup_region_index_, 0) ) {
+    while(!m_rdma_conn_[backup_node_]->fetch_region(backup_section_, backup_section_index_, 0, true, backup_region_, backup_region_index_, 0) ) {
         if(!new_backup_section(backup_node_)){
             backup_node_ = (backup_node_+1) % node_num_;
             printf("[cache backup region] try to scan next node %d\n", backup_node_);

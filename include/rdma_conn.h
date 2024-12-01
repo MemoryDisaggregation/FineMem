@@ -75,9 +75,9 @@ public:
     inline bool check_section(section_e alloc_section, alloc_advise advise, uint32_t offset);
     bool force_update_section_state(section_e &section, uint32_t region_index, alloc_advise advise);
     bool force_update_section_state(section_e &section, uint32_t region_index, alloc_advise advise, alloc_advise compare);
-    int find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
+    int find_section(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, alloc_advise advise) ;
 
-    int fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) ;
+    int fetch_region(section_e &alloc_section, uint32_t section_offset, uint16_t size_class, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) ;
     bool fetch_exclusive_region_rkey(uint32_t region_index, rkey_table_e* rkey_list) {
         // uint32_t new_rkey[block_per_region];
         // memset(new_rkey, (uint32_t)-1, sizeof(uint32_t)*block_per_region);

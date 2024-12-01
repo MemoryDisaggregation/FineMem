@@ -340,8 +340,8 @@ public:
         conn_ = conn;
         skip_mask = 0;
         cache_region_index = start_hint;
-        conn_->find_section(cache_section, cache_section_index, mralloc::alloc_light);
-        conn_->fetch_region(cache_section, cache_section_index, true, false, cache_region, cache_region_index, skip_mask);
+        conn_->find_section(cache_section, cache_section_index, 0, mralloc::alloc_light);
+        conn_->fetch_region(cache_section, cache_section_index, alloc_class, false, cache_region, cache_region_index, skip_mask);
     }
     ~share_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
@@ -354,10 +354,10 @@ public:
             if(alloc_class>0)
                 skip_mask += 1 << (cache_region_index%32);
             if(!slow_path){
-                while((result = conn_->fetch_region(cache_section, cache_section_index, true, false, cache_region, cache_region_index, skip_mask)) < 0){
+                while((result = conn_->fetch_region(cache_section, cache_section_index, alloc_class, false, cache_region, cache_region_index, skip_mask)) < 0){
                     region_time += (-1)*result;
                     skip_mask = 0;
-                    if((result = conn_->find_section(cache_section, cache_section_index, mralloc::alloc_light)) < 0 || (result == first_section && ring == 2)){
+                    if((result = conn_->find_section(cache_section, cache_section_index, 0, mralloc::alloc_light)) < 0 || (result == first_section && ring == 2)){
                         slow_path = true;
                         section_time += (-1)*result;
                         ring  = 0;
@@ -371,10 +371,10 @@ public:
                 }
                 region_time += result;
             } else {
-                while((result = conn_->fetch_region(cache_section, cache_section_index, true, true, cache_region, cache_region_index, skip_mask)) < 0){
+                while((result = conn_->fetch_region(cache_section, cache_section_index, alloc_class, true, cache_region, cache_region_index, skip_mask)) < 0){
                     region_time += (-1)*result;
                     skip_mask = 0;
-                    if((result = conn_->find_section(cache_section, cache_section_index, mralloc::alloc_heavy)) < 0 || (result == first_section && ring == 2)){
+                    if((result = conn_->find_section(cache_section, cache_section_index, 0, mralloc::alloc_heavy)) < 0 || (result == first_section && ring == 2)){
                         section_time += (-1)*result;
                         printf("waiting for new section avaliable\n");
 			        }
@@ -392,13 +392,13 @@ public:
         if(cas_time >= mralloc::retry_threshold && !slow_path) {
             // if(alloc_class == 0){
             skip_mask = 0;
-            if((result = conn_->find_section(cache_section, cache_section_index, mralloc::alloc_light)) < 0){
+            if((result = conn_->find_section(cache_section, cache_section_index, alloc_class, mralloc::alloc_light)) < 0){
                 slow_path = true;
                 section_time += (-1)*result;
             }else section_time += result;
-            while((result = conn_->fetch_region(cache_section, cache_section_index, true, false, cache_region, cache_region_index, skip_mask)) < 0){
+            while((result = conn_->fetch_region(cache_section, cache_section_index, alloc_class, false, cache_region, cache_region_index, skip_mask)) < 0){
                 region_time += (-1)*result;
-                if((result = conn_->find_section(cache_section, cache_section_index, mralloc::alloc_light)) < 0){
+                if((result = conn_->find_section(cache_section, cache_section_index, alloc_class, mralloc::alloc_light)) < 0){
                     slow_path = true;
                     section_time += (-1)*result;
                     break;
@@ -446,8 +446,8 @@ class exclusive_allocator : test_allocator{
 public:
     exclusive_allocator(mralloc::ConnectionManager* conn) {
         conn_ = conn;
-        conn->find_section(cache_section, cache_section_index, mralloc::alloc_empty);
-        conn->fetch_region(cache_section, cache_section_index, false, false, cache_region.region, cache_region.index, 0);
+        conn->find_section(cache_section, cache_section_index, 0, mralloc::alloc_empty);
+        conn->fetch_region(cache_section, cache_section_index, 0, false, cache_region.region, cache_region.index, 0);
         conn->fetch_exclusive_region_rkey(cache_region.index, cache_region.rkey);
         region_record[cache_region.index] = cache_region;
     }
@@ -465,8 +465,8 @@ public:
                 }
             }
             if(!cache_useful) {
-                while(!conn_->fetch_region(cache_section, cache_section_index, false, false, cache_region.region, cache_region.index, 0)){
-                    if(!conn_->find_section(cache_section, cache_section_index, mralloc::alloc_empty)) {
+                while(!conn_->fetch_region(cache_section, cache_section_index, 0, false, cache_region.region, cache_region.index, 0)){
+                    if(!conn_->find_section(cache_section, cache_section_index, 0, mralloc::alloc_empty)) {
                         return false;
                     }
                 }

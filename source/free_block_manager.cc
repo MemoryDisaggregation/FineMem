@@ -290,7 +290,7 @@ namespace mralloc {
         return false;
     }
 
-    int ServerBlockManager::find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
+    int ServerBlockManager::find_section(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, alloc_advise advise) {
         int retry_time = 0;
         section_e section = {0,0};
         int offset = (section_offset + mt()) % section_num_;
@@ -338,6 +338,13 @@ namespace mralloc {
             }
         }
     }
+
+    /*  giving section header information, and current region search index
+        fetch region for different allocation requests:
+        size < 5: search inner a region
+        size >= 5: find several region
+
+    */
 
     int ServerBlockManager::fetch_region(section_e &alloc_section, uint32_t section_offset, uint16_t size_class, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) {
         int retry_time = 0;
@@ -424,21 +431,6 @@ namespace mralloc {
             return retry_time;
         }
         return 0;
-    }
-
-    bool ServerBlockManager::force_update_region_state(region_e &alloc_region, uint32_t region_index, bool is_exclusive, bool on_use) {
-        region_e new_region;
-        do {
-            new_region = alloc_region;
-            if(new_region.exclusive_ == is_exclusive) {
-                printf("impossible situation: exclusive has already been set\n");
-                return false;
-            }
-            new_region.on_use_ = on_use;
-            new_region.exclusive_ = is_exclusive;
-        } while(!region_header_[region_index].compare_exchange_strong(alloc_region, new_region));
-        alloc_region = new_region;
-        return true;
     }
 
     int ServerBlockManager::fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index, uint16_t block_class) {

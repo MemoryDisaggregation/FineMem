@@ -75,9 +75,9 @@ class ConnectionManager {
     };
 
     bool force_update_section_state(section_e &section, uint32_t region_index, alloc_advise advise);
-    int find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) ;
+    int find_section(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, alloc_advise advise) ;
 
-    int fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) ;
+    int fetch_region(section_e &alloc_section, uint32_t section_offset, uint16_t size_class, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) ;
 
     int fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index, uint16_t block_class) ;
     int fetch_region_batch(section_e &alloc_section, region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive, uint32_t region_index);

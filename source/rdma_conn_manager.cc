@@ -142,28 +142,20 @@ bool ConnectionManager::force_update_section_state(section_e &section, uint32_t 
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }
-int ConnectionManager::find_section(section_e &alloc_section, uint32_t &section_offset, alloc_advise advise) {
+int ConnectionManager::find_section(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, alloc_advise advise) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    int ret = conn->find_section(alloc_section, section_offset, advise);
+    int ret = conn->find_section(alloc_section, section_offset, size_class, advise);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
 }
 
-int ConnectionManager::fetch_region(section_e &alloc_section, uint32_t section_offset, bool shared, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) {
+int ConnectionManager::fetch_region(section_e &alloc_section, uint32_t section_offset, uint16_t size_class, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    int ret = conn->fetch_region(alloc_section, section_offset, shared, use_chance, alloc_region, region_index, skip_mask);
+    int ret = conn->fetch_region(alloc_section, section_offset, size_class, use_chance, alloc_region, region_index, skip_mask);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;
-}
-
-bool ConnectionManager::force_update_region_state(region_e &alloc_region, uint32_t region_index, bool is_exclusive, bool on_use) {
-    RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
-    assert(conn != nullptr);
-    bool ret = conn->force_update_region_state(alloc_region, region_index, is_exclusive, on_use);
-    m_rpc_conn_queue_->enqueue(conn);
-    return ret;      
 }
 
 int ConnectionManager::fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index, uint16_t block_class) {

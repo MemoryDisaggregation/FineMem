@@ -191,7 +191,7 @@ void MemoryNode::rebinder() {
 
 bool MemoryNode::new_cache_section(){
     alloc_advise advise = alloc_light;
-    if(!server_block_manager_->find_section(current_section_, current_section_index_, advise) ) {
+    if(!server_block_manager_->find_section(current_section_, current_section_index_, 0, advise) ) {
         printf("cannot find avaliable section\n");
         return false;
     }
@@ -199,7 +199,7 @@ bool MemoryNode::new_cache_section(){
 }
 
 bool MemoryNode::new_cache_region() {
-    while(!server_block_manager_->fetch_region(current_section_, current_section_index_, true, true, current_region_, current_region_index_, 0) ) {
+    while(!server_block_manager_->fetch_region(current_section_, current_section_index_, 0, true, current_region_, current_region_index_, 0) ) {
         if(!new_cache_section())
             return false;
     }
