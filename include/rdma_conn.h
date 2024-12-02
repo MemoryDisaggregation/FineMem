@@ -129,14 +129,21 @@ public:
     int free_region_block(uint64_t addr, bool is_exclusive, uint16_t block_class) ;
     int free_region_batch(uint32_t region_offset, uint32_t free_bitmap, bool is_exclusive);
 
+    int full_alloc(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, uint64_t &addr, uint32_t &rkey);
+    int full_free(uint64_t addr, uint16_t block_class);
+
     int fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
+    int region_alloc(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, uint64_t &addr, uint32_t &rkey);
+    int chunk_alloc(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, bool use_chance, uint64_t &addr, uint32_t &rkey);
+    
     int free_block(uint64_t addr) ;
+    int section_alloc(uint32_t &section_offset, uint16_t size_class, uint64_t &addr, uint32_t &rkey);
 
     int fetch_block_bitmap(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
     int free_block_bitmap(uint64_t addr) ;
 
 
-    private:
+private:
 
     struct ibv_mr *rdma_register_memory(void *ptr, uint64_t size);
 

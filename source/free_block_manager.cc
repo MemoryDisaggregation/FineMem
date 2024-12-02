@@ -348,88 +348,88 @@ namespace mralloc {
 
     int ServerBlockManager::fetch_region(section_e &alloc_section, uint32_t section_offset, uint16_t size_class, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) {
         int retry_time = 0;
-        if(shared == false) {
-            // force use unclassed one to alloc single block
-            section_e new_section;
-            uint16_t free_map;
-            int index;
-            do {
-                retry_time++;
-                free_map = alloc_section.frag_map_ | alloc_section.alloc_map_;
-                if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
-                    return retry_time*(-1);
-                }
+        // if(shared == false) {
+        //     // force use unclassed one to alloc single block
+        //     section_e new_section;
+        //     uint16_t free_map;
+        //     int index;
+        //     do {
+        //         retry_time++;
+        //         free_map = alloc_section.frag_map_ | alloc_section.alloc_map_;
+        //         if( (index = find_free_index_from_bitmap32_tail(free_map)) == -1 ){
+        //             return retry_time*(-1);
+        //         }
+        //         new_section = alloc_section;
+        //         new_section.alloc_map_ |= ((uint16_t)1<<index);
+        //         new_section.frag_map_ |= ((uint16_t)1<<index);
+        //     }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
+        //     alloc_section = new_section;
+        //     region_e region_new, region_old;
+        //     region_index = section_offset*region_per_section+index;
+        //     alloc_region = region_header_[region_index].load();
+        //     do {
+        //         retry_time++;
+        //         region_new = region_old;
+        //         if(region_new.exclusive_ == 1) {
+        //             printf("impossible problem: exclusive is already set\n");
+        //             return retry_time*(-1);
+        //         }
+        //         region_new.exclusive_ = 1;
+        //         region_new.on_use_ = 1;
+        //     }while(!region_header_[region_index].compare_exchange_strong(region_old, region_new));
+        //     region_old = region_new;
+        //     alloc_region = region_old;
+        //     return retry_time;
+        // } else {
+        bool on_empty = false;
+        section_e new_section;
+        uint16_t empty_map, chance_map, normal_map;
+        int index;
+        do {
+            retry_time++;
+            int rand_val = mt()%16;
+            uint16_t random_frag = (alloc_section.frag_map_ >> (16 - rand_val) | (alloc_section.frag_map_ << rand_val));
+            uint16_t random_alloc = (alloc_section.alloc_map_ >> (16 - rand_val) | (alloc_section.alloc_map_ << rand_val));
+            empty_map = random_frag | random_alloc;
+            chance_map = ~random_frag | random_alloc;
+            normal_map = random_frag | ~random_alloc;
+            if( (index = find_free_index_from_bitmap16_tail(normal_map)) != -1 ){
+                // no modify on map status
+                index = (index - rand_val + 16) % 16;
                 new_section = alloc_section;
-                new_section.alloc_map_ |= ((uint16_t)1<<index);
-                new_section.frag_map_ |= ((uint16_t)1<<index);
-            }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
-            alloc_section = new_section;
-            region_e region_new, region_old;
-            region_index = section_offset*region_per_section+index;
-            alloc_region = region_header_[region_index].load();
+                on_empty = false;
+            } else if( (index = find_free_index_from_bitmap16_tail(empty_map)) != -1 ){
+                // mark the chance map to full
+                index = (index - rand_val + 16) % 16;
+                new_section = alloc_section;
+                raise_bit(new_section.alloc_map_, new_section.frag_map_, index);
+                on_empty = true;
+            } else if( (index = find_free_index_from_bitmap16_tail(chance_map)) != -1 ){
+                // mark the empty map to allocated
+                index = (index - rand_val + 16) % 16;
+                new_section = alloc_section;
+                on_empty = false;
+            } else {
+                return retry_time*(-1);
+            }
+        }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
+        region_e region_new;
+        alloc_section = new_section;
+        region_index = section_offset*region_per_section+index;
+        alloc_region = region_header_[region_index].load();
+        if(on_empty){
             do {
                 retry_time++;
-                region_new = region_old;
-                if(region_new.exclusive_ == 1) {
+                region_new = alloc_region;
+                if(region_new.on_use_ == 1) {
                     printf("impossible problem: exclusive is already set\n");
                     return retry_time*(-1);
                 }
-                region_new.exclusive_ = 1;
                 region_new.on_use_ = 1;
-            }while(!region_header_[region_index].compare_exchange_strong(region_old, region_new));
-            region_old = region_new;
-            alloc_region = region_old;
-            return retry_time;
-        } else {
-            bool on_empty = false;
-            section_e new_section;
-            uint16_t empty_map, chance_map, normal_map;
-            int index;
-            do {
-                retry_time++;
-                int rand_val = mt()%16;
-                uint16_t random_frag = (alloc_section.frag_map_ >> (16 - rand_val) | (alloc_section.frag_map_ << rand_val));
-                uint16_t random_alloc = (alloc_section.alloc_map_ >> (16 - rand_val) | (alloc_section.alloc_map_ << rand_val));
-                empty_map = random_frag | random_alloc;
-                chance_map = ~random_frag | random_alloc;
-                normal_map = random_frag | ~random_alloc;
-                if( (index = find_free_index_from_bitmap16_tail(normal_map)) != -1 ){
-                    // no modify on map status
-                    index = (index - rand_val + 16) % 16;
-                    new_section = alloc_section;
-                    on_empty = false;
-                } else if( (index = find_free_index_from_bitmap16_tail(empty_map)) != -1 ){
-                    // mark the chance map to full
-                    index = (index - rand_val + 16) % 16;
-                    new_section = alloc_section;
-                    raise_bit(new_section.alloc_map_, new_section.frag_map_, index);
-                    on_empty = true;
-                } else if( (index = find_free_index_from_bitmap16_tail(chance_map)) != -1 ){
-                    // mark the empty map to allocated
-                    index = (index - rand_val + 16) % 16;
-                    new_section = alloc_section;
-                    on_empty = false;
-                } else {
-                    return retry_time*(-1);
-                }
-            }while (!section_header_[section_offset].compare_exchange_strong(alloc_section, new_section));
-            region_e region_new;
-            alloc_section = new_section;
-            region_index = section_offset*region_per_section+index;
-            alloc_region = region_header_[region_index].load();
-            if(on_empty){
-                do {
-                    retry_time++;
-                    region_new = alloc_region;
-                    if(region_new.on_use_ == 1) {
-                        printf("impossible problem: exclusive is already set\n");
-                        return retry_time*(-1);
-                    }
-                    region_new.on_use_ = 1;
-                } while (!region_header_[region_index].compare_exchange_strong(alloc_region, region_new));
-            }
-            return retry_time;
+            } while (!region_header_[region_index].compare_exchange_strong(alloc_region, region_new));
         }
+        return retry_time;
+        // }
         return 0;
     }
 

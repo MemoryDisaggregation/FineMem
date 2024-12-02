@@ -15,6 +15,23 @@
 
 namespace mralloc {
 
+void* run_woker_thread(void* arg){
+    worker_param* param = (worker_param*)arg;
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    CPU_SET(param->id, &cpuset);
+    pthread_t this_tid = pthread_self();
+    uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    ret = pthread_getaffinity_np(this_tid, sizeof(cpuset), &cpuset);
+    for (int i = 0; i < sysconf(_SC_NPROCESSORS_CONF); i ++) {
+        if (CPU_ISSET(i, &cpuset)) {
+            printf("filler running on core: %d\n" , i);
+        }
+    }
+    param->heap->woker(param->id);
+    return NULL;
+}
+
 void ComputingNode::woker(int proc) {
     section_e section_;
     uint32_t section_index_;

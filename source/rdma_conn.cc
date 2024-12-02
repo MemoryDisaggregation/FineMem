@@ -987,15 +987,273 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
     return false;
 }
 
+int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, uint64_t &addr, uint32_t &rkey) {
+    if(size_class >= 9){
+        return section_alloc(section_offset, size_class, addr, rkey);
+    } else if(size_class >= 5 ){
+        return region_alloc(alloc_section, section_offset, size_class, addr, rkey);
+    } else {
+        int retry_time = 0, cas_time = 0, section_time = 0, region_time = 0, result;
+        bool slow_path = false;
+        uint16_t first_section = section_offset;
+        uint16_t ring = 0;
+        while((result = chunk_alloc(alloc_section, section_offset, false, size_class, addr, rkey)) < 0){
+            cas_time += (-1)*result;
+            if(!slow_path){
+                if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0 || (result == first_section && ring == 2)){
+                    slow_path = true;
+                    section_time += (-1)*result;
+                    ring  = 0;
+                    break;
+			    }else {
+                    if(result == first_section) {
+                        ring ++;
+                    }
+                    section_time += result;
+                }
+            } else {
+                if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_heavy)) < 0 || (result == first_section && ring == 2)){
+                    section_time += (-1)*result;
+                    printf("waiting for new section avaliable\n");
+		        }
+                else {
+                    if(result == first_section) {
+                        ring ++;
+                    }
+                    section_time += result;
+                }
+            }  
+            region_time += result;
+        }
+        cas_time += result;
+        if(cas_time >= mralloc::retry_threshold && !slow_path) {
+            // if(alloc_class == 0){
+            if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0){
+                slow_path = true;
+                section_time += (-1)*result;
+            }else section_time += result;
+        }
+        return retry_time;
+    }
+}
+
+int RDMAConnection::full_free(uint64_t addr, uint16_t block_class) {
+    uint32_t section_offset = (addr - heap_start_) / section_size_;
+    uint32_t section_region_offset = (addr - heap_start_) % section_size_ / region_size_;
+    uint32_t region_offset = (addr - heap_start_) / region_size_;
+    uint32_t region_block_offset = (addr - heap_start_) % region_size_ / block_size_;
+    int retry_time = 0;
+    if(block_class > 9) {
+        // [TODO] multiple section headers free
+    }
+    else if (block_class >=5){
+        // rebind_region_block_rkey(region_offset, region_block_offset);
+        // [TODO] rkey support for section blcok rkey
+        // [Stage 0] flush log
+        section_e section, new_section;
+        remote_read(&section, sizeof(section_e), section_metadata_addr(section_offset), global_rkey_);
+        if(section.last_modify_id_ != 0){
+            if((section.alloc_map_&section.frag_map_ & ((uint16_t)1<<section.last_offset_)) == 1 ){
+                // malloc
+                block_e old_block = {0, (section.last_timestamp_ +126) % 127 + 1, 0};
+                block_e new_block = {node_id_, section.last_timestamp_, block_class};
+                do {
+                    int distant = abs((long)old_block.timestamp_ - (long)new_block.timestamp_);
+                    bool outdate = distant > 64 ? (old_block.timestamp_ <= new_block.timestamp_) : (old_block.timestamp_ >= new_block.timestamp_);
+                    if(old_block.client_id_ != 0 || outdate){
+                        break;
+                    }
+                    new_block.size_ = block_class;
+                } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_offset * block_per_region + sizeof(uint64_t) * region_block_offset, global_rkey_));
+            } else {
+                //free
+                block_e old_block = {section.last_modify_id_, (section.last_timestamp_ +126) % 127 + 1, 0};
+                block_e new_block = {0, section.last_timestamp_, block_class};
+                do {
+                    int distant = abs((long)old_block.timestamp_ - (long)new_block.timestamp_);
+                    bool outdate = distant > 64 ? (old_block.timestamp_ <= new_block.timestamp_) : (old_block.timestamp_ >= new_block.timestamp_);
+                    if(old_block.client_id_ != section.last_modify_id_ || outdate){
+                        break;
+                    }
+                    new_block.size_ = block_class;
+                } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_offset * block_per_region + sizeof(uint64_t) * region_block_offset, global_rkey_));
+            }
+        }
+        // bool full = (section.alloc_map_ == bitmap32_filled);
+        uint32_t new_rkey;
+        uint16_t mask = 0;
+        for (int i = 0; i<(1<<(block_class>>5)); i++){
+            mask += (uint16_t)1<<i;
+        }
+        if(((section.frag_map_|section.alloc_map_) & ((uint16_t)mask<<section_region_offset)) == 0) {
+            printf("already freed\n");
+            return -1;
+        } 
+        do{
+            retry_time++;
+            new_section = section;
+            new_section.alloc_map_ &= ~(uint16_t)((uint16_t)mask<<section_region_offset);
+            new_section.frag_map_ &= ~(uint16_t)((uint16_t)mask<<section_region_offset);
+            if ( new_section.alloc_map_ & new_section.frag_map_ == (bitmap16)0 ) {
+                new_section.on_use_ = 0;
+                new_section.exclusive_ = 0;
+            }
+            retry_counter_ = new_section.retry_;
+            new_section.retry_ = (retry_time>=retry_threshold)? 2: ((retry_time >= low_threshold)? 1:0);
+            if ((section.alloc_map_&section.frag_map_) & ((uint16_t)1<<section.last_offset_) == 1) 
+                new_section.last_timestamp_ = (new_section.last_timestamp_ + 1) % 127 + 1;
+            new_section.last_modify_id_ = node_id_;
+            new_section.last_offset_ = section_region_offset;
+        } while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&section, section_metadata_addr(section_offset), global_rkey_));
+
+        uint16_t old_retry = retry_counter_;
+        retry_counter_ = retry_time;
+
+        block_e old_block = {node_id_, (section.last_timestamp_ + 126 ) % 127 + 1, block_class};
+        block_e new_block = {0, section.last_timestamp_, block_class};
+        bool out_date = false;
+        do {
+            int distant = abs((long)old_block.timestamp_ - (long)new_block.timestamp_);
+            bool outdate = distant > 64 ? (old_block.timestamp_ <= new_block.timestamp_) : (old_block.timestamp_ >= new_block.timestamp_);
+            if(old_block.client_id_ != section.last_modify_id_ || outdate){
+                // out-of-date update, skip
+                out_date = true;
+                // printf("other people done this\n");
+                break;
+            }
+        } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_offset * block_per_region + sizeof(uint64_t) * region_block_offset, global_rkey_));
+        if(!out_date){
+            new_section = section;
+            new_section.last_modify_id_ = 0;
+            // no matter true or false, no retry
+            // if false, someone other must have done persistence, then do nothing 
+            remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&section, section_metadata_addr(section_offset), global_rkey_);
+        }
+        return 0;
+    } else {
+        region_e region, new_region;
+        rebind_region_block_rkey(region_offset, region_block_offset);
+        // [Stage 0] flush log
+        remote_read(&region, sizeof(region_e), region_metadata_addr(region_offset), global_rkey_);
+        if(region.last_modify_id_ != 0){
+            if((region.base_map_ & ((uint32_t)1<<region.last_offset_)) == 1 ){
+                // malloc
+                block_e old_block = {0, (region.last_timestamp_ +126) % 127 + 1, 0};
+                block_e new_block = {node_id_, region.last_timestamp_, block_class};
+                do {
+                    int distant = abs((long)old_block.timestamp_ - (long)new_block.timestamp_);
+                    bool outdate = distant > 64 ? (old_block.timestamp_ <= new_block.timestamp_) : (old_block.timestamp_ >= new_block.timestamp_);
+                    if(old_block.client_id_ != 0 || outdate){
+                        break;
+                    }
+                    new_block.size_ = block_class;
+                } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_offset * block_per_region + sizeof(uint64_t) * region_block_offset, global_rkey_));
+            } else {
+                //free
+                block_e old_block = {region.last_modify_id_, (region.last_timestamp_ +126) % 127 + 1, 0};
+                block_e new_block = {0, region.last_timestamp_, block_class};
+                do {
+                    int distant = abs((long)old_block.timestamp_ - (long)new_block.timestamp_);
+                    bool outdate = distant > 64 ? (old_block.timestamp_ <= new_block.timestamp_) : (old_block.timestamp_ >= new_block.timestamp_);
+                    if(old_block.client_id_ != region.last_modify_id_ || outdate){
+                        break;
+                    }
+                    new_block.size_ = block_class;
+                } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_offset * block_per_region + sizeof(uint64_t) * region_block_offset, global_rkey_));
+            }
+        }
+        bool full = (region.base_map_ == bitmap32_filled);
+        uint32_t new_rkey;
+        uint32_t mask = 0;
+        for (int i = 0; i<(1<<block_class); i++){
+            mask += (uint32_t)1<<i;
+        }
+        if((region.base_map_ & ((uint32_t)mask<<region_block_offset)) == 0) {
+            printf("already freed\n");
+            return -1;
+        } 
+        do{
+            full = (region.base_map_ == bitmap32_filled);
+            retry_time++;
+            new_region = region;
+            new_region.base_map_ &= ~(uint32_t)((uint32_t)mask<<region_block_offset);
+            if ( new_region.base_map_ == (bitmap32)0 ) {
+                new_region.on_use_ = 0;
+                new_region.exclusive_ = 0;
+            }
+            retry_counter_ = new_region.retry_;
+            new_region.retry_ = (retry_time>=retry_threshold)? 2: ((retry_time >= low_threshold)? 1:0);
+            if (region.base_map_ & ((uint32_t)1<<region.last_offset_) == 1) 
+                new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 127 + 1;
+            new_region.last_modify_id_ = node_id_;
+            new_region.last_offset_ = region_block_offset;
+        } while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region, region_metadata_addr(region_offset), global_rkey_));
+
+        uint16_t old_retry = retry_counter_;
+        retry_counter_ = retry_time;
+        
+        // concurrency state update, will async it in the future
+        section_e alloc_section;
+        if(new_region.base_map_ == (bitmap32)0 ){
+            force_update_section_state(alloc_section, region_offset, alloc_empty); 
+        } 
+        else if(full) {
+            force_update_section_state(alloc_section, region_offset, alloc_light, alloc_full);
+        }
+        else if(old_retry > 0 && retry_time < low_threshold) {
+        // else if(old_retry < low_threshold && retry_time >= low_threshold) {
+            force_update_section_state(alloc_section, region_offset, alloc_light, alloc_heavy);
+            // printf("make region %d heavy\n", region_offset);
+        } 
+        else if(old_retry < 2 && retry_time >= retry_threshold) {
+        // else if(old_retry >= retry_threshold && retry_time < retry_threshold) {
+            force_update_section_state(alloc_section, region_offset, alloc_heavy, alloc_light);
+            // printf("make region %d light\n", region_offset);
+        } 
+        else {
+            force_update_section_state(alloc_section, region_offset, alloc_light, alloc_full);
+        }
+
+        block_e old_block = {node_id_, (region.last_timestamp_ + 126 ) % 127 + 1};
+        block_e new_block = {0, region.last_timestamp_};
+        bool out_date = false;
+        do {
+            int distant = abs((long)old_block.timestamp_ - (long)new_block.timestamp_);
+            bool outdate = distant > 64 ? (old_block.timestamp_ <= new_block.timestamp_) : (old_block.timestamp_ >= new_block.timestamp_);
+            if(old_block.client_id_ != region.last_modify_id_ || outdate){
+                // out-of-date update, skip
+                out_date = true;
+                // printf("other people done this\n");
+                break;
+            }
+        } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_offset * block_per_region + sizeof(uint64_t) * region_block_offset, global_rkey_));
+        // if(mt()%1000 == 1){
+        //     printf("stall happend\n");
+        //     usleep(1000);
+        // }
+        if(!out_date){
+            new_region = region;
+            new_region.last_modify_id_ = 0;
+            // no matter true or false, no retry
+            // if false, someone other must have done persistence, then do nothing 
+            remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region, region_metadata_addr(region_offset), global_rkey_);
+        }
+
+        region = new_region;
+        return 0;
+    }
+}
+
+
 int RDMAConnection::section_alloc(uint32_t &section_offset, uint16_t size_class, uint64_t &addr, uint32_t &rkey) {
     if(size_class < 9){
         printf("use find section!\n");
-        return 0;
+        return -1;
     }
     int section_num = 1 << (size_class >> 9);
     section_e section[8] = {0,0};
     section_offset += 1;
-    int offset = (section_offset)%section_num_;
+    int offset = (section_offset)%section_num_, retry_time = 0;
     int remain = section_num_, fetch = (offset + 8) > section_num_ ? (section_num_ - offset):8, index = offset;
     int total_section_num = 0;
     uint64_t start_addr;
@@ -1036,7 +1294,7 @@ int RDMAConnection::section_alloc(uint32_t &section_offset, uint16_t size_class,
                     rkey = 0;
                     // [TODO] fetch rkey in section size
                     // [TODO] flush redo log
-                    return 0;
+                    return retry_time;
                 }
             } else {
                 total_section_num = 0;
@@ -1055,8 +1313,8 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
     int offset = (section_offset)%section_num_;
     // each epoch fetch 8 sections, 8*8B = 64Byte
     if(size_class >= 9) {
-        printf("use section alloc!\n")
-        return 0;
+        printf("use section alloc!\n");
+        return -1;
     }
     if (advise == alloc_heavy) {
         int remain = section_num_, fetch = (offset + 8) > section_num_ ? (section_num_ - offset):8, index = offset;
@@ -1110,13 +1368,14 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
     return retry_time*(-1);
 }
 
-int RDMAConnection::region_alloc(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, bool use_chance, uint64_t &addr, uint32_t &rket){
+int RDMAConnection::region_alloc(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, uint64_t &addr, uint32_t &rkey){
     int retry_time = 0;
     // [TODO] fetch variable rkey
     if(size_class >= 9 || size_class < 5){
         printf("use find section or chunk alloc!\n");
-        return 0;
+        return -1;
     }
+    section_e section[8] = {0,0};
     int region_num = 1 << (size_class >> 5);
     int offset = (section_offset)%section_num_;
     int remain = section_num_, fetch = (offset + 8) > section_num_ ? (section_num_ - offset):8, index = offset;
@@ -1125,14 +1384,15 @@ int RDMAConnection::region_alloc(section_e &alloc_section, uint32_t &section_off
     while(remain > 0) {
         retry_time++;
         remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
+        section_e new_section;
         for(int j = 0; j < fetch; j ++) {
             bool not_suitable = false;
             do {
-                section_e new_section = section[j];
                 retry_time++;
+                new_section = section[j];
                 // int block_num = 1<<(block_class);
                 int size = 1<<(region_num+1);
-                uint16_t search_map = alloc_section.frag_map_ | alloc_section.alloc_map_;
+                uint16_t search_map = new_section.frag_map_ | new_section.alloc_map_;
                 index = 0;
                 while(search_map % size != 0 && index < 16){
                     search_map >>= region_num;
@@ -1157,8 +1417,9 @@ int RDMAConnection::region_alloc(section_e &alloc_section, uint32_t &section_off
             }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_));
             if(!not_suitable){
                 region_e region_new;
+                region_e alloc_region;
                 alloc_section = new_section;
-                region_index = section_offset*region_per_section+index;
+                uint64_t region_index = section_offset*region_per_section+index;
                 // read region info
                 // [TODO] multiple region, and multiple update
                 // [TODO] flush refo log
@@ -1177,6 +1438,109 @@ int RDMAConnection::region_alloc(section_e &alloc_section, uint32_t &section_off
         }
         index = (index + fetch)%section_num_; remain -= fetch; fetch = (index + 8) > section_num_ ? (section_num_ - index):8;
     }
+    return (-1)*retry_time;
+}
+
+int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, bool use_chance, uint64_t &addr, uint32_t &rkey){
+    int retry_time = 0;
+    // [TODO] fetch variable rkey
+    if(size_class >= 5){
+        printf("use find section or region alloc!\n");
+        return -1;
+    }
+    region_e region[16] = {0,0};
+    int region_num = 1 << (size_class);
+    int offset = mt()%16;
+    int index = offset;
+    uint64_t start_addr;
+    retry_time++;
+    remote_read(region, 16*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
+    region_e new_region;
+    for(int j = 0; j < 16; j ++) {
+        bool not_suitable = false;
+        int chunk_index = (j+offset)%16;
+        uint16_t region_index = section_offset*region_per_section+chunk_index;
+        // [TODO]: redo log?
+        do {
+            retry_time++;
+            new_region = region[chunk_index];
+            // int block_num = 1<<(block_class);
+            int size = 1<<(region_num+1);
+            uint32_t search_map = new_region.base_map_;
+            index = 0;
+            if(size_class == 0){
+                if((index = find_free_index_from_bitmap32_tail(new_region.base_map_)) == -1) {
+                    force_update_section_state(alloc_section, region_index, alloc_full);
+                    return retry_time*(-1);
+                }
+                new_region.base_map_ |= (uint32_t)1<<index;
+            } else {
+                while(search_map % size != 0 && index < 32){
+                    search_map >>= region_num;
+                    index += region_num;
+                }
+                if(index >= 32){
+                    not_suitable = true;
+                    break;
+                }
+                for(int i = 0; i < region_num; i++){
+                    new_region.base_map_ |= (uint32_t)1<<(index+i);
+                } 
+            }
+            // [TODO] fix retry counter for section/region alloc
+            retry_counter_ = new_region.retry_;
+            new_region.retry_ = (retry_time>=retry_threshold)? 2: ((retry_time >= low_threshold)? 1:0);
+            new_region.last_offset_ = index;
+            if ((region[chunk_index].base_map_) & ((uint32_t)1<<region[chunk_index].last_offset_) == 0) 
+                new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 127 + 1;
+            new_region.last_modify_id_ = node_id_;
+            new_region.num = size_class;
+        }while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region[chunk_index], region_metadata_addr(region_index + chunk_index), global_rkey_));
+        region[chunk_index] = new_region;
+        if(!not_suitable){
+            addr = get_region_block_addr(region_index, index);
+            rkey = get_region_block_rkey(region_index, index); 
+
+            // retry counter for least 3 time allocation
+            uint64_t old_retry = retry_counter_;
+            retry_counter_ = retry_time;
+            
+            // [Stage 2] state update, will async it in the future
+            if(new_region.base_map_ == bitmap32_filled) {
+                force_update_section_state(alloc_section, region_index, alloc_full);
+            } 
+
+            else if(old_retry > 0 && retry_time < low_threshold) {
+                force_update_section_state(alloc_section, region_index, alloc_light, alloc_heavy);
+            } 
+            else if(old_retry < 2 && retry_time >= retry_threshold) {
+                force_update_section_state(alloc_section, region_index, alloc_heavy, alloc_light);
+            } 
+            // [Stage 3] Flush log, will async it in the future
+            block_e old_block = {0, (new_region.last_timestamp_ + 126 ) % 127 + 1};
+            block_e new_block = {node_id_, new_region.last_timestamp_};
+            bool out_date = false;
+            do {
+                int distant = abs((long)old_block.timestamp_ - (long)new_block.timestamp_);
+                bool outdate = distant > 64 ? (old_block.timestamp_ <= new_block.timestamp_) : (old_block.timestamp_ >= new_block.timestamp_);
+                if(old_block.client_id_ != 0 || out_date){
+                    // out-of-date update, skip
+                    // printf("other people done this: %d instead of %d\n", old_block.client_id_, node_id_);
+                    out_date = true;
+                    break;
+                }
+            } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * index, global_rkey_));
+            if(!out_date){
+                new_region = region[chunk_index];
+                new_region.last_modify_id_ = 0;
+                // no matter true or false, no retry
+                // if false, someone other must have done persistence, then do nothing 
+                remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region[chunk_index], region_metadata_addr(region_index+chunk_index), global_rkey_);
+            }
+            return retry_time;
+        }
+    }
+    return retry_time*(-1);
 }
 
 // find an avalible region, exclusive, single

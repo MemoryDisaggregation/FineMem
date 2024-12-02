@@ -404,9 +404,6 @@ public:
                     break;
                 }else section_time += result;
             }
-            // } else {
-            //     printf("allocation failed!\n");
-            // }
         } 
         retry_time = cas_time + section_time + region_time;
         if(retry_time > max_retry){ 
