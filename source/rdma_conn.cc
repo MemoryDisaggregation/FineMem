@@ -987,6 +987,66 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
     return false;
 }
 
+int RDMAConnection::section_alloc(uint32_t &section_offset, uint16_t size_class, uint64_t &addr, uint32_t &rkey) {
+    if(size_class < 9){
+        printf("use find section!\n");
+        return 0;
+    }
+    int section_num = 1 << (size_class >> 9);
+    section_e section[8] = {0,0};
+    section_offset += 1;
+    int offset = (section_offset)%section_num_;
+    int remain = section_num_, fetch = (offset + 8) > section_num_ ? (section_num_ - offset):8, index = offset;
+    int total_section_num = 0;
+    uint64_t start_addr;
+    while(remain > 0) {
+        // empty region exists
+        retry_time++;
+        remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
+        for(int j = 0; j < fetch; j ++) {
+            if((section[j].frag_map_ | section[j].alloc_map_) == (uint16_t)0){
+                if(total_section_num == 0){
+                    start_addr = get_region_block_addr((index+j)*region_per_section, 0);
+                }
+                total_section_num ++;
+                section_e new_section = section[j];
+                do{
+                    new_section = section[j];
+                    if((section[j].frag_map_ | section[j].alloc_map_) != (uint16_t)0){
+                        remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
+                        total_section_num = 0;
+                        if(total_section_num > 1){
+                            // [TODO] roll back when larger than 2MiB
+                        }
+                        break;
+                    }
+                    new_section.alloc_map_ = ~(uint16_t)0;
+                    new_section.frag_map_ = ~(uint16_t)0;
+                    retry_counter_ = new_section.retry_;
+                    new_section.retry_ = (retry_time>=retry_threshold)? 2: ((retry_time >= low_threshold)? 1:0);
+                    new_section.last_offset_ = index;
+                    new_section.last_timestamp_ = (new_section.last_timestamp_ + 1) % 127 + 1;
+                    new_section.last_modify_id_ = node_id_;
+                    new_section.num = size_class;
+                    // [TODO] check right?
+                }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&section[j], section_metadata_addr(index+j), global_rkey_));
+                if(total_section_num==section_num){
+                    section_offset = index+j;
+                    addr = start_addr;
+                    rkey = 0;
+                    // [TODO] fetch rkey in section size
+                    // [TODO] flush redo log
+                    return 0;
+                }
+            } else {
+                total_section_num = 0;
+            }
+        }
+        index = (index + fetch)%section_num_; remain -= fetch; fetch = (index + 8) > section_num_ ? (section_num_ - index):8;
+    }
+    return -1;
+}
+
 // find a new section avaliable for an allocation with advise(usually alloc_full)
 int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, alloc_advise advise) {
     int retry_time = 0;
@@ -995,8 +1055,8 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
     int offset = (section_offset)%section_num_;
     // each epoch fetch 8 sections, 8*8B = 64Byte
     if(size_class >= 9) {
-        // Search for several section with full 00
-        // Lock, update, and finally release
+        printf("use section alloc!\n")
+        return 0;
     }
     if (advise == alloc_heavy) {
         int remain = section_num_, fetch = (offset + 8) > section_num_ ? (section_num_ - offset):8, index = offset;
@@ -1050,6 +1110,75 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
     return retry_time*(-1);
 }
 
+int RDMAConnection::region_alloc(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, bool use_chance, uint64_t &addr, uint32_t &rket){
+    int retry_time = 0;
+    // [TODO] fetch variable rkey
+    if(size_class >= 9 || size_class < 5){
+        printf("use find section or chunk alloc!\n");
+        return 0;
+    }
+    int region_num = 1 << (size_class >> 5);
+    int offset = (section_offset)%section_num_;
+    int remain = section_num_, fetch = (offset + 8) > section_num_ ? (section_num_ - offset):8, index = offset;
+    int total_section_num = 0;
+    uint64_t start_addr;
+    while(remain > 0) {
+        retry_time++;
+        remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
+        for(int j = 0; j < fetch; j ++) {
+            bool not_suitable = false;
+            do {
+                section_e new_section = section[j];
+                retry_time++;
+                // int block_num = 1<<(block_class);
+                int size = 1<<(region_num+1);
+                uint16_t search_map = alloc_section.frag_map_ | alloc_section.alloc_map_;
+                index = 0;
+                while(search_map % size != 0 && index < 16){
+                    search_map >>= region_num;
+                    index += region_num;
+                }
+                if(index >= 16){
+                    not_suitable = true;
+                    break;
+                }
+                for(int i = 0; i < region_num; i++){
+                    new_section.alloc_map_ |= (uint16_t)1<<(index+i);
+                    new_section.frag_map_ |= (uint16_t)1<<(index+i);
+                } 
+                // [TODO] fix retry counter for section/region alloc
+                retry_counter_ = new_section.retry_;
+                new_section.retry_ = (retry_time>=retry_threshold)? 2: ((retry_time >= low_threshold)? 1:0);
+                new_section.last_offset_ = index;
+                if ((section[j].alloc_map_|section[j].frag_map_) & ((uint16_t)1<<section[j].last_offset_) == 0) 
+                    new_section.last_timestamp_ = (new_section.last_timestamp_ + 1) % 127 + 1;
+                new_section.last_modify_id_ = node_id_;
+                new_section.num = size_class;
+            }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&alloc_section, section_metadata_addr(section_offset), global_rkey_));
+            if(!not_suitable){
+                region_e region_new;
+                alloc_section = new_section;
+                region_index = section_offset*region_per_section+index;
+                // read region info
+                // [TODO] multiple region, and multiple update
+                // [TODO] flush refo log
+                remote_read(&alloc_region, sizeof(region_e), region_metadata_addr(region_index), global_rkey_);
+                do {
+                    retry_time++;
+                    region_new = alloc_region;
+                    if(region_new.on_use_ == 1) {
+                        printf("impossible problem: on_use is already set\n");
+                        return retry_time*(-1);
+                    }
+                    region_new.on_use_ = 1;
+                }while(!remote_CAS(*(uint64_t*)&region_new, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_));
+                return retry_time;
+            }
+        }
+        index = (index + fetch)%section_num_; remain -= fetch; fetch = (index + 8) > section_num_ ? (section_num_ - index):8;
+    }
+}
+
 // find an avalible region, exclusive, single
 int RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_offset, uint16_t size_class, bool use_chance, region_e &alloc_region, uint32_t &region_index, uint32_t skip_mask) {
     int retry_time = 0;
@@ -1063,8 +1192,6 @@ int RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_offs
     if(size_class < 5) {
         // fetch single region
         // scan whole chunks
-        int block_require_num = 1<<(size_class);
-        int block_require_size = 1<<(block_require_num);
         do {
             retry_time++;
             int rand_val = mt()%16;
@@ -1114,15 +1241,9 @@ int RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_offs
             }while(!remote_CAS(*(uint64_t*)&region_new, (uint64_t*)&alloc_region, region_metadata_addr(region_index), global_rkey_));
         }
         return retry_time;
-    } else if(size_class < 9){
-        // fetch multiple regions
-        // just set the section as 11
-        int region_require_num = 1<<(size_class - 5);
-        int region_require_size = 1<<(region_require_num);
-
     } else {
-        // should be solved at find section?
-    }
+        printf("use region alloc!\n");
+    } 
     return 0;
 }
 
