@@ -544,7 +544,7 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
     backup_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
     
     // When use global rkey: application not support multiple rkey or evaluation the side-effect of memory window
-    bool use_global_rkey = true;
+    bool use_global_rkey = false;
     if(use_global_rkey){
         for(int i = 0; i < block_num_; i++){
             server_block_manager_->set_block_rkey(i, get_global_rkey());
