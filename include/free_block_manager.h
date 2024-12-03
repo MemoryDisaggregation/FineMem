@@ -16,12 +16,32 @@
 
 namespace mralloc {
 
+// #define REMOTE_MEM_SIZE 134217728
+// #define REMOTE_MEM_SIZE 16777216
+// #define REMOTE_MEM_SIZE 67108864
+// #define REMOTE_MEM_SIZE 16384
+// #define REMOTE_MEM_SIZE 8192
+// #define REMOTE_MEM_SIZE 32768
+#define REMOTE_MEM_SIZE 262144
+// #define REMOTE_MEM_SIZE 65536
+// #define REMOTE_MEM_SIZE 33554432
+// #define REMOTE_MEM_SIZE 2097152
+// #define REMOTE_MEM_SIZE 1048576
+// #define REMOTE_MEM_SIZE 524288
+// #define REMOTE_MEM_SIZE 65536
+// #define REMOTE_MEM_SIZE 4096
+// #define REMOTE_MEM_SIZE 131072
+
+#define INIT_MEM_SIZE ((uint64_t)60*1024*1024*1024)
+
 const uint64_t large_block_items = 64;
 
-const uint64_t max_region_num = 2048;
 const uint64_t region_per_section = 16;
 const uint64_t block_per_region = 32;
-const uint64_t page_size = 1024*1024*64;
+const uint64_t max_region_num = 4096;
+// const uint64_t max_region_num = INIT_MEM_SIZE/REMOTE_MEM_SIZE/block_per_region;
+const uint64_t page_size = (uint64_t)1024*1024*32;
+// const uint64_t page_size = (uint64_t)1024*1024*1024*2;
 
 enum alloc_advise {
     alloc_empty,
@@ -227,15 +247,16 @@ public:
     }
 
     void init_align_hint(uint64_t &addr, uint64_t &size, uint64_t &init_addr, uint64_t &init_size) {
+        // uint64_t align = cal_header_size();
         uint64_t align = region_size_ < page_size ? page_size : region_size_;
         size = num_align_upper(size, align);
         if(cal_header_size() > page_size) {
             printf("too large memory region, out of range!\n");
         }
-        init_size = size + (uint64_t)1024*1024*1024*10;
+        init_size = size + (uint64_t)1024*1024*1024*20;
         // init_size = size + align;
         init_addr = num_align_upper(addr, align);
-        addr = init_addr + (uint64_t)1024*1024*1024*10;
+        addr = init_addr + (uint64_t)1024*1024*1024*20;
         // addr = init_addr + align;
         assert(init_addr % align == 0);
     };
@@ -270,14 +291,15 @@ public:
             }
         }
         used += exclusive * block_per_region;
-        // for(int i = 0; i <block_num_; i++) {
-        //     block_e block_head = block_header_[i].load();
-        //     if(*(uint64_t*)(&block_head) == 1) {
-        //         used ++;
-        //     }
-        // }
-        mem_record_ << 1.0*managed/(section_num_*region_per_section) << "," << utilization/managed << ", "<< (used-cache)*4 + (long long)reg_size*1024*1024 << std::endl;
-        return (used-cache)*4 + reg_size*1024*1024;
+        for(int i = 0; i <block_num_; i++) {
+            block_e block_head = block_header_[i].load();
+            if(*(uint64_t*)(&block_head) == 1) {
+                used ++;
+            }
+        }
+        // mem_record_ << 1.0*managed/(section_num_*region_per_section) << "," << utilization/managed << ", "<< (used-cache)*REMOTE_MEM_SIZE + (long long)reg_size*1024*1024 << std::endl;
+        mem_record_ << (used-cache)*REMOTE_MEM_SIZE + (long long)reg_size*1024*1024 << std::endl;
+        return (used-cache)*REMOTE_MEM_SIZE + reg_size*1024*1024;
     }
 
     inline bool check_section(section_e alloc_section, alloc_advise advise, uint32_t offset);
