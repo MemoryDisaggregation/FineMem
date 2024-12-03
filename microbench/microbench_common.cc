@@ -199,7 +199,7 @@ public:
     }
     ~fusee_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
-        while(conn_->remote_fetch_block(remote_addr.addr, remote_addr.rkey)); 
+        while(conn_->remote_fetch_block(remote_addr.addr, remote_addr.rkey, remote_addr.size)); 
 	return true;
     };
     bool free(mralloc::mr_rdma_addr remote_addr) override {

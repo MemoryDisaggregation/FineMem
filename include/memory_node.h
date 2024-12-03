@@ -26,6 +26,7 @@
 #include "free_block_manager.h"
 #include "cpu_cache.h"
 #include "rpc_server.h"
+#include <memkind.h>
 
 namespace mralloc {
 
@@ -130,6 +131,8 @@ private:
 
     void worker(volatile WorkerInfo *work_info, uint32_t num);
 
+    memkind_t memkind_;
+
     // << allocation metadata >>
     section_e current_section_;
     uint32_t current_section_index_;
@@ -144,6 +147,7 @@ private:
     uint32_t simple_cache_rkey[32];
     uint64_t simple_cache_watermark;
 
+    bool use_global_rkey = true;
     // << function enabled >>
     bool one_sided_enabled_;
     ibv_qp* rebinder_qp; ibv_cq* rebinder_cq;

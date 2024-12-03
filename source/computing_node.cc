@@ -360,7 +360,7 @@ bool ComputingNode::alive() { return true; }
 
 // API for test
 bool ComputingNode::fetch_mem_block_remote(mr_rdma_addr &remote_addr, uint32_t node) {
-    if (m_rdma_conn_[node]->remote_fetch_block(remote_addr.addr, remote_addr.rkey)) return false;
+    if (m_rdma_conn_[node]->remote_fetch_block(remote_addr.addr, remote_addr.rkey, 0)) return false;
     remote_addr.node = node;
     return true;
 }

@@ -61,8 +61,7 @@ class ConnectionManager {
     int remote_rebind(uint64_t addr, uint32_t &newkey);
     int remote_rebind_batch(uint64_t *addr, uint32_t *newkey);
     int remote_memzero(uint64_t addr, uint64_t size);
-    int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint64_t size);
-    int remote_fetch_block(uint64_t &addr, uint32_t &rkey);
+    int remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint16_t size_class);
     int remote_free_block(uint64_t addr);
     int remote_print_alloc_info(uint64_t &mem_usage);
     uint32_t get_global_rkey() {return global_rkey_;};

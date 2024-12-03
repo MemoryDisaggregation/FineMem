@@ -13,6 +13,8 @@
 #include <sys/time.h>
 #include <gperftools/profiler.h>
 #include <random>
+#include <memkind.h>
+#include <fixed_allocator.h>
 
 const int iteration = 60;
 const int free_num = 20;
@@ -157,20 +159,27 @@ private:
 class fusee_allocator : test_allocator{
 public:
     fusee_allocator(mralloc::ConnectionManager* conn) {
+        // uint64_t addr = (uint64_t)mmap(NULL, 1024*1024*1024, PROT_READ | PROT_WRITE, 
+            // MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        // memset((void*)addr, 0, 1024*1024*1024);
+        // memkind_create_fixed((void*)addr, 1024*1024*1024, &kind_);
         conn_ = conn;
     }
     ~fusee_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
-        while(conn_->remote_fetch_block(remote_addr.addr, remote_addr.rkey)); 
-	return true;
+        // remote_addr.addr = (uint64_t)memkind_malloc(kind_, remote_addr.size);
+        while(conn_->remote_fetch_block(remote_addr.addr, remote_addr.rkey, remote_addr.size)); 
+	    return true;
     };
     bool free(mralloc::mr_rdma_addr remote_addr) override {
+        // memkind_free(kind_, (void*)remote_addr.addr);
         while(conn_->remote_free_block(remote_addr.addr));
-	return true;
+	    return true;
     };
     bool print_state() override {return false;};
 private:
     mralloc::ConnectionManager* conn_;
+    memkind_t kind_;
 };
 
 std::mutex mutex_;

@@ -94,19 +94,11 @@ bool ConnectionManager::remote_CAS(uint64_t swap, uint64_t* compare, uint64_t re
   return ret;
 }
 
-int ConnectionManager::remote_fetch_block(uint64_t &addr, uint32_t &rkey,
-                                          uint64_t size) {
-  RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
-  assert(conn != nullptr);
-  int ret = conn->remote_fetch_block(addr, rkey, size);
-  m_rpc_conn_queue_->enqueue(conn);
-  return ret;
-}
 
-int ConnectionManager::remote_fetch_block(uint64_t &addr, uint32_t &rkey) {
+int ConnectionManager::remote_fetch_block(uint64_t &addr, uint32_t &rkey, uint16_t size_class) {
   RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
   assert(conn != nullptr);
-  int ret = conn->remote_fetch_block(addr, rkey);
+  int ret = conn->remote_fetch_block(addr, rkey, size_class);
   m_rpc_conn_queue_->enqueue(conn);
   return ret;
 }

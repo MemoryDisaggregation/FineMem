@@ -95,6 +95,12 @@ public:
     uint64_t size;
 };
 
+class FetchFastRequest : public RequestsMsg{
+public:
+    uint16_t size_class;
+};
+CHECK_RDMA_MSG_SIZE(FetchFastRequest);
+
 class FreeFastRequest : public RequestsMsg{
 public:
     uint64_t addr;

@@ -18,4 +18,5 @@ target_link_libraries(v_microbench
     rdmacm
     rt
     profiler
+    memkind
 )

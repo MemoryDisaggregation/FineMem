@@ -14,8 +14,8 @@ namespace mralloc {
 
     void ServerBlockManager::recovery(int node){
         if(node == 0) {
-            section_e init_section_header = {0,0};
-            region_e init_region_header = {0, 0, 0, 0, 0, 1, 0};
+            section_e init_section_header = {0, 0, 0, 0, 0, 0, 1, 0, 0};
+            region_e init_region_header = {0, 0, 0, 0, 0, 1, 0, 0};
 
             for(int i = 0; i < section_num_; i++) {
                 section_header_[i].store(init_section_header);
