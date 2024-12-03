@@ -9,3 +9,13 @@ target_link_libraries(microbench_common
     rt
     profiler
 )
+
+add_executable(v_microbench v_microbench.cc)
+
+target_link_libraries(v_microbench
+    mralloc
+    ibverbs
+    rdmacm
+    rt
+    profiler
+)

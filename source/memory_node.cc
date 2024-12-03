@@ -713,7 +713,7 @@ int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
     // printf("%lx\n", addr);
     assert(addr == p);
     struct ibv_mr *mr = rdma_register_memory((void *)p, size);
-    reg_size_.fetch_add(size / 1024 / 1024);
+    reg_size_.fetch_add(size);
     // printf("%lx\n", addr);
     if (!mr) {
         perror("ibv_reg_mr fail");
@@ -731,7 +731,7 @@ int MemoryNode::deallocate_and_unregister_memory(uint64_t addr) {
         printf("no free!\n");
         return 0;
     }
-    reg_size_.fetch_sub(mr_recorder[addr]->length / 1024 / 1024);
+    reg_size_.fetch_sub(mr_recorder[addr]->length);
     // printf("%d\n", reg_size_.load());
     ibv_dereg_mr(mr_recorder[addr]);
     munmap((void*)addr, mr_recorder[addr]->length);
