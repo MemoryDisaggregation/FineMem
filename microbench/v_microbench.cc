@@ -169,6 +169,7 @@ public:
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
         // remote_addr.addr = (uint64_t)memkind_malloc(kind_, remote_addr.size);
         while(conn_->remote_fetch_block(remote_addr.addr, remote_addr.rkey, remote_addr.size)); 
+        // printf("%lx\n", remote_addr.addr);
 	    return true;
     };
     bool free(mralloc::mr_rdma_addr remote_addr) override {
@@ -798,8 +799,8 @@ void* worker(void* arg) {
         alloc = (test_allocator*)new rpc_allocator(conn);
         break;
     case share_alloc:
-        alloc = (test_allocator*)new share_allocator(conn, 0);
-        // alloc = (test_allocator*)new share_allocator(conn, rand());
+        // alloc = (test_allocator*)new share_allocator(conn, 0);
+        alloc = (test_allocator*)new share_allocator(conn, rand());
         break;
     default:
         break;

@@ -956,27 +956,32 @@ int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offse
         return region_alloc(alloc_section, section_offset, size_class, addr, rkey);
     } else {
         uint16_t skip_mask = 0;
-        region_e cache_region;
-        uint32_t cache_region_index;
+        // region_e cache_region;
+        // uint32_t cache_region_index;
         // fetch_region(alloc_section, section_offset, size_class, false, cache_region, cache_region_index, skip_mask);
         int retry_time = 0, cas_time = 0, section_time = 0, region_time = 0, result;
         bool slow_path = false;
         uint16_t first_section = section_offset;
         uint16_t ring = 0;
-        while((result = fetch_region(alloc_section, section_offset, size_class, false, cache_region, cache_region_index, skip_mask)) < 0){
+        // if(cache_region_index == -1){
+        if((result = chunk_alloc(alloc_section, section_offset, size_class, false, addr, rkey)) >= 0){
+            return result;
+        }
+        while((result = fetch_region(alloc_section, section_offset, size_class, false, cache_region, *(uint32_t*)&cache_region_index, skip_mask)) < 0){
             region_time += (-1)*result;
             if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0){
                 slow_path = true;
                 section_time += (-1)*result;
                 break;
             }else section_time += result;
-        }
+        }        
+        // }
         while((result = fetch_region_block(alloc_section, cache_region, addr, rkey, false, cache_region_index, size_class)) < 0){
             cas_time += (-1)*result;
             if(size_class>0)
                 skip_mask += 1 << (cache_region_index%16);
             if(!slow_path){
-                while((result = fetch_region(alloc_section, section_offset, size_class, false, cache_region, cache_region_index, skip_mask)) < 0){
+                while((result = fetch_region(alloc_section, section_offset, size_class, false, cache_region, *(uint32_t*)&cache_region_index, skip_mask)) < 0){
                     region_time += (-1)*result;
                     skip_mask = 0;
                     if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0 || (result == first_section && ring == 2)){
@@ -985,6 +990,9 @@ int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offse
                         ring  = 0;
                         break;
 			        }else {
+                        if((result = chunk_alloc(alloc_section, section_offset, size_class, false, addr, rkey)) >= 0){
+                            return result;
+                        }
                         if(result == first_section) {
                             ring ++;
                         }
@@ -993,7 +1001,7 @@ int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offse
                 }
                 region_time += result;
             } else {
-                while((result = fetch_region(alloc_section, section_offset, size_class, true, cache_region, cache_region_index, skip_mask)) < 0){
+                while((result = fetch_region(alloc_section, section_offset, size_class, true, cache_region, *(uint32_t*)&cache_region_index, skip_mask)) < 0){
                     region_time += (-1)*result;
                     skip_mask = 0;
                     if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_heavy)) < 0 || (result == first_section && ring == 2)){
@@ -1001,6 +1009,9 @@ int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offse
                         printf("waiting for new section avaliable\n");
 			        }
                     else {
+                        if((result = chunk_alloc(alloc_section, section_offset, size_class, false, addr, rkey)) >= 0){
+                            return result;
+                        }
                         if(result == first_section) {
                             ring ++;
                         }
@@ -1018,7 +1029,7 @@ int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offse
                 slow_path = true;
                 section_time += (-1)*result;
             }else section_time += result;
-            while((result = fetch_region(alloc_section, section_offset, size_class, false, cache_region, cache_region_index, skip_mask)) < 0){
+            while((result = fetch_region(alloc_section, section_offset, size_class, false, cache_region, *(uint32_t*)&cache_region_index, skip_mask)) < 0){
                 region_time += (-1)*result;
                 if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0){
                     slow_path = true;
@@ -1147,7 +1158,7 @@ int RDMAConnection::full_free(uint64_t addr, uint16_t block_class) {
             new_section.last_modify_id_ = node_id_;
             new_section.last_offset_ = section_region_offset;
         } while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&section, section_metadata_addr(section_offset), global_rkey_));
-        printf("free: %x, %x\n", new_section.alloc_map_, new_section.frag_map_);
+        // printf("free: %x, %x\n", new_section.alloc_map_, new_section.frag_map_);
 
         uint16_t old_retry = retry_counter_;
         retry_counter_ = retry_time;
@@ -1465,7 +1476,7 @@ int RDMAConnection::region_alloc(section_e &alloc_section, uint32_t &section_off
             }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&section[j], section_metadata_addr(index+j), global_rkey_));
 
             if(!not_suitable){
-                printf("alloc: %x, %x\n", new_section.alloc_map_, new_section.frag_map_);
+                // printf("alloc: %x, %x\n", new_section.alloc_map_, new_section.frag_map_);
                 alloc_section = section[j];
                 section_offset = index+j;
                 region_e region_new;
@@ -1508,6 +1519,8 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
     int index = offset;
     uint64_t start_addr;
     retry_time++;
+    section_e section;
+    remote_read(&section, sizeof(section_e), section_metadata_addr(section_offset), global_rkey_);
     remote_read(region, 16*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
     region_e new_region;
     for(int j = 0; j < 16; j ++) {
@@ -1515,6 +1528,9 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
         int chunk_index = (j+offset)%16;
         uint32_t region_index = section_offset*region_per_section+chunk_index;
         // [TODO]: redo log?
+        if((section.frag_map_|~section.alloc_map_) & 1<<(chunk_index) != 0){
+            continue;
+        }
         do {
             retry_time++;
             new_region = region[chunk_index];
@@ -1549,7 +1565,7 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                 new_region.last_timestamp_ = (new_region.last_timestamp_ + 1) % 127 + 1;
             new_region.last_modify_id_ = node_id_;
             new_region.num = size_class;
-        }while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region[chunk_index], region_metadata_addr(region_index + chunk_index), global_rkey_));
+        }while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region[chunk_index], region_metadata_addr(region_index), global_rkey_));
         region[chunk_index] = new_region;
         if(!not_suitable){
             addr = get_region_block_addr(region_index, index);
@@ -1589,7 +1605,7 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                 new_region.last_modify_id_ = 0;
                 // no matter true or false, no retry
                 // if false, someone other must have done persistence, then do nothing 
-                remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region[chunk_index], region_metadata_addr(region_index+chunk_index), global_rkey_);
+                remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&region[chunk_index], region_metadata_addr(region_index), global_rkey_);
             }
             return retry_time;
         }
@@ -1618,13 +1634,14 @@ int RDMAConnection::fetch_region(section_e &alloc_section, uint32_t section_offs
             empty_map = random_frag | random_alloc;
             chance_map = ~random_frag | random_alloc;
             normal_map = random_frag | ~random_alloc;
-            if( (index = find_free_index_from_bitmap16_tail(normal_map)) != -1 ){
-                // no modify on map status
-                index = (index - rand_val + 16) % 16;
-                new_section = alloc_section;
-                // raise_bit(new_section.alloc_map_, new_section.frag_map_, index);    
-                on_empty = false;
-            } else if( (index = find_free_index_from_bitmap16_tail(empty_map)) != -1 ){
+            // if( (index = find_free_index_from_bitmap16_tail(normal_map)) != -1 ){
+            //     // no modify on map status
+            //     index = (index - rand_val + 16) % 16;
+            //     new_section = alloc_section;
+            //     // raise_bit(new_section.alloc_map_, new_section.frag_map_, index);    
+            //     on_empty = false;
+            // } else 
+            if( (index = find_free_index_from_bitmap16_tail(empty_map)) != -1 ){
                 // mark the empty map to allocated
                 index = (index - rand_val + 16) % 16;
                 new_section = alloc_section;

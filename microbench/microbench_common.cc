@@ -200,11 +200,11 @@ public:
     ~fusee_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
         while(conn_->remote_fetch_block(remote_addr.addr, remote_addr.rkey, remote_addr.size)); 
-	return true;
+	    return true;
     };
     bool free(mralloc::mr_rdma_addr remote_addr) override {
         while(conn_->remote_free_block(remote_addr.addr));
-	return true;
+	    return true;
     };
     bool print_state() override {return false;};
 private:
