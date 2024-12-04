@@ -536,6 +536,7 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
     
     // When use global rkey: application not support multiple rkey or evaluation the side-effect of memory window
     if(use_global_rkey){
+        block_mw[0] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
         for(int i = 0; i < block_num_; i++){
             server_block_manager_->set_block_rkey(i, get_global_rkey());
             server_block_manager_->set_backup_rkey(i, get_global_rkey());
@@ -846,7 +847,10 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
             // if (fetch_mem_block(addr, rkey)) {
             resp_msg->status = RES_OK;
             resp_msg->size = 4096*(1<<((FetchFastRequest*)request)->size_class);
-            resp_msg->addr = (uint64_t)memkind_malloc(memkind_, resp_msg->size);
+            // printf("%d\n", resp_msg->size);
+            memkind_posix_memalign(memkind_, (void**)&resp_msg->addr, resp_msg->size, resp_msg->size);
+            bind_mw(block_mw[0], resp_msg->addr, resp_msg->size, rebinder_qp, rebinder_cq);
+            // resp_msg->addr = (uint64_t)memkind_malloc(memkind_, resp_msg->size);
             resp_msg->rkey = global_rkey_;
             // } else {
             //     resp_msg->status = RES_FAIL;

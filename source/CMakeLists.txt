@@ -19,6 +19,7 @@ target_link_libraries(server
     ibverbs
     rdmacm
     rt
+    memkind
 )
 
 target_link_libraries(client
@@ -26,6 +27,7 @@ target_link_libraries(client
     ibverbs
     rdmacm
     rt
+    memkind
 )
 
 install(TARGETS mralloc
