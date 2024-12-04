@@ -32,7 +32,7 @@ namespace mralloc {
 #define REMOTE_MEM_SIZE 4096
 // #define REMOTE_MEM_SIZE 131072
 
-#define INIT_MEM_SIZE ((uint64_t)60*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)20*1024*1024*1024)
 
 const uint64_t large_block_items = 64;
 
@@ -275,21 +275,21 @@ public:
         uint64_t used = 0;
         double utilization = 0;
         uint64_t managed = 0;
-        for(int i = 0; i< section_num_; i++) {
-            uint16_t empty_map = section_header_[i].load().alloc_map_ | section_header_[i].load().frag_map_;
-            uint16_t exclusive_map = ~section_header_[i].load().alloc_map_ | ~section_header_[i].load().frag_map_;
-            uint32_t use_counter;
-            for(int j = 0; j < region_per_section; j ++) {
-                use_counter = block_per_region - free_bit_in_bitmap32(region_header_[i*region_per_section + j].load().base_map_);
-                used += use_counter;
-                if(use_counter > 0){
-                    managed += 1;
-                    utilization += 1.0*use_counter/block_per_region;
-                }
-                empty_map >>= 1;
-                exclusive_map >>= 1;
-            }
-        }
+        // for(int i = 0; i< section_num_; i++) {
+        //     uint16_t empty_map = section_header_[i].load().alloc_map_ | section_header_[i].load().frag_map_;
+        //     uint16_t exclusive_map = ~section_header_[i].load().alloc_map_ | ~section_header_[i].load().frag_map_;
+        //     uint32_t use_counter;
+        //     for(int j = 0; j < region_per_section; j ++) {
+        //         use_counter = block_per_region - free_bit_in_bitmap32(region_header_[i*region_per_section + j].load().base_map_);
+        //         used += use_counter;
+        //         if(use_counter > 0){
+        //             managed += 1;
+        //             // utilization += 1.0*use_counter/block_per_region;
+        //         }
+        //         empty_map >>= 1;
+        //         exclusive_map >>= 1;
+        //     }
+        // }
         used += exclusive * block_per_region;
         for(int i = 0; i <block_num_; i++) {
             block_e block_head = block_header_[i].load();

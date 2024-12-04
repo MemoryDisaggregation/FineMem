@@ -20,6 +20,7 @@
 const bool use_reg = false;
 const bool use_1GB = false;
 const bool use_40GB = false;
+const bool use_hugepage = true;
 
 #define POOL_MEM_SIZE (uint64_t)1024*1024*1024
 
@@ -281,7 +282,11 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
     server_block_manager_ = new ServerBlockManager(REMOTE_MEM_SIZE);
     uint64_t init_addr_, init_size_;
     server_block_manager_->init_align_hint(init_addr_raw, init_size_raw, init_addr_, init_size_);
-    void* init_addr = mmap((void*)init_addr_ , init_size_, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB, -1, 0);
+    void* init_addr = NULL;
+    if(use_hugepage)
+        init_addr = mmap((void*)init_addr_ , init_size_, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED | MAP_HUGETLB, -1, 0);
+    else
+        init_addr = mmap((void*)init_addr_ , init_size_, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
     printf("init_addr: %p, heap start: %lx\n", init_addr, init_addr_raw);
     if (init_addr == MAP_FAILED || (uint64_t)init_addr != init_addr_) {
         perror("mmap fail");
@@ -699,8 +704,10 @@ int MemoryNode::allocate_and_register_memory(uint64_t &addr, uint32_t &rkey,
     }
     // addr = (uint64_t)mmap((void*)p, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED |MAP_ANONYMOUS, -1, 0);
     // if(!use_reg)
-    // addr = (uint64_t)mmap((void*)p, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED |MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
-    addr = (uint64_t)mmap((void*)p, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED |MAP_ANONYMOUS , -1, 0);
+    if(use_hugepage)
+        addr = (uint64_t)mmap((void*)p, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED |MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
+    else
+        addr = (uint64_t)mmap((void*)p, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED |MAP_ANONYMOUS , -1, 0);
     // printf("%lx\n", addr);
     assert(addr == p);
     struct ibv_mr *mr = rdma_register_memory((void *)p, size);
@@ -800,15 +807,21 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
     struct ibv_mr *resp_mr = work_info->resp_mr;
     cmd_resp->notify = NOTIFY_WORK;
     int active_id = -1;
+    int record = num;
     while (true) {
         if (m_stop_) break;
-        for (int i = num; i < m_worker_num_; i+=MAX_SERVER_WORKER) {
+        for (int i = record; i < m_worker_num_; i+=MAX_SERVER_WORKER) {
             if (m_worker_info_[i]->cmd_msg->notify != NOTIFY_IDLE){
                 active_id = i;
                 cmd_msg = m_worker_info_[i]->cmd_msg;
+                record = i + MAX_SERVER_WORKER;
+                break;
             }
         }
-        if (active_id == -1) continue;
+        if (active_id == -1) {
+            record = num;
+            continue;
+        }
         cmd_msg->notify = NOTIFY_IDLE;
         RequestsMsg *request = (RequestsMsg *)cmd_msg;
         if(active_id != request->id) {
@@ -846,9 +859,13 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
 
             // if (fetch_mem_block(addr, rkey)) {
             resp_msg->status = RES_OK;
-            resp_msg->size = 4096*(1<<((FetchFastRequest*)request)->size_class);
+            resp_msg->size = REMOTE_MEM_SIZE*(1<<((FetchFastRequest*)request)->size_class);
             // printf("%d\n", resp_msg->size);
-            memkind_posix_memalign(memkind_, (void**)&resp_msg->addr, resp_msg->size, resp_msg->size);
+            resp_msg->addr = (uint64_t)memkind_malloc(memkind_, resp_msg->size);
+            // memkind_posix_memalign(memkind_, (void**)&resp_msg->addr, resp_msg->size, resp_msg->size);
+            if(resp_msg->addr == 0){
+                printf("error!%d\n", resp_msg->size);
+            }
             bind_mw(block_mw[0], resp_msg->addr, resp_msg->size, rebinder_qp, rebinder_cq);
             // resp_msg->addr = (uint64_t)memkind_malloc(memkind_, resp_msg->size);
             resp_msg->rkey = global_rkey_;

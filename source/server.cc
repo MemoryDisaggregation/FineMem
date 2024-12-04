@@ -3,12 +3,22 @@
 #include <string>
 #include <iostream>
 #include "memory_node.h"
+#include <sys/time.h>
 
 void* run_woker_thread(void* arg){
     mralloc::MemoryNode* heap = (mralloc::MemoryNode*)arg;
+    struct timeval st, et;
+    gettimeofday(&st, NULL);    
     while(1){
-      heap->print_alloc_info();
-      usleep(100000);
+      gettimeofday(&et, NULL);
+      if((et.tv_sec - st.tv_sec)*1000000 + et.tv_usec - st.tv_usec > 200000){
+        gettimeofday(&st, NULL); 
+        heap->print_alloc_info();
+        // if((et.tv_sec - st.tv_sec)*1000000 + et.tv_usec - st.tv_usec > 200000) {
+        //   printf("too long\n");
+        // }
+      }
+      usleep(1000);
     }
     return NULL;
 }
