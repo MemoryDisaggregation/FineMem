@@ -64,6 +64,7 @@ void* run_woker_thread(void* arg){
 static void
 init_random_values (unsigned int* random_offsets)
 {
+    srand(0);
     for (size_t i = 0; i < iteration; i++)
         random_offsets[i] = i;
     size_t x,y;
@@ -546,7 +547,8 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
 
 void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_t thread_id) {
     std::random_device r;
-    std::mt19937 rand_val(r());
+    // std::mt19937 rand_val(r());
+    std::mt19937 rand_val(0);
     unsigned int random_offsets[iteration];
     uint64_t time_record[iteration];
     init_random_values(random_offsets);
@@ -575,6 +577,7 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
                 }
                 gettimeofday(&start, NULL);
                 remote_addr[next_idx].size = size_class;
+                // remote_addr[next_idx].size = rand_val()%10;
                 if(!alloc->malloc(remote_addr[next_idx]) || remote_addr[next_idx].addr == 0 || remote_addr[next_idx].addr == -1){
                     printf("alloc false\n");
                 }
@@ -588,7 +591,7 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
                 malloc_count_ += 1;
                 allocated ++;
                 allocate_size.fetch_add(1024*1024*4);
-                // printf("%lu, %u\n", remote_addr[next_idx].addr, remote_addr[next_idx].rkey);
+                // printf("%lx, %u\n", remote_addr[next_idx].addr, 1<<remote_addr[next_idx].size);
             }
             // for(int i = 0; i < rand_iter; i ++){
             //     char buffer[2][16] = {"aaa", "bbb"};
