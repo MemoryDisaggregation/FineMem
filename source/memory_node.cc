@@ -800,15 +800,21 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
     struct ibv_mr *resp_mr = work_info->resp_mr;
     cmd_resp->notify = NOTIFY_WORK;
     int active_id = -1;
+    int record = num;
     while (true) {
         if (m_stop_) break;
-        for (int i = num; i < m_worker_num_; i+=MAX_SERVER_WORKER) {
+        for (int i = record; i < m_worker_num_; i+=MAX_SERVER_WORKER) {
             if (m_worker_info_[i]->cmd_msg->notify != NOTIFY_IDLE){
                 active_id = i;
                 cmd_msg = m_worker_info_[i]->cmd_msg;
+                record = i + MAX_SERVER_WORKER;
+                break;
             }
         }
-        if (active_id == -1) continue;
+        if (active_id == -1) {
+            record = num;
+            continue;
+        }
         cmd_msg->notify = NOTIFY_IDLE;
         RequestsMsg *request = (RequestsMsg *)cmd_msg;
         if(active_id != request->id) {

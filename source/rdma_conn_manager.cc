@@ -200,18 +200,18 @@ int ConnectionManager::fetch_region_block(section_e &alloc_section, region_e &al
     return ret;  
 }
 
-int ConnectionManager::fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) {
+int ConnectionManager::fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey, uint16_t size_class) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    int ret = conn->fetch_block(block_hint, addr, rkey);
+    int ret = conn->fetch_block(block_hint, addr, rkey, size_class);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;  
 }
 
-int ConnectionManager::free_block(uint64_t addr) {
+int ConnectionManager::free_block(uint64_t addr, uint16_t size_class) {
     RDMAConnection *conn = m_rpc_conn_queue_->dequeue();
     assert(conn != nullptr);
-    int ret = conn->free_block(addr);
+    int ret = conn->free_block(addr, size_class);
     m_rpc_conn_queue_->enqueue(conn);
     return ret;  
 }

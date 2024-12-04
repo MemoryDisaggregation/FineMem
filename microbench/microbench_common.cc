@@ -127,7 +127,7 @@ public:
     ~cxl_shm_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
         // current_index_ += mt();
-        int retry_time = conn_->fetch_block(current_index_, remote_addr.addr, remote_addr.rkey);
+        int retry_time = conn_->fetch_block(current_index_, remote_addr.addr, remote_addr.rkey, remote_addr.size);
         if(retry_time) {
             if(retry_time > max_retry) 
                 max_retry = retry_time;
@@ -139,7 +139,7 @@ public:
         }
     };
     bool free(mralloc::mr_rdma_addr remote_addr) override {
-        return conn_->free_block(remote_addr.addr);
+        return conn_->free_block(remote_addr.addr, remote_addr.size);
     };
     bool print_state() override {printf("%lf, %d\n", avg_retry, max_retry); return true;};
     double get_avg_retry() {return avg_retry;};
