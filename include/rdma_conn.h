@@ -23,10 +23,10 @@ namespace mralloc {
 
 #define RESOLVE_TIMEOUT_MS 5000
 
-const int retry_threshold = 10;
+const int retry_threshold = 100;
 // const int retry_threshold = 100000;
 // const int low_threshold = 100000;
-const int low_threshold = 2;
+const int low_threshold = 10;
 
 struct one_side_info {
     uint64_t block_size_;
@@ -131,11 +131,11 @@ public:
     int full_alloc(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, uint64_t &addr, uint32_t &rkey);
     int full_free(uint64_t addr, uint16_t block_class);
 
-    int fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
+    int fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey, uint16_t size_class) ;
     int region_alloc(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, uint64_t &addr, uint32_t &rkey);
     int chunk_alloc(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, bool use_chance, uint64_t &addr, uint32_t &rkey);
     
-    int free_block(uint64_t addr) ;
+    int free_block(uint64_t addr, uint16_t size_class) ;
     int section_alloc(uint32_t &section_offset, uint16_t size_class, uint64_t &addr, uint32_t &rkey);
 
     int fetch_block_bitmap(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;

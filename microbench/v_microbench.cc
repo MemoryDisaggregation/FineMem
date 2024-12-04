@@ -16,8 +16,8 @@
 #include <memkind.h>
 #include <fixed_allocator.h>
 
-const int iteration = 60;
-const int free_num = 20;
+const int iteration = 200;
+const int free_num = 150;
 const int epoch = 100;
 int size_class = 0;
 const int alloc_size = 4096*1024;
@@ -129,7 +129,7 @@ public:
     ~cxl_shm_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
         // current_index_ += mt();
-        int retry_time = conn_->fetch_block(current_index_, remote_addr.addr, remote_addr.rkey);
+        int retry_time = conn_->fetch_block(current_index_, remote_addr.addr, remote_addr.rkey, remote_addr.size);
         if(retry_time) {
             if(retry_time > max_retry) 
                 max_retry = retry_time;
@@ -141,7 +141,7 @@ public:
         }
     };
     bool free(mralloc::mr_rdma_addr remote_addr) override {
-        return conn_->free_block(remote_addr.addr);
+        return conn_->free_block(remote_addr.addr, remote_addr.size);
     };
     bool print_state() override {printf("%lf, %d\n", avg_retry, max_retry); return true;};
     double get_avg_retry() {return avg_retry;};
@@ -192,7 +192,7 @@ public:
     }
     ~rpc_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
-        return !conn_->register_remote_memory(remote_addr.addr, remote_addr.rkey, remote_addr.size);
+        return !conn_->register_remote_memory(remote_addr.addr, remote_addr.rkey, REMOTE_MEM_SIZE*1<<remote_addr.size);
     };
     bool free(mralloc::mr_rdma_addr remote_addr) override {
         return !conn_->unregister_remote_memory(remote_addr.addr);
@@ -840,7 +840,7 @@ int main(int argc, char* argv[]) {
         printf("Usage: %s <ip> <port> <thread> <size> <allocator> <trace>\n", argv[0]);
         return 0;
     }
-    // ProfilerStart("test.prof");
+    ProfilerStart("test.prof");
     // init_random_values(random_offsets);
     std::string ip = argv[1];
     std::string port = argv[2];
@@ -956,5 +956,5 @@ int main(int argc, char* argv[]) {
     result << "max cas :" << cas_max_final << std::endl;
     result.close();
     result_detail.close();
-    // ProfilerStop();
+    ProfilerStop();
 }

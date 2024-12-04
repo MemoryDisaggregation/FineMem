@@ -87,8 +87,8 @@ class ConnectionManager {
     int fetch_region_block(section_e &alloc_section, region_e &alloc_region, uint64_t &addr, uint32_t &rkey, bool is_exclusive, uint32_t region_index, uint16_t block_class) ;
     int fetch_region_batch(section_e &alloc_section, region_e &alloc_region, mr_rdma_addr* addr, uint64_t num, bool is_exclusive, uint32_t region_index);
     
-    int fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
-    int free_block(uint64_t addr) ;
+    int fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey, uint16_t size_class) ;
+    int free_block(uint64_t addr, uint16_t size_class) ;
     int fetch_block_bitmap(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey) ;
     int free_block_bitmap(uint64_t addr) ;
     int free_region_batch(uint32_t region_offset, uint32_t free_bitmap, bool is_exclusive);
