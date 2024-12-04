@@ -2060,15 +2060,15 @@ int RDMAConnection::free_region_block(uint64_t addr, bool is_exclusive, uint16_t
 
 // CXL-SHM: using CAS to fetch memory block directly
 int RDMAConnection::fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &rkey, uint16_t size_class) {
-    block_hint = block_hint % (block_num_/512);
+    int length = 1 << size_class;
+    block_hint = block_hint % (block_num_/length);
     uint64_t old_header = 0, new_header = 1, hint = block_hint;
     uint16_t counter = 0;
     int retry_time = 1;
-    uint64_t header[512];
-    int length = 1 << size_class;
+    uint64_t header[length];
     while(true){
-        remote_read(header, 512*sizeof(uint64_t), block_header_ + 512*hint * sizeof(uint64_t), global_rkey_);
-        for(int offset = 0; offset < 512/length; offset++) {
+        remote_read(header, length*sizeof(uint64_t), block_header_ + length*hint * sizeof(uint64_t), global_rkey_);
+        for(int offset = 0; offset < 1; offset++) {
             bool find = true;
             for(int i = offset*length; i < offset*length+length; i++){
                 if(header[i]!=0) {
@@ -2082,7 +2082,7 @@ int RDMAConnection::fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &
                 new_header = 1; old_header = 0;
                 for(int i = offset*length; i < offset*length + length; i++){
                 retry_time ++;
-                    if(!remote_CAS(*(uint64_t*)&new_header, (uint64_t*)&old_header, block_header_ + (512*hint+i) * sizeof(uint64_t), global_rkey_)) {
+                    if(!remote_CAS(*(uint64_t*)&new_header, (uint64_t*)&old_header, block_header_ + (length*hint+i) * sizeof(uint64_t), global_rkey_)) {
                         success = false;
                         stop = i;
                         break;
@@ -2092,19 +2092,19 @@ int RDMAConnection::fetch_block(uint64_t &block_hint, uint64_t &addr, uint32_t &
                     new_header = 0; old_header = 1;
                     for(int i = offset*length; i < stop; i++){
                         retry_time ++;
-                        if(!remote_CAS(*(uint64_t*)&new_header, (uint64_t*)&old_header, block_header_ + (512*hint+i) * sizeof(uint64_t), global_rkey_)){
+                        if(!remote_CAS(*(uint64_t*)&new_header, (uint64_t*)&old_header, block_header_ + (length*hint+i) * sizeof(uint64_t), global_rkey_)){
                             printf("impossbile!\n");
                         }
                     }
                 }else {
-                    addr = get_block_addr(512*hint + offset*length);
-                    rkey = get_block_rkey(512*hint + offset*length);
-                    block_hint = (hint + 1) % (block_num_/512);
+                    addr = get_block_addr(length*hint + offset*length);
+                    rkey = get_block_rkey(length*hint + offset*length);
+                    block_hint = (hint + 1) % (block_num_/length);
                     return retry_time;
                 }            
             }
         }
-        hint = (hint + 1) % (block_num_/512);
+        hint = (hint + 1) % (block_num_/length);
         if(hint == block_hint) {
             counter ++;
             if(counter >2) {

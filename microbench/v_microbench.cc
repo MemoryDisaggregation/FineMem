@@ -17,8 +17,8 @@
 #include <fixed_allocator.h>
 
 const int iteration = 200;
-const int free_num = 150;
-const int epoch = 100;
+const int free_num = 50;
+const int epoch = 500;
 int size_class = 0;
 const int alloc_size = 4096*1024;
 
