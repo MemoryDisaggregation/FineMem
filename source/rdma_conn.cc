@@ -963,7 +963,8 @@ int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offse
         bool slow_path = false;
         uint16_t first_section = section_offset;
         uint16_t ring = 0;
-        while((result = chunk_alloc(alloc_section, section_offset, size_class, slow_path, addr, rkey)) < 0){
+	int retry;
+        while((retry = chunk_alloc(alloc_section, section_offset, size_class, slow_path, addr, rkey)) < 0){
             if(!slow_path){
                 if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0){
                     printf("no section!\n");
@@ -986,7 +987,7 @@ int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offse
                 // break;
             }else section_time += result;
         }
-        return result;
+        return retry;
 
             while((result = fetch_region(alloc_section, section_offset, size_class, false, cache_region, *(uint32_t*)&cache_region_index, skip_mask)) < 0){
                 region_time += (-1)*result;
@@ -1466,22 +1467,26 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
 
 int RDMAConnection::region_alloc(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, uint64_t &addr, uint32_t &rkey){
     int retry_time = 0;
+    
     // [TODO] fetch variable rkey
     if(size_class > 9 || size_class < 5){
         printf("use find section or chunk alloc!\n");
         return -1;
     }
     // section_e section[8] = {0,0};
+    int cache_size = 16*4;
+    section_offset -= section_offset%cache_size;
     int region_num = 1 << (size_class - 5);
     int offset = (section_offset)%section_num_;
-    int random_offset = mt()%16;
+    int random_offset = mt()%cache_size;
     int out_date_counter = 0;
-    int remain = section_num_, fetch = (offset + 16) > section_num_ ? (section_num_ - offset):16, index = offset;
+    int remain = section_num_, fetch = (offset + cache_size) > section_num_ ? (section_num_ - offset):cache_size, index = offset;
     int total_section_num = 0;
     uint64_t start_addr;
     while(remain > 0) {
         // remote_read(section, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
-        if(cache_section_array_index != index || *(uint64_t*)&alloc_section != *(uint64_t*)&cache_section_array[index]){
+        if(cache_section_array_index != index || *(uint64_t*)&alloc_section != *(uint64_t*)&cache_section_array[0]){
+            skip_section = -1;
             cache_section_array_index = index;
             remote_read(cache_section_array, fetch*sizeof(section_e), section_metadata_addr(index), global_rkey_);
         }
@@ -1491,16 +1496,20 @@ int RDMAConnection::region_alloc(section_e &alloc_section, uint32_t &section_off
             int retry_temp = 0;
             bool not_suitable = false;
             int section_index = (j+random_offset)%fetch;
+            if(section_index == skip_section){
+                skip_section = -1;
+                continue;
+            }
             uint16_t search_index = 0;
             do {
                 not_suitable = false;
                 search_index = 0;
                 retry_time++;
                 retry_temp++;
-                // if(retry_time > retry_threshold*2){
-                //     not_suitable = true;
-                //     break;
-                // }
+                 //if(retry_time > retry_threshold){
+                   //  not_suitable = true;
+                   //  break;
+                 //}
                 new_section = cache_section_array[section_index];
                 // int block_num = 1<<(block_class);
                 int size = 1<<(region_num+1);
@@ -1552,7 +1561,8 @@ int RDMAConnection::region_alloc(section_e &alloc_section, uint32_t &section_off
                 addr = get_region_block_addr(region_index, 0);
                 rkey = get_region_block_rkey(region_index, 0); 
                 if(new_section.retry_ == 2){
-                    section_offset = index+section_index+1;
+                    skip_section = section_index;
+                    section_offset = index+cache_size;
                 } else {
                     alloc_section = cache_section_array[0];
                     section_offset = index;
@@ -1560,7 +1570,7 @@ int RDMAConnection::region_alloc(section_e &alloc_section, uint32_t &section_off
                 return retry_time;
             }
         }
-        index = (index + fetch)%section_num_; remain -= fetch; fetch = (index + 16) > section_num_ ? (section_num_ - index):16;
+        index = (index + fetch)%section_num_; remain -= fetch; fetch = (index + cache_size) > section_num_ ? (section_num_ - index):cache_size;
     }
     return (-1)*retry_time;
 }
@@ -1576,11 +1586,13 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
     // region_e region[16] = {0,0};
     int region_num = 1 << (size_class);
     int offset = mt()%16;
+    // int offset = 0;
     int index = offset;
     uint64_t start_addr;
     // retry_time++;
     section_e section;
     if(section_offset != cache_region_index){
+        skip_region = -1;
         cache_region_index = section_offset;
         remote_read(cache_region_array, 16*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
     }
@@ -1589,10 +1601,14 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
     for(int iter = 0; iter<2; iter++){
         int out_date_counter = 0;
         for(int j = 0; j < 16; j ++) {
-            retry_time = 0;
+            //retry_time = 0;
             int retry_temp = 0;
             bool not_suitable = false;
             int chunk_index = (j+offset)%16;
+            // if(!use_chance && skip_region == chunk_index){
+            //     skip_region = -1;
+            //     continue;
+            // }
             uint32_t region_index = section_offset*region_per_section+chunk_index;
             // [TODO]: redo log?
             if(!use_chance && cache_region_array[chunk_index].retry_ == 2){
@@ -1621,6 +1637,7 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                 //     continue;
                 // }
             }
+	        retry_time = 0;
             do {
                 retry_temp ++;
                 retry_time++;
@@ -1677,17 +1694,19 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                 // retry counter for least 3 time allocation
                 uint64_t old_retry = retry_counter_;
                 retry_counter_ = retry_time;
-                
+                if(new_region.retry_ == 2){
+                    skip_region = chunk_index;
+                }
                 // [Stage 2] state update, will async it in the future
                 if(new_region.base_map_ == bitmap32_filled) {
                     force_update_section_state(alloc_section, region_index, alloc_full);
                 } 
-                // else if(old_retry > 0 && retry_time < low_threshold) {
-                //     force_update_section_state(alloc_section, region_index, alloc_light, alloc_heavy);
-                // } 
-                // else if(old_retry < 2 && retry_time >= retry_threshold) {
-                //     force_update_section_state(alloc_section, region_index, alloc_heavy, alloc_light);
-                // } 
+                else if(old_retry > 0 && retry_time < low_threshold) {
+                     force_update_section_state(alloc_section, region_index, alloc_light, alloc_heavy);
+                 } 
+                 else if(old_retry < 2 && retry_time >= retry_threshold) {
+                     force_update_section_state(alloc_section, region_index, alloc_heavy, alloc_light);
+                 } 
                 // [Stage 3] Flush log, will async it in the future
                 block_e old_block = {0, (new_region.last_timestamp_ + 126 ) % 127 + 1};
                 block_e new_block = {node_id_, new_region.last_timestamp_};
