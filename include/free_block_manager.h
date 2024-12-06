@@ -86,11 +86,11 @@ struct section_e {
     // max_length, 1~32 
     uint16_t retry_ : 2;
     // [TODO] no used?
-    uint16_t exclusive_ : 1;
+    // uint16_t exclusive_ : 1;
     // on use to check whether it has been freed
     uint16_t on_use_ : 1;
     uint16_t last_offset_ : 5;
-    uint16_t last_timestamp_ : 7;
+    uint16_t last_timestamp_ : 8;
     uint16_t num : 3;
     uint16_t last_modify_id_ : 13;
 };

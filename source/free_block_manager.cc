@@ -14,7 +14,7 @@ namespace mralloc {
 
     void ServerBlockManager::recovery(int node){
         if(node == 0) {
-            section_e init_section_header = {0, 0, 0, 0, 0, 0, 1, 0, 0};
+            section_e init_section_header = {0, 0, 0, 0, 0, 1, 0, 0};
             region_e init_region_header = {0, 0, 0, 0, 0, 1, 0, 0};
 
             for(int i = 0; i < section_num_; i++) {
@@ -142,7 +142,7 @@ namespace mralloc {
         }
 
         // [TODO] Why there is a 1?
-        section_e init_section_header = {0,0  , 0, 0, 0, 0, 1, 0, 0};
+        section_e init_section_header = {0,0, 0, 0, 0, 1, 0, 0};
         region_e init_region_header = {0, 0, 0, 0, 0, 1, 0, 0};
 
         for(int i = 0; i < section_num_; i++) {
