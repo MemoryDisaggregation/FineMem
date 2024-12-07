@@ -306,10 +306,6 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
 
 	uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
         printf("finish time %lu, original is %d\n", time, request_array[request_num-1].time);
-        time = time / request_num;
-	if(time < 1) time = 1;
-        if(time > 0 && time < 100000)
-            malloc_record[(int)time] += 1;
         malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
         malloc_count_ += 1;
         printf("epoch %d check finish\n", j);
@@ -948,6 +944,7 @@ int main(int argc, char* argv[]) {
         if(cas_max[i] > cas_max_final)
             cas_max_final = cas_max[i];
     }
+    printf("%d\n", request_array[request_num-1]);
     printf("%lf\n", malloc_avg_final/thread_num);
     // printf("total malloc avg: %lfus\n", malloc_avg_final/thread_num);
     result << "total malloc avg: " << malloc_avg_final/thread_num << std::endl;
