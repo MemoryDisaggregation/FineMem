@@ -100,6 +100,8 @@ public:
 
     bool init_mw(ibv_qp* qp, ibv_cq *cq);
     bool bind_mw(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq *cq);
+    bool bind_mw_async(ibv_mw* mw, uint64_t addr,  uint64_t id, uint64_t size, ibv_qp* qp, ibv_cq* cq);
+    bool bind_mw_async_poll(ibv_cq* cq);
     bool bind_mw_type2(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq *cq);
     bool unbind_mw_type2(ibv_mw* mw, uint64_t addr, uint64_t size, ibv_qp* qp, ibv_cq *cq);
 
