@@ -55,7 +55,7 @@ struct alloc_request{
     int size;
 };
 
-alloc_request request_array[10000];
+alloc_request request_array[200000];
 
 void* run_woker_thread(void* arg){
     std::ofstream result;
