@@ -360,7 +360,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         free_record_global[i].fetch_add(free_record[i]);
     }
     malloc_avg[thread_id] = malloc_avg_time_;
-    malloc_avg[thread_id] = total_avg_time_;
+    total_avg[thread_id] = total_avg_time_;
     cas_avg[thread_id] = alloc->get_avg_retry();
     cas_max[thread_id] = alloc->get_max_retry();
     free_avg.fetch_add(free_avg_time_);
