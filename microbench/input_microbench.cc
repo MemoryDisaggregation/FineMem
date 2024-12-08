@@ -274,6 +274,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
     uint64_t malloc_avg_time_ = 0, free_avg_time_ = 0;
     uint64_t malloc_count_ = 0, free_count_ = 0;
     struct timeval start, end;
+    struct timeval start_tick, end_tick;
     int malloc_record[100000] = {0};
     int free_record[100000] = {0};
     mralloc::mr_rdma_addr remote_addr[request_num];
@@ -283,6 +284,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
 	    gettimeofday(&start, NULL);
         int allocated = 0;
         int last_time = 0;
+        int time_count;
         for(int i = 0; i < request_num; i ++){
             gettimeofday(&end, NULL);
             uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
@@ -292,10 +294,13 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
             remote_addr[i].size = request_array[i].size;
             if(remote_addr[i].addr != -1 && remote_addr[i].addr != -1) 
                 continue;
+            gettimeofday(&start_tick, NULL);
             if(!alloc->malloc(remote_addr[i])){
                 printf("alloc false\n");
             }
-	    // printf("alloc %p-%p\n",remote_addr[i].addr, remote_addr[i].addr+4096*(1<<request_array[i].size));
+            gettimeofday(&end_tick, NULL);
+	        time_count +=  end_tick.tv_usec + end_tick.tv_sec*1000*1000 - start_tick.tv_usec - start_tick.tv_sec*1000*1000;
+        // printf("alloc %p-%p\n",remote_addr[i].addr, remote_addr[i].addr+4096*(1<<request_array[i].size));
             allocated ++;
         }
         gettimeofday(&end, NULL);
@@ -304,8 +309,9 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         if (thread_id == 1)
             conn->remote_print_alloc_info(mem_use);
 
-	uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
-        printf("finish time %lu, original is %d\n", time, request_array[request_num-1].time);
+	uint64_t total_time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
+        printf("finish time %lu, original is %d\n", total_time, request_array[request_num-1].time);
+        uint64_t time = time_count / request_num;
         malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
         malloc_count_ += 1;
         printf("epoch %d check finish\n", j);
