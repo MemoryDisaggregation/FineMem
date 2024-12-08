@@ -959,9 +959,9 @@ int main(int argc, char* argv[]) {
         if(cas_max[i] > cas_max_final)
             cas_max_final = cas_max[i];
     }
-    printf("%d\n", request_array[request_num-1]);
+    printf("%d\n", request_array[request_num-1].time);
     printf("%lf\n", malloc_avg_final/thread_num);
-    printf("%lf\n", total_avg_final/thread_num);
+    printf("%lf\n", (total_avg_final/thread_num)/request_array[request_num-1].time);
     // printf("total malloc avg: %lfus\n", malloc_avg_final/thread_num);
     result << "total malloc avg: " << malloc_avg_final/thread_num << std::endl;
     // printf("total free avg: %luus\n", free_avg.load()/thread_num);
