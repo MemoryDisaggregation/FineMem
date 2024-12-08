@@ -43,6 +43,7 @@ std::atomic<int> malloc_record_global[100000];
 std::atomic<int> free_record_global[100000];
 std::atomic<uint64_t> allocate_size;
 volatile double malloc_avg[128] = {0};
+volatile double total_avg[128] = {0};
 volatile double cas_avg[128] = {0};
 volatile int cas_max[128] = {0};
 std::atomic<uint64_t> free_avg;
@@ -271,7 +272,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
     uint64_t mem_use;
     unsigned int random_offsets[iteration];
     init_random_values(random_offsets);
-    uint64_t malloc_avg_time_ = 0, free_avg_time_ = 0;
+    uint64_t malloc_avg_time_ = 0, free_avg_time_ = 0, total_avg_time_ = 0;
     uint64_t malloc_count_ = 0, free_count_ = 0;
     struct timeval start, end;
     struct timeval start_tick, end_tick;
@@ -313,6 +314,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         printf("finish time %lu, original is %d\n", total_time, request_array[request_num-1].time);
         uint64_t time = time_count / request_num;
         malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
+        total_avg_time_ = total_time;
         malloc_count_ += 1;
         printf("epoch %d check finish\n", j);
         char buffer[2][16] = {"aaa", "bbb"};
@@ -358,6 +360,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         free_record_global[i].fetch_add(free_record[i]);
     }
     malloc_avg[thread_id] = malloc_avg_time_;
+    malloc_avg[thread_id] = total_avg_time_;
     cas_avg[thread_id] = alloc->get_avg_retry();
     cas_max[thread_id] = alloc->get_max_retry();
     free_avg.fetch_add(free_avg_time_);
@@ -900,6 +903,8 @@ int main(int argc, char* argv[]) {
     id.store(1);
     for(int i = 0; i < 128; i++)
         malloc_avg[i] = 0;
+    for(int i = 0; i < 128; i++)
+        total_avg[i] = 0;
     free_avg.store(0);
     pthread_mutex_init(&file_lock, NULL);
     pthread_barrier_init(&start_barrier, NULL, thread_num);
@@ -941,6 +946,10 @@ int main(int argc, char* argv[]) {
     for(int i = 0; i < 128; i++) {
         malloc_avg_final += malloc_avg[i];
     }
+    volatile double total_avg_final = 0;
+    for(int i = 0; i < 128; i++) {
+        total_avg_final += total_avg[i];
+    }
     volatile double cas_avg_final = 0;
     for(int i = 0; i < 128; i++) {
         cas_avg_final += cas_avg[i];
@@ -952,6 +961,7 @@ int main(int argc, char* argv[]) {
     }
     printf("%d\n", request_array[request_num-1]);
     printf("%lf\n", malloc_avg_final/thread_num);
+    printf("%lf\n", total_avg_final/thread_num);
     // printf("total malloc avg: %lfus\n", malloc_avg_final/thread_num);
     result << "total malloc avg: " << malloc_avg_final/thread_num << std::endl;
     // printf("total free avg: %luus\n", free_avg.load()/thread_num);
