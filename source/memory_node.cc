@@ -610,19 +610,88 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
         //     bind_mw(backup_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
         //     server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
         // }
+
+        struct timeval start, end;
+        gettimeofday(&start, NULL);
         for(int i = 0; i < block_num_; i++){
             uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
             block_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
             backup_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
-            bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
-            bind_mw(backup_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
-            server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
-            server_block_manager_->set_backup_rkey(i, backup_mw[i]->rkey);  
+            bind_mw_async(block_mw[i], block_addr_, i<<1,  server_block_manager_->get_block_size(), qp, cq);
+            bind_mw_async(backup_mw[i], block_addr_, i<<1+1, server_block_manager_->get_block_size(), qp, cq);
+            // bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
+            // bind_mw(backup_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
+            // server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
+            // server_block_manager_->set_backup_rkey(i, backup_mw[i]->rkey);  
         }
+
+        for(int i=0;i< block_num_; i++){
+            bind_mw_async_poll(cq);
+        }
+        gettimeofday(&end, NULL);
+        uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
+        printf("mw_reg bost on %d is %lu: %lf\n", block_num_, time, 1.0*time/block_num_);
+
     }
 
     printf("bind finished\n");
 
+    return true;
+}
+
+
+bool MemoryNode::bind_mw_async(ibv_mw* mw, uint64_t addr, uint64_t id, uint64_t size, ibv_qp* qp, ibv_cq* cq){
+    if(mw == NULL){
+        int index = (addr - heap_start_addr_)/base_block_size;
+        m_mw_handler[index] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
+        printf("addr:%lx rkey_old: %u",  addr, m_mw_handler[index]->rkey);
+        mw = m_mw_handler[index];
+    }
+    struct ibv_mw_bind_info bind_info_ = {.mr = global_mr_, 
+                                            .addr = addr, 
+                                            .length = size,
+                                            .mw_access_flags = IBV_ACCESS_REMOTE_READ | 
+                                                IBV_ACCESS_REMOTE_WRITE } ;
+    struct ibv_mw_bind bind_ = {.wr_id = id, .send_flags = IBV_SEND_SIGNALED, .bind_info = bind_info_};
+    if(ibv_bind_mw(qp, mw, &bind_)){
+        perror("ibv_post_send mw_bind fail");
+    } 
+    return true;
+}
+
+bool MemoryNode::bind_mw_async_poll(ibv_cq* cq){
+    while (true) {
+        ibv_wc wc;
+        int rc = ibv_poll_cq(cq, 1, &wc);
+        if (rc == 1) {
+            if (wc.opcode != IBV_WC_BIND_MW) {
+                printf("bind failed\n");
+            }
+            if (IBV_WC_SUCCESS == wc.status) {
+                int i = wc.wr_id>>1;
+                if(wc.wr_id%2 == 0){
+                    server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
+                } else {
+                    server_block_manager_->set_backup_rkey(i, backup_mw[i]->rkey);  
+                }
+                break;
+            } else if (IBV_WC_WR_FLUSH_ERR == wc.status) {
+                perror("cmd_send IBV_WC_WR_FLUSH_ERR");
+                break;
+            } else if (IBV_WC_RNR_RETRY_EXC_ERR == wc.status) {
+                perror("cmd_send IBV_WC_RNR_RETRY_EXC_ERR");
+                break;
+            } else {
+                perror("cmd_send ibv_poll_cq status error");
+                break;
+            }
+        } else if (0 == rc) {
+            continue;
+        } else {
+            perror("ibv_poll_cq fail");
+            break;
+        }
+    }
     return true;
 }
 

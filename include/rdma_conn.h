@@ -23,10 +23,10 @@ namespace mralloc {
 
 #define RESOLVE_TIMEOUT_MS 5000
 
-const int retry_threshold = 100;
-// const int retry_threshold = 100000;
+const int retry_threshold = 3;
+// const int retry_threshold = 1000000;
 // const int low_threshold = 100000;
-const int low_threshold = 10;
+const int low_threshold = 2;
 
 struct one_side_info {
     uint64_t block_size_;
@@ -194,7 +194,15 @@ private:
     std::mt19937 mt;
 
     region_e cache_region;
+    region_e cache_region_array[16];
+    int cache_section_index = -1;
     int cache_region_index = -1;
+
+    section_e cache_section_array[64];
+    int cache_section_array_index = -1;
+
+    int skip_section;
+    int skip_region;
 
 };
 

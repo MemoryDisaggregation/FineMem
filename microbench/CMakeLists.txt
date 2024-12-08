@@ -20,3 +20,14 @@ target_link_libraries(v_microbench
     profiler
     memkind
 )
+
+add_executable(input_microbench input_microbench.cc)
+
+target_link_libraries(input_microbench
+    mralloc
+    ibverbs
+    rdmacm
+    rt
+    profiler
+    memkind
+)

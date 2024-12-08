@@ -18,7 +18,7 @@
 
 const int iteration = 200;
 const int free_num = 50;
-const int epoch = 500;
+const int epoch = 1;
 int size_class = 0;
 const int alloc_size = 4096*1024;
 
@@ -47,6 +47,15 @@ volatile double cas_avg[128] = {0};
 volatile int cas_max[128] = {0};
 std::atomic<uint64_t> free_avg;
 std::atomic<uint64_t> id;
+
+int request_num = 0;
+
+struct alloc_request{
+    int time;
+    int size;
+};
+
+alloc_request request_array[200000];
 
 void* run_woker_thread(void* arg){
     std::ofstream result;
@@ -267,20 +276,26 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
     struct timeval start, end;
     int malloc_record[100000] = {0};
     int free_record[100000] = {0};
-    mralloc::mr_rdma_addr remote_addr[iteration];
+    mralloc::mr_rdma_addr remote_addr[request_num];
     uint64_t current_index = 0;
-    int rand_iter = iteration;
     for(int j = 0; j < epoch; j ++) {
         pthread_barrier_wait(&start_barrier);
 	    gettimeofday(&start, NULL);
         int allocated = 0;
-        for(int i = 0; i < rand_iter; i ++){
-            if(remote_addr[i].addr != 0 && remote_addr[i].addr != 0) 
+        int last_time = 0;
+        for(int i = 0; i < request_num; i ++){
+            gettimeofday(&end, NULL);
+            uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
+            if(time < request_array[i].time){
+                usleep(request_array[i].time - time);
+            }
+            remote_addr[i].size = request_array[i].size;
+            if(remote_addr[i].addr != -1 && remote_addr[i].addr != -1) 
                 continue;
             if(!alloc->malloc(remote_addr[i])){
                 printf("alloc false\n");
             }
-	    //printf("alloc%p,%u\n",addr[i], rkey[i]);
+	    // printf("alloc %p-%p\n",remote_addr[i].addr, remote_addr[i].addr+4096*(1<<request_array[i].size));
             allocated ++;
         }
         gettimeofday(&end, NULL);
@@ -289,30 +304,13 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         if (thread_id == 1)
             conn->remote_print_alloc_info(mem_use);
 
-        // valid check
-        /*
-	 * char buffer[2][16] = {"aaa", "bbb"};
-        char read_buffer[4];
-        for(int i = 0; i < rand_iter; i ++){
-            if(conn->remote_write(buffer[i%2], 64, addr[i], rkey[i])) {
-                printf("wrong write addr %ld, %u\n", addr[i], rkey[i]);
-            }
-            if(conn->remote_read(read_buffer, 4, addr[i], rkey[i])) {
-                printf("wrong read addr %ld, %u\n", addr[i], rkey[i]);
-            }
-            // printf("access addr %p, %u\n", addr[i], rkey[i]);
-            // assert(read_buffer[0] == buffer[i%2][0]);
-        }        
-        */
 	uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
-        time = time / rand_iter;
-	if(time < 1) time = 1;
-        if(time > 0 && time < 100000)
-            malloc_record[(int)time] += 1;
+        printf("finish time %lu, original is %d\n", time, request_array[request_num-1].time);
         malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
         malloc_count_ += 1;
         printf("epoch %d check finish\n", j);
-        
+        char buffer[2][16] = {"aaa", "bbb"};
+        char read_buffer[4];
         // free
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         pthread_barrier_wait(&start_barrier);
@@ -321,20 +319,20 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         allocated = 0;
         unsigned int offset_state = 0;
         unsigned int next_idx ;
-        for(int i = 0; i < rand_iter; i ++){
-            next_idx = get_random_offset(random_offsets, &offset_state);
-            if(rand()%100 > 20 && remote_addr[next_idx].addr != 0){
-                if(!alloc->free(remote_addr[next_idx]))
+        for(int i = 0; i < request_num; i ++){
+            // next_idx = get_random_offset(random_offsets, &offset_state);
+            if(remote_addr[i].addr != -1){
+                if(!alloc->free(remote_addr[i]))
                     printf("free error!\n");
-                remote_addr[next_idx].addr = 0;
-                remote_addr[next_idx].rkey = 0;
+                remote_addr[i].addr = -1;
+                remote_addr[i].rkey = -1;
                 allocated ++;
             }
         }
         gettimeofday(&end, NULL);
         pthread_barrier_wait(&end_barrier);
         time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
-        time = time / rand_iter;
+        time = time / request_num;
         if(time < 100000)
             free_record[(int)time] += 1;
         free_avg_time_ = (free_avg_time_*free_count_ + time)/(free_count_ + 1);
@@ -344,8 +342,8 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         if (thread_id == 1)
             conn->remote_print_alloc_info(mem_use);
     }
-    for(int i = 0; i < rand_iter; i++) {
-	    if(remote_addr[i].addr!=0)
+    for(int i = 0; i < request_num; i++) {
+	    if(remote_addr[i].addr!=-1)
 		alloc->free(remote_addr[i]);
     }
     alloc->print_state();
@@ -802,8 +800,8 @@ void* worker(void* arg) {
         alloc = (test_allocator*)new rpc_allocator(conn);
         break;
     case share_alloc:
-        // alloc = (test_allocator*)new share_allocator(conn, 0);
-        alloc = (test_allocator*)new share_allocator(conn, rand());
+        alloc = (test_allocator*)new share_allocator(conn, 0);
+        // alloc = (test_allocator*)new share_allocator(conn, rand());
         break;
     default:
         break;
@@ -840,7 +838,7 @@ void* worker(void* arg) {
 int main(int argc, char* argv[]) {
     allocate_size.store(0);
     if(argc < 7){
-        printf("Usage: %s <ip> <port> <thread> <size> <allocator> <trace>\n", argv[0]);
+        printf("Usage: %s <ip> <port> <thread> <size> <allocator> <file>\n", argv[0]);
         return 0;
     }
     ProfilerStart("test.prof");
@@ -850,7 +848,7 @@ int main(int argc, char* argv[]) {
     int thread_num = atoi(argv[3]);
     size_class = atoi(argv[4]);
     std::string allocator_type = argv[5];
-    std::string trace_type = argv[6];
+    std::string input = argv[6];
     if (allocator_type == "cxl")
         type = cxl_shm_alloc;
     else if (allocator_type == "fusee") 
@@ -874,23 +872,21 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    if (trace_type == "stage")
-        test = stage_test;
-    else if (trace_type == "shuffle")
-        test = shuffle_test;
-    else if (trace_type == "short")
-        test = short_test;
-    else if (trace_type == "frag")
-        test = frag_test;
-    else {
-        printf("test type error\n");
-        return -1;
+    test = stage_test;
+
+    std::ifstream requests;
+    requests.open(input);
+
+    int read_time; int read_size;
+    while(requests >> read_time >> read_size){
+        request_array[request_num] = {read_time, read_size};
+        request_num++;
     }
 
     std::ofstream result;
     time_t t; unsigned int ti = time(&t);
-    result.open("result_" + std::string(argv[3]) + "_" +allocator_type + "_"  + trace_type + "_" + std::to_string(ti) + "_.csv");
-    result_detail.open("detail_result_" + std::string(argv[3]) + "_" +allocator_type + "_"  + trace_type + "_" + std::to_string(ti) +"_.csv");
+    result.open("result_" + std::string(argv[3]) + "_" +allocator_type + "_"  + input + "_" + std::to_string(ti) + "_.csv");
+    result_detail.open("detail_result_" + std::string(argv[3]) + "_" +allocator_type + "_"  + input + "_" + std::to_string(ti) +"_.csv");
     for(int i=0;i<100000;i++){
         malloc_record_global[i].store(0);
         free_record_global[i].store(0);
@@ -948,6 +944,7 @@ int main(int argc, char* argv[]) {
         if(cas_max[i] > cas_max_final)
             cas_max_final = cas_max[i];
     }
+    printf("%d\n", request_array[request_num-1]);
     printf("%lf\n", malloc_avg_final/thread_num);
     // printf("total malloc avg: %lfus\n", malloc_avg_final/thread_num);
     result << "total malloc avg: " << malloc_avg_final/thread_num << std::endl;
