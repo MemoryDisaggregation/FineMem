@@ -26,7 +26,7 @@ tar -zxvf MLNX_OFED_LINUX-4.9-7.1.0.0-ubuntu20.04-x86_64.tgz
 
 cd MLNX_OFED_LINUX-4.9-7.1.0.0-ubuntu20.04-x86_64
 
-sudo ./mlnxofedinstall
+sudo ./mlnxofedinstall --force
 
 cd ../; sudo rm -rf MLNX_OFED_LINUX-4.9-7.1.0.0-ubuntu20.04-x86_64*
 
