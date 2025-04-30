@@ -16,9 +16,11 @@
 #include <memkind.h>
 #include <fixed_allocator.h>
 #include "mr_utils.h"
+#include "hiredis/hiredis.h"
+#include <string>
 
-const int iteration = 200;
-const int free_num = 50;
+const int iteration = 100;
+const int free_num = 25;
 const int epoch = 500;
 int size_class = 0;
 const int alloc_size = 4096*1024;
@@ -254,6 +256,27 @@ private:
     mralloc::ConnectionManager** conn_;
     int rr;
 };
+
+class pool_allocator : test_allocator{
+    public:
+        pool_allocator() {
+            cpu_cache_ = new mralloc::cpu_cache(4*1024*1024);
+        }
+        ~pool_allocator() {};
+        bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
+            uint64_t unused;
+            return cpu_cache_->malloc(remote_addr.size, remote_addr, unused);
+        };
+        bool free(mralloc::mr_rdma_addr remote_addr) override {
+            cpu_cache_->free(remote_addr);
+            return true;
+        };
+        bool print_state() override {return false;};
+    
+    private:
+        mralloc::cpu_cache* cpu_cache_;
+};
+
 
 void warmup(test_allocator* alloc) {
     uint64_t addr[iteration];
@@ -789,6 +812,10 @@ void short_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
     malloc_avg[thread_id] = malloc_avg_time_;
 }
 
+redisContext *redis_conn;
+redisReply *redis_reply;
+int node_num = 0;
+
 void* worker(void* arg) {
     uint64_t thread_id = id.fetch_add(1);
     cpu_set_t cpuset;
@@ -823,14 +850,32 @@ void* worker(void* arg) {
         // alloc = (test_allocator*)new share_allocator(conn, 0);
         alloc = (test_allocator*)new share_allocator(conn, rand());
         break;
+    case pool_alloc:
+        alloc = (test_allocator*)new pool_allocator();
+        break;
     default:
         break;
     }
     pthread_barrier_wait(&start_barrier);
     warmup(alloc);
     pthread_barrier_wait(&end_barrier);
+    int node_id;
     if(thread_id == 1) {
-    	getchar();
+    	// getchar();
+        redis_reply = (redisReply*)redisCommand(redis_conn, "INCR bench_start");
+        printf("INCUR: %d\n", redis_reply->integer);
+        // freeReplyObject(redis_reply);
+        // redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");
+        node_id = redis_reply->integer;
+        if(redis_reply->integer != node_num){
+            redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
+            while(atoi(redis_reply->str) != node_num){
+                freeReplyObject(redis_reply);
+                redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
+                printf("GET: %s\n", redis_reply->str);
+            }
+        }
+        freeReplyObject(redis_reply);
     }
     pthread_barrier_wait(&start_barrier);
     // shuffle_alloc(conn, alloc, thread_id);
@@ -857,10 +902,13 @@ void* worker(void* arg) {
 
 int main(int argc, char* argv[]) {
     allocate_size.store(0);
-    if(argc < 6){
-        printf("Usage: %s <config file> <thread> <size> <allocator> <trace>\n", argv[0]);
+    if(argc < 7){
+        printf("Usage: %s <config file> <thread> <size> <allocator> <trace> <node_num>\n", argv[0]);
         return 0;
     }
+    struct timeval timeout = { 1, 500000 }; // 1.5 seconds
+    redis_conn = redisConnectWithTimeout("10.10.1.1", 2222, timeout);
+    
     mralloc::GlobalConfig config;
     mralloc::load_config(argv[1], &config);
     std::string ip[16], port[16];
@@ -869,7 +917,6 @@ int main(int argc, char* argv[]) {
         ip[i] = std::string(config.memory_ips[i]);
         port[i] = std::to_string(config.rdma_cm_port);
     }
-    ProfilerStart("test.prof");
     // init_random_values(random_offsets);
     // std::string ip = argv[1];
     // std::string port = argv[2];
@@ -877,6 +924,7 @@ int main(int argc, char* argv[]) {
     size_class = atoi(argv[3]);
     std::string allocator_type = argv[4];
     std::string trace_type = argv[5];
+    node_num = atoi(argv[6]);
     if (allocator_type == "cxl")
         type = cxl_shm_alloc;
     else if (allocator_type == "fusee") 
@@ -987,5 +1035,9 @@ int main(int argc, char* argv[]) {
     result << "max cas :" << cas_max_final << std::endl;
     result.close();
     result_detail.close();
-    ProfilerStop();
+    redis_reply = (redisReply*)redisCommand(redis_conn, "INCRBYFLOAT avg %s", std::to_string(malloc_avg_final/thread_num).c_str());
+    printf("INCUR: %s\n", redis_reply->str);
+    freeReplyObject(redis_reply);
+    redis_reply = (redisReply*)redisCommand(redis_conn, "INCR finished");
+    freeReplyObject(redis_reply);
 }

@@ -42,4 +42,5 @@ target_link_libraries(multiple_microbench
     rt
     profiler
     memkind
+    hiredis
 )
