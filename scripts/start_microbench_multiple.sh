@@ -2,7 +2,7 @@
 
 node_start=1
 
-node_end=$( echo "node_start+$6-2" | bc )
+node_end=$( echo "node_start+$7-2" | bc )
 
 ./stop_remote_client.sh $1 $2 >/dev/null 2>&1
 
@@ -10,11 +10,11 @@ node_end=$( echo "node_start+$6-2" | bc )
 
 ./start_server_multiple.sh $node_start $node_end >/dev/null 2>&1
 
-sleep 10
+sleep 120
 
-./start_remote_client_multiple.sh $1 $2 $6 >/dev/null 2>&1
+./start_remote_client_multiple.sh $1 $2 $7 >/dev/null 2>&1
 
-sleep 30
+sleep $( echo "60 * $7" | bc)
 
 redis-cli -h 10.10.1.1 -p 2222 SET bench_start 0 >/dev/null 2>&1
 redis-cli -h 10.10.1.1 -p 2222 SET avg 0 >/dev/null 2>&1
@@ -26,7 +26,7 @@ for i in $(seq $1 $2)
 do
     # ssh X1aoyang@node$i "~/FineMem/build/microbench/v_microbench 10.10.1.1 1111 16 0 pool frag $i >/dev/null 2>&1 &"
     # ssh X1aoyang@node$i "~/FineMem/build/microbench/v_microbench 10.10.1.1 1111 16 0 cxl frag $i >/dev/null 2>&1 &"
-    ssh X1aoyang@node$i "~/FineMem/build/microbench/multiple_microbench ~/FineMem/config/config_node_num_$6.json $3 $5 $4 frag $node_num >/dev/null 2>&1 &"
+    ssh X1aoyang@node$i "~/FineMem/build/microbench/multiple_microbench ~/FineMem/config/config_node_num_$7.json $3 $5 $4 frag $node_num >/dev/null 2>&1 &"
 done
 
 while true; do
