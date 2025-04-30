@@ -857,7 +857,7 @@ void* worker(void* arg) {
         // freeReplyObject(redis_reply);
         // redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");
         node_id = redis_reply->integer;
-        while(redis_reply->integer != node_num){
+        while(redis_reply->integer != node_num || atoi(redis_reply->str) != node_num){
             freeReplyObject(redis_reply);
             redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
             printf("GET: %s\n", redis_reply->str);
