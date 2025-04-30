@@ -617,16 +617,13 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
             uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
             block_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
             backup_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
-            bind_mw_async(block_mw[i], block_addr_, i<<1,  server_block_manager_->get_block_size(), qp, cq);
-            bind_mw_async(backup_mw[i], block_addr_, i<<1+1, server_block_manager_->get_block_size(), qp, cq);
-            // bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
-            // bind_mw(backup_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
-            // server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
-            // server_block_manager_->set_backup_rkey(i, backup_mw[i]->rkey);  
-        }
-
-        for(int i=0;i< block_num_; i++){
-            bind_mw_async_poll(cq);
+            bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
+            bind_mw(backup_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
+            server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
+            server_block_manager_->set_backup_rkey(i, backup_mw[i]->rkey); 
+            if(i % 10240 == 0){
+                printf("%d MB\n", i / 1024);
+            } 
         }
         gettimeofday(&end, NULL);
         uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
