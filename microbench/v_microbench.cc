@@ -857,10 +857,13 @@ void* worker(void* arg) {
         // freeReplyObject(redis_reply);
         // redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");
         node_id = redis_reply->integer;
-        while(redis_reply->integer != node_num && atoi(redis_reply->str) != node_num){
-            freeReplyObject(redis_reply);
+        if(redis_reply->integer != node_num){
             redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
-            printf("GET: %s\n", redis_reply->str);
+            while(atoi(redis_reply->str) != node_num){
+                freeReplyObject(redis_reply);
+                redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
+                printf("GET: %s\n", redis_reply->str);
+            }
         }
         freeReplyObject(redis_reply);
     }
@@ -884,7 +887,7 @@ void* worker(void* arg) {
         break;
     }
     pthread_barrier_wait(&end_barrier);
-    if(node_id == 1) {
+    if(thread_id == 0) {
         redis_reply = (redisReply*)redisCommand(redis_conn, "SET bench_start 0");
         freeReplyObject(redis_reply);
     }
