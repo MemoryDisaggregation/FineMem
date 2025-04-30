@@ -16,6 +16,7 @@
 #include <memkind.h>
 #include <fixed_allocator.h>
 #include "hiredis/hiredis.h"
+#include <string>
 
 const int iteration = 100;
 const int free_num = 25;
@@ -791,9 +792,11 @@ void short_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
     malloc_avg[thread_id] = malloc_avg_time_;
 }
 
+redisContext *redis_conn;
+redisReply *redis_reply;
+    
+
 void* worker(void* arg) {
-    redisContext *redis_conn;
-    redisReply *redis_reply;
     uint64_t thread_id = id.fetch_add(1);
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
@@ -839,19 +842,6 @@ void* worker(void* arg) {
     int node_id;
     if(thread_id == 1) {
     	// getchar();
-        struct timeval timeout = { 1, 500000 }; // 1.5 seconds
-        redis_conn = redisConnectWithTimeout("10.10.1.1", 2222, timeout);
-        // redis_reply = (redisReply*)redisCommand(redis_conn,"SET bench_start 0");
-        // freeReplyObject(redis_reply);
-        if (redis_conn == NULL || redis_conn->err) {
-            if (redis_conn) {
-                printf("Connection error: %s\n", redis_conn->errstr);
-                redisFree(redis_conn);
-            } else {
-                printf("Connection error: can't allocate redis context\n");
-            }
-            exit(1);
-        }
         redis_reply = (redisReply*)redisCommand(redis_conn, "INCR bench_start");
         printf("INCUR: %d\n", redis_reply->integer);
         // freeReplyObject(redis_reply);
@@ -900,7 +890,19 @@ int main(int argc, char* argv[]) {
         printf("Usage: %s <ip> <port> <thread> <size> <allocator> <trace> <node_num>\n", argv[0]);
         return 0;
     }
-    ProfilerStart("test.prof");
+    struct timeval timeout = { 1, 500000 }; // 1.5 seconds
+    redis_conn = redisConnectWithTimeout("10.10.1.1", 2222, timeout);
+    // redis_reply = (redisReply*)redisCommand(redis_conn,"SET bench_start 0");
+    // freeReplyObject(redis_reply);
+    if (redis_conn == NULL || redis_conn->err) {
+        if (redis_conn) {
+            printf("Connection error: %s\n", redis_conn->errstr);
+            redisFree(redis_conn);
+        } else {
+            printf("Connection error: can't allocate redis context\n");
+        }
+        exit(1);
+    }
     // init_random_values(random_offsets);
     std::string ip = argv[1];
     std::string port = argv[2];
@@ -1017,5 +1019,9 @@ int main(int argc, char* argv[]) {
     result << "max cas :" << cas_max_final << std::endl;
     result.close();
     result_detail.close();
-    ProfilerStop();
+    redis_reply = (redisReply*)redisCommand(redis_conn, "INCRBYFLOAT avg %s", std::to_string(malloc_avg_final/thread_num).c_str());
+    printf("INCUR: %s\n", redis_reply->str);
+    freeReplyObject(redis_reply);
+    redis_reply = (redisReply*)redisCommand(redis_conn, "INCR finished");
+    freeReplyObject(redis_reply);
 }
