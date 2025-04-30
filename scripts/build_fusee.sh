@@ -11,6 +11,7 @@ cp ~/FineMem/include/rdma_conn* ./src/
 cp ~/FineMem/build/source/libmralloc.a ./lib/
 mkdir build; cd build;
 cmake ..; make -j
+cd ycsb-test; make -j; cd ..
 cd ../setup; ./download_workload.sh
 cd ../; mkdir build/ycsb-test/workloads
 cp ./setup/workloads/* ./build/ycsb-test/workloads/
