@@ -30,7 +30,6 @@ sudo mkdir /usr/lib/hiredis
 sudo cp /usr/local/lib/libhiredis.so.1.3.0 /usr/lib/hiredis/
 sudo mkdir /usr/include/hiredis
 sudo cp /usr/local/include/hiredis/hiredis.h /usr/include/hiredis/
-sudo echo '/usr/local/lib' >>;>>;/etc/ld.so.conf
 sudo ldconfig
 cd ..; rm -rf hiredis-master; rm -rf master.zip
 
