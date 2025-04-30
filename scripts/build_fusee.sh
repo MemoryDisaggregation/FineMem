@@ -9,7 +9,7 @@ cp ~/FineMem/include/msg.h ./src/
 cp ~/FineMem/include/rdma_conn* ./src/
 cp ~/FineMem/build/source/libmralloc.a ./lib/
 mkdir build; cd build;
-cmake ..; make
+cmake ..; make -j
 cd ../setup; ./download_workload.sh
 cd ../; mkdir build/ycsb-test/workloads
 cp ./setup/workloads/* ./build/ycsb-test/workloads/
