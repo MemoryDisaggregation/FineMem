@@ -468,22 +468,19 @@ public:
     }
 
     ~cpu_cache(){
-        // if(buffer_)
-        //     munmap(buffer_, sizeof(CpuBuffer)*nprocs);
-        if(!freed){
-            for(int i=0; i<nprocs; i++){
-                sem_close(doorbell[i]);
-                sem_unlink(std::to_string(buffer_[i].doorbell_id).c_str());
-                sem_close(retbell[i]);
-                sem_unlink(std::to_string(buffer_[i].retbell_id).c_str());
-                sem_close(lock[i]);
-                sem_unlink(std::to_string(buffer_[i].lock_id).c_str());
-            }
-            if(buffer_)
-                munmap(buffer_,  sizeof(CpuBuffer)*nprocs);
-            shm_unlink("/cpu_cache");
-            freed = true;
+        if(buffer_)
+            munmap(buffer_, sizeof(CpuBuffer)*nprocs);
+        // if(!freed){
+        for(int i=0; i<nprocs; i++){
+            sem_close(doorbell[i]);
+            sem_close(retbell[i]);
+            sem_close(lock[i]);
         }
+        //     if(buffer_)
+        //         munmap(buffer_,  sizeof(CpuBuffer)*nprocs);
+        //     shm_unlink("/cpu_cache");
+        //     freed = true;
+        // }
     }
 
     uint64_t bitmap_malloc(uint64_t bin_size){
