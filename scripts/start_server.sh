@@ -2,7 +2,7 @@
 
 # sudo echo 16000 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
 
-sudo ~/FineMem/scripts/set_2MB_hugepage.sh 16000
+sudo ~/FineMem/scripts/set_2MB_hugepage.sh 30000
 
 nohup redis-server --bind 10.10.1.1 --port 2222 --protected-mode no &
 
