@@ -887,7 +887,7 @@ void* worker(void* arg) {
         break;
     }
     pthread_barrier_wait(&end_barrier);
-    if(thread_id == 0) {
+    if(thread_id == 1) {
         redis_reply = (redisReply*)redisCommand(redis_conn, "SET bench_start 0");
         freeReplyObject(redis_reply);
     }
