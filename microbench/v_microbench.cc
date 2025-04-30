@@ -792,6 +792,8 @@ void short_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
 }
 
 void* worker(void* arg) {
+    redisContext *redis_conn;
+    redisReply *redis_reply;
     uint64_t thread_id = id.fetch_add(1);
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
@@ -836,12 +838,10 @@ void* worker(void* arg) {
     pthread_barrier_wait(&end_barrier);
     if(thread_id == 1) {
     	// getchar();
-        redisContext *redis_conn;
-        redisReply *redis_reply;
         struct timeval timeout = { 1, 500000 }; // 1.5 seconds
         redis_conn = redisConnectWithTimeout("10.10.1.1", 2222, timeout);
-        redis_reply = (redisReply*)redisCommand(redis_conn,"SET bench_start 0");
-        printf("SET: %d\n", redis_reply->integer);
+        // redis_reply = (redisReply*)redisCommand(redis_conn,"SET bench_start 0");
+        // printf("SET: %d\n", redis_reply->integer);
         freeReplyObject(redis_reply);
         if (redis_conn == NULL || redis_conn->err) {
             if (redis_conn) {
@@ -860,7 +860,7 @@ void* worker(void* arg) {
             freeReplyObject(redis_reply);
             redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
             printf("GET: %s\n", redis_reply->str);
-    }
+        }
         freeReplyObject(redis_reply);
     }
     pthread_barrier_wait(&start_barrier);
@@ -883,6 +883,10 @@ void* worker(void* arg) {
         break;
     }
     pthread_barrier_wait(&end_barrier);
+    if(thread_id == 1) {
+        redis_reply = (redisReply*)redisCommand(redis_conn, "SET bench_start 0");
+        freeReplyObject(redis_reply);
+    }
     return NULL;
 }
 
