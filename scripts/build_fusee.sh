@@ -3,7 +3,7 @@ mkdir ~/FineMem/applications
 cd ~/FineMem/applications
 git clone https://github.com/MemoryDisaggregation/FUSEE_FineMem.git
 cd FUSEE_FineMem/
-git pull
+git stash; git pull
 cp ~/FineMem/include/cpu_cache.h ./src/
 cp ~/FineMem/include/free_block_manager.h ./src/
 cp ~/FineMem/include/msg.h ./src/
