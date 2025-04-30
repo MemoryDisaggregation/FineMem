@@ -62,7 +62,7 @@ void ComputingNode::woker(int proc) {
         sem_wait(cpu_cache_->doorbell[proc]);
         switch(cpu_cache_->buffer_[proc].opcode_){
             case LegoOpcode::LegoAlloc: {
-                uint16_t bin_size = *(uint64_t*)cpu_cache_->buffer_[proc].buffer_;
+                uint64_t bin_size = *(uint64_t*)cpu_cache_->buffer_[proc].buffer_;
                 bool slow_path = false;
                 mr_rdma_addr remote_addr;
                 remote_addr.node = node_%node_num_;

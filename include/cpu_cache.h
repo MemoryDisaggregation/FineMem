@@ -569,7 +569,10 @@ public:
         }
         sem_wait(lock[nproc]);
         buffer_[nproc].opcode_ = LegoOpcode::LegoFree;
-        *(mr_rdma_addr*)buffer_[nproc].buffer_ = addr;
+        ((mr_rdma_addr*)buffer_[nproc].buffer_)->addr = addr.addr;
+        ((mr_rdma_addr*)buffer_[nproc].buffer_)->rkey = addr.rkey;
+        ((mr_rdma_addr*)buffer_[nproc].buffer_)->size = addr.size;
+        ((mr_rdma_addr*)buffer_[nproc].buffer_)->node = addr.node;
         sem_post(doorbell[nproc]);
         // printf("send request to %d\n", nproc);
         sem_wait(retbell[nproc]);

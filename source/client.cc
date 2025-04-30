@@ -92,7 +92,6 @@ int main(int argc, char* argv[]){
     if(!multitest) {
         heap = new mralloc::ComputingNode(true, true, true, config.node_id);
         heap->start(ip, port, config.memory_node_num);
-
         // before the real client running, make a test of iter times allocation
         // << single thread, local test, fetch remote memory >>
         int iter = 0;
@@ -101,18 +100,6 @@ int main(int argc, char* argv[]){
         char read_buffer[4];
         struct timeval start, end;
         gettimeofday(&start, NULL);
-        while(0){
-            heap->fetch_mem_block(addr);
-            heap->show_ring_length();
-            // std::cout << "write addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
-            for(int i = 0; i < 64; i++)
-                heap->get_conn(addr.node)->remote_write(buffer[iter%2], 64, addr.addr+i*64, addr.rkey);
-            // std::cout << "read addr: " << std::hex << addr << " rkey: " << std::dec <<rkey << std::endl;
-            // for(int i = 0; i < 64; i++)
-            //     heap->get_conn(addr.node)->remote_read(read_buffer, 4, addr.addr+i*64, addr.rkey);
-            // printf("alloc: %lx : %u, content: %s\n", addr, rkey, read_buffer);
-            heap->show_ring_length();
-        }
         gettimeofday(&end, NULL);
         uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
         printf("time cost on read/write test:%lu\n", time);
