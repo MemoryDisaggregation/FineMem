@@ -840,7 +840,7 @@ void* worker(void* arg) {
     	// getchar();
         struct timeval timeout = { 1, 500000 }; // 1.5 seconds
         redis_conn = redisConnectWithTimeout("10.10.1.1", 2222, timeout);
-        // redis_reply = (redisReply*)redisCommand(redis_conn,"SET bench_start 0");
+        redis_reply = (redisReply*)redisCommand(redis_conn,"SET bench_start 0");
         // printf("SET: %d\n", redis_reply->integer);
         freeReplyObject(redis_reply);
         if (redis_conn == NULL || redis_conn->err) {
@@ -949,7 +949,7 @@ int main(int argc, char* argv[]) {
         malloc_record_global[i].store(0);
         free_record_global[i].store(0);
     }
-    id.store(1);
+    id.store(0);
     for(int i = 0; i < 128; i++)
         malloc_avg[i] = 0;
     free_avg.store(0);
