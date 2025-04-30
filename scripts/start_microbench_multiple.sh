@@ -2,7 +2,7 @@
 
 node_start=1
 
-node_end=$( echo "node_start+$7-2" | bc )
+node_end=$( echo "$node_start+$7-2" | bc )
 
 ./stop_remote_client.sh $1 $2 >/dev/null 2>&1
 
@@ -10,11 +10,11 @@ node_end=$( echo "node_start+$7-2" | bc )
 
 ./start_server_multiple.sh $node_start $node_end >/dev/null 2>&1
 
-sleep 120
+sleep 40
 
 ./start_remote_client_multiple.sh $1 $2 $7 >/dev/null 2>&1
 
-sleep $( echo "60 * $7" | bc)
+sleep 40
 
 redis-cli -h 10.10.1.1 -p 2222 SET bench_start 0 >/dev/null 2>&1
 redis-cli -h 10.10.1.1 -p 2222 SET avg 0 >/dev/null 2>&1
