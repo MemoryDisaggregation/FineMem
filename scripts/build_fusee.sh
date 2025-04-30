@@ -14,5 +14,5 @@ cd ../setup; ./download_workload.sh
 cd ../; mkdir build/ycsb-test/workloads
 cp ./setup/workloads/* ./build/ycsb-test/workloads/
 cp ./ycsb-test/split-workload.py ./build/ycsb-test/
-jq --arg i $1 '.server_id = (16 * (($i | tonumber) - 1) + 1)' ./tests/client_config.json
+jq --arg i "$1" '.server_id = (16 * (($i | tonumber) - 1) + 1)' ./tests/client_config.json
 cp ./tests/server_config.json ./build/
