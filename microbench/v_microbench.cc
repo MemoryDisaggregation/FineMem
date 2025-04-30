@@ -841,8 +841,8 @@ void* worker(void* arg) {
     	// getchar();
         struct timeval timeout = { 1, 500000 }; // 1.5 seconds
         redis_conn = redisConnectWithTimeout("10.10.1.1", 2222, timeout);
-        redis_reply = (redisReply*)redisCommand(redis_conn,"SET bench_start 0");
-        freeReplyObject(redis_reply);
+        // redis_reply = (redisReply*)redisCommand(redis_conn,"SET bench_start 0");
+        // freeReplyObject(redis_reply);
         if (redis_conn == NULL || redis_conn->err) {
             if (redis_conn) {
                 printf("Connection error: %s\n", redis_conn->errstr);
