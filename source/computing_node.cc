@@ -32,26 +32,7 @@ void* run_woker_thread(void* arg){
     return NULL;
 }
 
-void ComputingNode::woker(int proc) {
-    section_e section_;
-    uint32_t section_index_;
-    region_e region_;
-    uint32_t region_index_;
-    uint32_t node_ = current_node_;
-    std::vector<ConnectionManager*> m_rdma_conn;
-    for(int i = 0; i < node_num_; i++){
-        m_rdma_conn.push_back(new ConnectionManager());
-        if (m_rdma_conn[i] == nullptr) return;
-        if (m_rdma_conn[i]->init(ips[i], ports[i], 1, 1, node_id_)) return;
-        sleep(1);
-    }
-    m_rdma_conn[node_]->find_section(section_, section_index_, 0, mralloc::alloc_light);
-    m_rdma_conn[node_]->fetch_region(section_, section_index_, 
-                            0, false, region_, region_index_, 0);
-    while(1){
-        sem_wait(cpu_cache_->doorbell[proc]);
-        switch(cpu_cache_->buffer_[proc].opcode_){
-            /*  allocation class: 
+        /*  allocation class: 
                 0 --> 1 --> 4KB <====== using layer 2
                 1 --> 2 --> 8KB
                 2 --> 4 --> 16KB
@@ -63,73 +44,39 @@ void ComputingNode::woker(int proc) {
                 8 --> 256 --> 1MB
                 9 --> 512 --> 2MB <====== using array
             */
+    
+
+void ComputingNode::woker(int proc) {
+    section_e section_[32];
+    uint32_t section_index_[32];
+    uint32_t node_ = current_node_;
+    std::vector<ConnectionManager*> m_rdma_conn;
+    for(int i = 0; i < node_num_; i++){
+        m_rdma_conn.push_back(new ConnectionManager());
+        if (m_rdma_conn[i] == nullptr) return;
+        if (m_rdma_conn[i]->init(ips[i], ports[i], 1, 1, node_id_)) return;
+        m_rdma_conn[i]->find_section(section_[i], section_index_[i], 0, mralloc::alloc_light);
+        sleep(1);
+    }
+    while(1){
+        sem_wait(cpu_cache_->doorbell[proc]);
+        switch(cpu_cache_->buffer_[proc].opcode_){
             case LegoOpcode::LegoAlloc: {
                 uint16_t bin_size = *(uint64_t*)cpu_cache_->buffer_[proc].buffer_;
-                // if(bin_size != 0){
-                // //TODO: check bin_size, first find if there are segment avaliable
-                // // find_segment(bin_size);
-                // }
-                int retry_time = 0, cas_time = 0, section_time = 0, region_time = 0, result;
                 bool slow_path = false;
                 mr_rdma_addr remote_addr;
-                remote_addr.node = node_;
-                while((result = m_rdma_conn[node_]->fetch_region_block(section_, region_, remote_addr.addr, remote_addr.rkey, false, region_index_, bin_size)) < 0){
-                    cas_time += (-1)*result;
-                    if(!slow_path){
-                        while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, bin_size, false, region_, region_index_, 0)) < 0){
-                            region_time += (-1)*result;
-                            if((result = m_rdma_conn[node_]->find_section(section_, section_index_, bin_size, mralloc::alloc_light)) < 0){
-                                slow_path = true;
-                                section_time += (-1)*result;
-                                break;
-                            }else section_time += result;
-                        }
-                        region_time += result;
-                    } else {
-                        while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, bin_size, true, region_, region_index_, 0)) < 0){
-                            region_time += (-1)*result;
-                            if((result = m_rdma_conn[node_]->find_section(section_, section_index_, bin_size, mralloc::alloc_heavy)) < 0){
-                                section_time += (-1)*result;
-                                node_ = (node_+1) % node_num_;
-                                remote_addr.node = node_;
-                                printf("[cache single region] try to scan next node %d\n", node_);
-                            }
-                            else section_time += result;
-                        }  
-                        region_time += result;
-                    }
-                }
-                cas_time += result;
-                if(cas_time > retry_threshold && !slow_path) {
-                    if((result = m_rdma_conn[node_]->find_section(section_, section_index_, bin_size, mralloc::alloc_light)) < 0){
-                        slow_path = true;
-                        section_time += (-1)*result;
-                    }else section_time += result;
-                    while((result = m_rdma_conn[node_]->fetch_region(section_, section_index_, bin_size, false, region_, region_index_, 0)) < 0){
-                        region_time += (-1)*result;
-                        if((result = m_rdma_conn[node_]->find_section(section_, section_index_, bin_size, mralloc::alloc_light)) < 0){
-                            slow_path = true;
-                            section_time += (-1)*result;
-                            break;
-                        }else section_time += result;
-                    }
-                }
-                retry_time = cas_time + section_time + region_time;
+                remote_addr.node = node_%node_num_;
                 remote_addr.size = bin_size;
+                int retry_time = m_rdma_conn[node_%node_num_]->full_alloc(section_[node_%node_num_], section_index_[node_%node_num_], remote_addr.size, remote_addr.addr, remote_addr.rkey);
+                node_num_++;
                 *(mr_rdma_addr*)cpu_cache_->buffer_[proc].buffer_ = remote_addr;
-                // if(bin_size != 0){
-                //     uint64_t shm_offset = cpu_cache_->bitmap_malloc(bin_size);
-                //     *(uint64_t*)((mr_rdma_addr*)cpu_cache_->buffer_[proc].buffer_+1) = shm_offset;
-                //     bitmap_record record = {shm_offset, bin_size};
-                //     //offset_record_[remote_addr] = record;
-                // }
                 cpu_cache_->buffer_[proc].opcode_ = LegoOpcode::LegoIdle;
                 break;
             }
             
             case LegoOpcode::LegoFree: {
                 mr_rdma_addr remote_addr = *(mr_rdma_addr*)cpu_cache_->buffer_[proc].buffer_;
-                m_rdma_conn[remote_addr.node]->free_region_block(remote_addr.addr, false, remote_addr.size);
+                int result = m_rdma_conn[remote_addr.node]->full_free(remote_addr.addr, remote_addr.size);
                 cpu_cache_->buffer_[proc].opcode_ = LegoOpcode::LegoIdle;
                 break;
             }

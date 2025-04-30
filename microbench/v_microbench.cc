@@ -16,11 +16,10 @@
 #include <memkind.h>
 #include <fixed_allocator.h>
 
-const int iteration = 200;
-const int free_num = 50;
+const int iteration = 100;
+const int free_num = 25;
 const int epoch = 500;
 int size_class = 0;
-const int alloc_size = 4096*1024;
 
 
 enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc, bitmap_alloc, cache_alloc, cache_thread };
@@ -235,6 +234,26 @@ private:
     mralloc::section_e cache_section;
     mralloc::region_e cache_region;
     mralloc::ConnectionManager* conn_;
+};
+
+class pool_allocator : test_allocator{
+    public:
+        pool_allocator() {
+            cpu_cache_ = new mralloc::cpu_cache(4*1024*1024);
+        }
+        ~pool_allocator() {};
+        bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
+            uint64_t unused;
+            return cpu_cache_->malloc(remote_addr.size, remote_addr, unused);
+        };
+        bool free(mralloc::mr_rdma_addr remote_addr) override {
+            cpu_cache_->free(remote_addr);
+            return true;
+        };
+        bool print_state() override {return false;};
+    
+    private:
+        mralloc::cpu_cache* cpu_cache_;
 };
 
 void warmup(test_allocator* alloc) {
@@ -804,6 +823,9 @@ void* worker(void* arg) {
     case share_alloc:
         // alloc = (test_allocator*)new share_allocator(conn, 0);
         alloc = (test_allocator*)new share_allocator(conn, rand());
+        break;
+    case pool_alloc:
+        alloc = (test_allocator*)new pool_allocator();
         break;
     default:
         break;

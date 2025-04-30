@@ -123,7 +123,7 @@ typedef struct mi_segment_migrate {
 };
 
 const uint64_t BITMAP_SIZE = (uint64_t)1024*1024*1024*16;
-const uint32_t nprocs = 144;
+const uint32_t nprocs = 20;
 const uint32_t max_alloc_item = 16;
 const uint32_t max_free_item = 16;
 
@@ -416,8 +416,8 @@ public:
 
     cpu_cache() {
         int fd = shm_open("/cpu_cache", O_RDWR, 0);
-        int bitmap_fd = shm_open("/bitmaps", O_RDWR, 0);
-        if (fd == -1 || bitmap_fd == -1) {
+        // int bitmap_fd = shm_open("/bitmaps", O_RDWR, 0);
+        if (fd == -1) {
             perror("init failed, no computing node running");
         } else {
             int port_flag = PROT_READ | PROT_WRITE;
@@ -437,16 +437,16 @@ public:
         int port_flag = PROT_READ | PROT_WRITE;
         int mm_flag   = MAP_SHARED; 
         int fd = shm_open("/cpu_cache", O_RDWR, 0);
-        int bitmap_fd = shm_open("/bitmaps", O_RDWR, 0);
-        if(fd==-1 || bitmap_fd==-1){
+        // int bitmap_fd = shm_open("/bitmaps", O_RDWR, 0);
+        if(fd==-1){
             fd = shm_open("/cpu_cache", O_CREAT | O_EXCL | O_RDWR, 0600);
-            bitmap_fd = shm_open("/bitmaps", O_CREAT | O_EXCL | O_RDWR, 0600);
+            // bitmap_fd = shm_open("/bitmaps", O_CREAT | O_EXCL | O_RDWR, 0600);
             if(ftruncate(fd, sizeof(CpuBuffer)*nprocs)){
                 perror("create shared memory failed");
             }
-            if(ftruncate(bitmap_fd, BITMAP_SIZE)){
-                perror("create shared memory failed");
-            }
+            // if(ftruncate(bitmap_fd, BITMAP_SIZE)){
+            //     perror("create shared memory failed");
+            // }
             buffer_ = (CpuBuffer*)mmap(NULL, sizeof(CpuBuffer)*nprocs, port_flag, mm_flag, fd, 0);
             bitmap_ = (std::atomic<uint64_t>*)mmap(NULL, BITMAP_SIZE, port_flag, mm_flag, fd, 0);
             for(int i = 0; i < nprocs; i++) {

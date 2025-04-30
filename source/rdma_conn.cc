@@ -1069,46 +1069,6 @@ int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offse
                 }else section_time += result;
             }
         } 
-        // int retry_time = 0, cas_time = 0, section_time = 0, region_time = 0, result;
-        // bool slow_path = false;
-        // uint16_t first_section = section_offset;
-        // uint16_t ring = 0;
-        // while((result = chunk_alloc(alloc_section, section_offset, slow_path, size_class, addr, rkey)) < 0){
-        //     cas_time += (-1)*result;
-        //     if(!slow_path){
-        //         if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0 || (result == first_section && ring == 2)){
-        //             slow_path = true;
-        //             section_time += (-1)*result;
-        //             ring  = 0;
-        //             break;
-		// 	    }else {
-        //             if(result == first_section) {
-        //                 ring ++;
-        //             }
-        //             section_time += result;
-        //         }
-        //     } else {
-        //         if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_heavy)) < 0 || (result == first_section && ring == 2)){
-        //             section_time += (-1)*result;
-        //             printf("waiting for new section avaliable\n");
-		//         }
-        //         else {
-        //             if(result == first_section) {
-        //                 ring ++;
-        //             }
-        //             section_time += result;
-        //         }
-        //     }  
-        //     region_time += result;
-        // }
-        // cas_time += result;
-        // if(cas_time >= mralloc::retry_threshold && !slow_path) {
-        //     // if(alloc_class == 0){
-        //     if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0){
-        //         slow_path = true;
-        //         section_time += (-1)*result;
-        //     }else section_time += result;
-        // }
         return cas_time + section_time + region_time;
     }
 }
