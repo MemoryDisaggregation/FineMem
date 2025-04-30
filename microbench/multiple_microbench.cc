@@ -978,13 +978,15 @@ int main(int argc, char* argv[]) {
     pthread_barrier_init(&end_barrier, NULL, thread_num);
     pthread_t running_thread[thread_num];
     mralloc::ConnectionManager* conn[thread_num][config.memory_node_num];
-    for(int i = 0; i < thread_num; i++) {
-        for(int j = 0; j < config.memory_node_num; j++) {
-            conn[i][j] = new mralloc::ConnectionManager();
-            conn[i][j]->init(ip[j], port[j], 1, 1, 1);
-        }
-        pthread_create(&running_thread[i], NULL, worker, conn[i]);
-    }
+        for(int i = 0; i < thread_num; i++) {
+            if(allocator_type != "pool"){
+                for(int j = 0; j < config.memory_node_num; j++) {
+                    conn[i][j] = new mralloc::ConnectionManager();
+                    conn[i][j]->init(ip[j], port[j], 1, 1, 1);
+                }
+            }
+            pthread_create(&running_thread[i], NULL, worker, conn[i]);
+        }  
     // mralloc::ConnectionManager* listen_conn = new mralloc::ConnectionManager();
     // listen_conn->init(ip, port, 1, 1, 1 );
     pthread_t listen_thread;

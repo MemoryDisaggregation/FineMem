@@ -531,7 +531,10 @@ public:
         // printf("send request to %d\n", nproc);
         sem_wait(retbell[nproc]);
         // printf("recieve from %d\n", nproc);
-        addr = *(mr_rdma_addr*)buffer_[nproc].buffer_;
+        addr.addr = ((mr_rdma_addr*)buffer_[nproc].buffer_)->addr;
+        addr.rkey = ((mr_rdma_addr*)buffer_[nproc].buffer_)->rkey;
+        addr.node = ((mr_rdma_addr*)buffer_[nproc].buffer_)->node;
+        addr.size = ((mr_rdma_addr*)buffer_[nproc].buffer_)->size;
         shm_index = *(uint64_t*)((mr_rdma_addr*)buffer_[nproc].buffer_+1);
         sem_post(lock[nproc]);
         return true;
