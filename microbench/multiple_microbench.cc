@@ -820,7 +820,7 @@ void* worker(void* arg) {
     uint64_t thread_id = id.fetch_add(1);
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
-    int id_ = thread_id;
+    int id_ = thread_id-1;
     CPU_SET(id_, &cpuset);
     pthread_t this_tid = pthread_self();
     uint64_t ret = pthread_setaffinity_np(this_tid, sizeof(cpuset), &cpuset);

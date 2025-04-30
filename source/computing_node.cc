@@ -68,8 +68,12 @@ void ComputingNode::woker(int proc) {
                 remote_addr.node = node_%node_num_;
                 remote_addr.size = bin_size;
                 int retry_time = m_rdma_conn[node_%node_num_]->full_alloc(section_[node_%node_num_], section_index_[node_%node_num_], remote_addr.size, remote_addr.addr, remote_addr.rkey);
-                node_++;
-                *(mr_rdma_addr*)cpu_cache_->buffer_[proc].buffer_ = remote_addr;
+                node_++; 
+                node_ = node_%node_num_;
+                ((mr_rdma_addr*)cpu_cache_->buffer_[proc].buffer_)->addr = remote_addr.addr;
+                ((mr_rdma_addr*)cpu_cache_->buffer_[proc].buffer_)->rkey = remote_addr.rkey;
+                ((mr_rdma_addr*)cpu_cache_->buffer_[proc].buffer_)->node = remote_addr.node;
+                ((mr_rdma_addr*)cpu_cache_->buffer_[proc].buffer_)->size = remote_addr.size;
                 cpu_cache_->buffer_[proc].opcode_ = LegoOpcode::LegoIdle;
                 break;
             }
