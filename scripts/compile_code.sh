@@ -2,5 +2,5 @@
 
 for i in $(seq $1 $2) 
 do
-    ssh X1aoyang@node$i "git pull; cd ~/FineMem; rm -rf ./build; mkdir build; cd build; cmake ..; make "
+    ssh X1aoyang@node$i "cd ~/FineMem; git pull; rm -rf ./build; mkdir build; cd build; cmake ..; make "
 done
