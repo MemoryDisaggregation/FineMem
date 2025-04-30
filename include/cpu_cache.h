@@ -464,6 +464,11 @@ public:
         }
         else {
             buffer_ = (CpuBuffer*)mmap(NULL, sizeof(CpuBuffer)*nprocs, port_flag, mm_flag, fd, 0);
+            for(int i = 0; i < nprocs; i++) {
+                doorbell[i] = sem_open(std::to_string(buffer_[i].doorbell_id).c_str(), O_CREAT, 0666, 0);
+                retbell[i] = sem_open(std::to_string(buffer_[i].retbell_id).c_str(), O_CREAT, 0666, 0);
+                lock[i] = sem_open(std::to_string(buffer_[i].lock_id).c_str(), O_CREAT, 0666, 1);
+            }
         }
     }
 
