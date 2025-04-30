@@ -15,12 +15,13 @@
 #include <random>
 #include <memkind.h>
 #include <fixed_allocator.h>
+#include "hiredis/hiredis.h"
 
 const int iteration = 100;
 const int free_num = 25;
 const int epoch = 500;
 int size_class = 0;
-
+int node_num = 0;
 
 enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc, bitmap_alloc, cache_alloc, cache_thread };
 
@@ -834,7 +835,33 @@ void* worker(void* arg) {
     warmup(alloc);
     pthread_barrier_wait(&end_barrier);
     if(thread_id == 1) {
-    	getchar();
+    	// getchar();
+        redisContext *redis_conn;
+        redisReply *redis_reply;
+        struct timeval timeout = { 1, 500000 }; // 1.5 seconds
+        redis_conn = redisConnectWithTimeout("10.10.1.1", 2222, timeout);
+        redis_reply = (redisReply*)redisCommand(redis_conn,"SET bench_start 0");
+        printf("SET: %d\n", redis_reply->integer);
+        freeReplyObject(redis_reply);
+        if (redis_conn == NULL || redis_conn->err) {
+            if (redis_conn) {
+                printf("Connection error: %s\n", redis_conn->errstr);
+                redisFree(redis_conn);
+            } else {
+                printf("Connection error: can't allocate redis context\n");
+            }
+            exit(1);
+        }
+        redis_reply = (redisReply*)redisCommand(redis_conn, "INCR bench_start");
+        printf("INCUR: %d\n", redis_reply->integer);
+        freeReplyObject(redis_reply);
+        redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");
+        while(atoi(redis_reply->str) != node_num){
+            freeReplyObject(redis_reply);
+            redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
+            printf("GET: %s\n", redis_reply->str);
+    }
+        freeReplyObject(redis_reply);
     }
     pthread_barrier_wait(&start_barrier);
     // shuffle_alloc(conn, alloc, thread_id);
@@ -861,8 +888,8 @@ void* worker(void* arg) {
 
 int main(int argc, char* argv[]) {
     allocate_size.store(0);
-    if(argc < 7){
-        printf("Usage: %s <ip> <port> <thread> <size> <allocator> <trace>\n", argv[0]);
+    if(argc < 8){
+        printf("Usage: %s <ip> <port> <thread> <size> <allocator> <trace> <node_num>\n", argv[0]);
         return 0;
     }
     ProfilerStart("test.prof");
@@ -873,6 +900,7 @@ int main(int argc, char* argv[]) {
     size_class = atoi(argv[4]);
     std::string allocator_type = argv[5];
     std::string trace_type = argv[6];
+    node_num = atoi(argv[7]);
     if (allocator_type == "cxl")
         type = cxl_shm_alloc;
     else if (allocator_type == "fusee") 

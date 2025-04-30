@@ -19,6 +19,7 @@ target_link_libraries(v_microbench
     rt
     profiler
     memkind
+    hiredis
 )
 
 add_executable(input_microbench input_microbench.cc)
