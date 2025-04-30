@@ -87,7 +87,10 @@ public:
 
     void run() {};
 
-    ~ComputingNode() { destory(); }
+    ~ComputingNode() { 
+        cpu_cache_->free_cache();
+        destory(); 
+    }
 
     void woker(int proc);
     void listenser();

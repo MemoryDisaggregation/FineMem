@@ -295,9 +295,10 @@ bool ComputingNode::fetch_mem_block_nocached(mr_rdma_addr &remote_addr, uint32_t
   * @return {void}
   */
 void ComputingNode::stop(){
-  running = 0;
-  if(cpu_cache_enabled_) cpu_cache_->free_cache();
-};
+    if(cpu_cache_enabled_) 
+        cpu_cache_->free_cache();
+    running = 0;
+  };
 
 /**
   * @description: get memory alive state

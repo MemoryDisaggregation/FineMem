@@ -15,6 +15,7 @@
 #include "mr_utils.h"
 #include <sys/mman.h>
 #include <sys/time.h>
+#include <signal.h>
 
 const int thread_num = 12;
 
@@ -63,6 +64,16 @@ void* fetch_mem(void* arg) {
     return NULL;
 }
 
+mralloc::ComputingNode* heap;
+
+bool stopped = false;
+
+void handler(int sig){
+    printf("stop!\n");
+    stopped = true;
+    // heap->stop();
+}
+
 int main(int argc, char* argv[]){
 
     if(argc < 2){
@@ -79,7 +90,7 @@ int main(int argc, char* argv[]){
     }
     bool multitest = false;
     if(!multitest) {
-        mralloc::ComputingNode* heap = new mralloc::ComputingNode(true, true, true, config.node_id);
+        heap = new mralloc::ComputingNode(true, true, true, config.node_id);
         heap->start(ip, port, config.memory_node_num);
 
         // before the real client running, make a test of iter times allocation
@@ -105,7 +116,13 @@ int main(int argc, char* argv[]){
         gettimeofday(&end, NULL);
         uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
         printf("time cost on read/write test:%lu\n", time);
-        getchar();
+        signal(SIGTERM, handler);
+        signal(SIGINT, handler);
+        while(true){
+            if(stopped){
+                break;
+            }
+        };
         heap->stop();
         delete heap;
     }
