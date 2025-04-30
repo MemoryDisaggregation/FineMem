@@ -149,7 +149,7 @@ private:
     uint32_t simple_cache_rkey[32];
     uint64_t simple_cache_watermark;
 
-    bool use_global_rkey = true;
+    bool use_global_rkey = false;
     // << function enabled >>
     bool one_sided_enabled_;
     ibv_qp* rebinder_qp; ibv_cq* rebinder_cq;
