@@ -19,7 +19,7 @@
 
 const int iteration = 100;
 const int free_num = 25;
-const int epoch = 500;
+const int epoch = 5000;
 int size_class = 0;
 int node_num = 0;
 
@@ -836,6 +836,7 @@ void* worker(void* arg) {
     pthread_barrier_wait(&start_barrier);
     warmup(alloc);
     pthread_barrier_wait(&end_barrier);
+    int node_id;
     if(thread_id == 1) {
     	// getchar();
         struct timeval timeout = { 1, 500000 }; // 1.5 seconds
@@ -855,6 +856,7 @@ void* worker(void* arg) {
         printf("INCUR: %d\n", redis_reply->integer);
         // freeReplyObject(redis_reply);
         // redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");
+        node_id = redis_reply->integer;
         while(redis_reply->integer != node_num){
             freeReplyObject(redis_reply);
             redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
@@ -882,7 +884,7 @@ void* worker(void* arg) {
         break;
     }
     pthread_barrier_wait(&end_barrier);
-    if(thread_id == 1) {
+    if(node_id == 1) {
         redis_reply = (redisReply*)redisCommand(redis_conn, "SET bench_start 0");
         freeReplyObject(redis_reply);
     }
