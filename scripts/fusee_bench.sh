@@ -25,14 +25,15 @@ for i in $(seq $1 $2)
 do
     ssh X1aoyang@node$i "cd ~/FineMem/applications/FUSEE_FineMem/; jq --arg i "$i" '.server_id = (8 * (($i | tonumber) - 1) + 1)' ./tests/client_config.json > tmp.json && mv tmp.json ./tests/client_config.json"
     ssh X1aoyang@node$i "jq '.block_size = $5' ~/FineMem/applications/FUSEE_FineMem/tests/client_config.json > tmp.json && mv tmp.json ~/FineMem/applications/FUSEE_FineMem/tests/client_config.json"
+    ssh X1aoyang@node$i "jq '.workload_run_time = $6' ~/FineMem/applications/FUSEE_FineMem/tests/client_config.json > tmp.json && mv tmp.json ~/FineMem/applications/FUSEE_FineMem/tests/client_config.json"
     ssh X1aoyang@node$i "cd ~/FineMem/applications/FUSEE_FineMem/build/ycsb-test; python3 split-workload.py $thread_num >/dev/null 2>&1"
-    ssh X1aoyang@node$i "cd ~/FineMem/applications/FUSEE_FineMem/build/ycsb-test; nohup ./ycsb_test_multi_client ../../tests/client_config.json workloada 8 $3 >/dev/null 2>&1 &"
+    ssh X1aoyang@node$i "cd ~/FineMem/applications/FUSEE_FineMem/build/ycsb-test; ./ycsb_test_multi_client ../../tests/client_config.json workloada 8 $3 >/dev/null 2>&1 &"
 done
 
 
 while true; do
     stage1_server=$( redis-cli -h 10.10.1.1 -p 2222 GET "stage1" )
-    stage2_server=$( redis-cli -h 10.10.1.1 -p 2222 GET "stage1" )
+    stage2_server=$( redis-cli -h 10.10.1.1 -p 2222 GET "stage2" )
     current_value=$( redis-cli -h 10.10.1.1 -p 2222 GET "finished" )
     echo "Sateg1 Server: $stage1_server, Sateg2 Server: $stage2_server, Finishied Server: $current_value, Target: $node_num"
     if [ "$current_value" = "$node_num" ]; then
