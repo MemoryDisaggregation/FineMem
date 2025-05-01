@@ -307,7 +307,7 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
 	    gettimeofday(&start, NULL);
         int allocated = 0;
         int last_time = 0;
-        int time_count;
+        uint64_t time_count;
         for(int i = 0; i < request_num; i ++){
             gettimeofday(&end, NULL);
             uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
@@ -332,9 +332,9 @@ void stage_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
         if (thread_id == 1)
             conn->remote_print_alloc_info(mem_use);
 
-	uint64_t total_time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
+	    uint64_t total_time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
         printf("finish time %lu, original is %d\n", total_time, request_array[request_num-1].time);
-        uint64_t time = time_count / request_num;
+        double time = 1.0*time_count / request_num;
         malloc_avg_time_ = (malloc_avg_time_*malloc_count_ + time)/(malloc_count_ + 1);
         total_avg_time_ = total_time;
         malloc_count_ += 1;
@@ -1026,7 +1026,7 @@ int main(int argc, char* argv[]) {
     result << "max cas :" << cas_max_final << std::endl;
     result.close();
     result_detail.close();
-    redis_reply = (redisReply*)redisCommand(redis_conn, "INCRBYFLOAT time %s", std::to_string(request_array[request_num-1].time).c_str());
+    redis_reply = (redisReply*)redisCommand(redis_conn, "INCRBYFLOAT time %s", std::to_string((total_avg_final/thread_num)/request_array[request_num-1].time).c_str());
     printf("INCUR: %s\n", redis_reply->str);
     freeReplyObject(redis_reply);
     redis_reply = (redisReply*)redisCommand(redis_conn, "INCRBYFLOAT avg %s", std::to_string(malloc_avg_final/thread_num).c_str());
