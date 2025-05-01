@@ -21,7 +21,7 @@ node_num=$(echo "$2 - $1 + 1" | bc)
 
 for i in $(seq $1 $2) 
 do
-    ssh X1aoyang@node$i "~/FineMem/build/microbench/input_microbench 10.10.1.1 1111 $3 $5 $4 $8 $node_num >/dev/null 2>&1 &"
+    ssh X1aoyang@node$i "~/FineMem/build/microbench/input_microbench 10.10.1.1 1111 $3 $5 $4 ~/FineMem/microbench/$8 $node_num  >/dev/null 2>&1 &"
 done
 
 while true; do

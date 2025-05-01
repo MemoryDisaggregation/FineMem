@@ -911,6 +911,7 @@ int main(int argc, char* argv[]) {
     size_class = atoi(argv[4]);
     std::string allocator_type = argv[5];
     std::string input = argv[6];
+    int node_num = atoi(argv[7]);
     if (allocator_type == "cxl")
         type = cxl_shm_alloc;
     else if (allocator_type == "fusee") 
