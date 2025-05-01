@@ -1,6 +1,6 @@
 # FineMem - Main Repo
 
-> All source codes of FineMem are avaliable here, while we are still working on complete the documents. And the source code of FineMem-User, FineMem-Swap and FineMem-KV stores at other repos, which we will refer in this repo future. This ReadMe has four part, first is how to build FineMem, then an easy case to run FineMem, following the content explaniation and experiments reproduction.
+FineMem is a distributed remote memory management system designed to support fine-grained, high-performance memory (de)allocation in RDMA-connected DM. This ReadMe has four part, first is how to build FineMem, then an easy case to run FineMem, following the content explaniation and experiments reproduction.
 
 ## Build 
 
