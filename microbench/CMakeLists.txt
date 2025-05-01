@@ -8,6 +8,8 @@ target_link_libraries(microbench_common
     rdmacm
     rt
     profiler
+    memkind
+    hiredis
 )
 
 add_executable(v_microbench v_microbench.cc)

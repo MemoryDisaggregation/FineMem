@@ -24,9 +24,7 @@ node_num=$(echo "$2 - $1 + 1" | bc)
 
 for i in $(seq $1 $2) 
 do
-    # ssh X1aoyang@node$i "~/FineMem/build/microbench/v_microbench 10.10.1.1 1111 16 0 pool frag $i >/dev/null 2>&1 &"
-    # ssh X1aoyang@node$i "~/FineMem/build/microbench/v_microbench 10.10.1.1 1111 16 0 cxl frag $i >/dev/null 2>&1 &"
-    ssh X1aoyang@node$i "~/FineMem/build/microbench/multiple_microbench ~/FineMem/config/config_node_num_$7.json $3 $5 $4 frag $node_num >/dev/null 2>&1 &"
+    ssh X1aoyang@node$i "~/FineMem/build/microbench/multiple_microbench ~/FineMem/config/config_node_num_$7.json $3 $5 $4 $node_num >/dev/null 2>&1 &"
 done
 
 while true; do

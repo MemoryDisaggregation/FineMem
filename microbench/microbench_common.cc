@@ -13,13 +13,16 @@
 #include <sys/time.h>
 #include <gperftools/profiler.h>
 #include <random>
+#include <memkind.h>
+#include <fixed_allocator.h>
+#include "hiredis/hiredis.h"
+#include <string>
 
-const int iteration = 60;
-const int free_num = 20;
-const int epoch = 100;
-
-const int alloc_size = 4096*1024;
-
+const int iteration = 50;
+const int free_num = 12;
+const int epoch = 5000;
+int size_class = 0;
+int node_num = 0;
 
 enum alloc_type { cxl_shm_alloc, fusee_alloc, rpc_alloc, share_alloc, exclusive_alloc, pool_alloc, bitmap_alloc, cache_alloc, cache_thread };
 
@@ -62,6 +65,7 @@ void* run_woker_thread(void* arg){
 static void
 init_random_values (unsigned int* random_offsets)
 {
+    srand(0);
     for (size_t i = 0; i < iteration; i++)
         random_offsets[i] = i;
     size_t x,y;
@@ -154,168 +158,34 @@ private:
     std::mt19937 mt;
 };
 
-class bitmap_allocator : test_allocator{
-public:
-    bitmap_allocator(mralloc::ConnectionManager* conn, uint64_t start_hint) {
-        conn_ = conn;
-        current_index_ = start_hint;
-        std::random_device e;
-        mt.seed(e());
-    }
-    ~bitmap_allocator() {};
-    bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
-        // current_index_ += mt();
-        int retry_time = conn_->fetch_block_bitmap(current_index_, remote_addr.addr, remote_addr.rkey);
-        if(retry_time) {
-            if(retry_time > max_retry) 
-                max_retry = retry_time;
-            avg_retry = (avg_retry*alloc_num + retry_time)/(alloc_num+1);
-	        alloc_num ++;
-            return true;
-        } else {
-            return false;
-        }
-    };
-    bool free(mralloc::mr_rdma_addr remote_addr) override {
-        return conn_->free_block_bitmap(remote_addr.addr);
-    };
-    bool print_state() override {printf("%lf, %d\n", avg_retry, max_retry); return true;};
-    double get_avg_retry() {return avg_retry;};
-    int get_max_retry() {return max_retry;};
-
-private:
-    double avg_retry=0;
-    int alloc_num=0;
-    int max_retry=0;
-    uint64_t current_index_;
-    mralloc::ConnectionManager* conn_;
-    std::mt19937 mt;
-};
-
 class fusee_allocator : test_allocator{
 public:
     fusee_allocator(mralloc::ConnectionManager* conn) {
+        // uint64_t addr = (uint64_t)mmap(NULL, 1024*1024*1024, PROT_READ | PROT_WRITE, 
+            // MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        // memset((void*)addr, 0, 1024*1024*1024);
+        // memkind_create_fixed((void*)addr, 1024*1024*1024, &kind_);
         conn_ = conn;
     }
     ~fusee_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
+        // remote_addr.addr = (uint64_t)memkind_malloc(kind_, remote_addr.size);
         while(conn_->remote_fetch_block(remote_addr.addr, remote_addr.rkey, remote_addr.size)); 
+        // printf("%lx\n", remote_addr.addr);
 	    return true;
     };
     bool free(mralloc::mr_rdma_addr remote_addr) override {
+        // memkind_free(kind_, (void*)remote_addr.addr);
         while(conn_->remote_free_block(remote_addr.addr));
 	    return true;
     };
     bool print_state() override {return false;};
 private:
     mralloc::ConnectionManager* conn_;
+    memkind_t kind_;
 };
 
-mralloc::FreeQueueManager* cnode_heap_ = NULL;
-
-mralloc::FreeQueueManager* generate_pool(mralloc::ConnectionManager* conn){
-    mralloc::FreeQueueManager* pool = new mralloc::FreeQueueManager(alloc_size, (size_t)1024*1024*1024);
-    mralloc::mr_rdma_addr new_heap = {0, 0, 0};
-    bool result = conn->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
-    pool->init(new_heap, (size_t)1024*1024*1024);
-    return pool;
-}
 std::mutex mutex_;
-
-class MR_1GB_allocator : test_allocator{
-public:
-    MR_1GB_allocator(mralloc::ConnectionManager* conn) {
-        std::unique_lock<std::mutex> lock(mutex_);
-        conn_ = conn;
-        if(cnode_heap_ == NULL) {
-            cnode_heap_ = generate_pool(conn_);
-            mralloc::mr_rdma_addr new_heap = {0, 0, 0};
-           
-	    // for(int i = 0; i < 12;i ++){
-        //          conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
-        //          cnode_heap_->fill_block(new_heap, (size_t)1024*1024*1024);
-        //      }
-	    
-        }
-    }
-    ~MR_1GB_allocator() {};
-    bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
-        std::unique_lock<std::mutex> lock(mutex_);
-        if(cnode_heap_->fetch_block(remote_addr)){
-             return true;
-        } else {
-             mralloc::mr_rdma_addr new_heap = {0, 0, 0};
-             bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
-             if(result) return false;
-             cnode_heap_->fill_block(new_heap, (size_t)1024*1024*1024);
-             cnode_heap_->fetch_block(remote_addr); 
-	    }
-        //if(!heap_->fetch_block(remote_addr)){
-          //  mralloc::mr_rdma_addr new_heap = {0, 0, 0};
-           // conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)1024*1024*1024);
-           // heap_->fill_block(new_heap, (size_t)1024*1024*1024);
-           // heap_->fetch_block(remote_addr);
-        //}
-        return true;
-    };
-    bool free(mralloc::mr_rdma_addr remote_addr) override {
-        std::unique_lock<std::mutex> lock(mutex_);
-        bool freed;
-        cnode_heap_->return_block(remote_addr, freed);
-        if(freed){
-            conn_->unregister_remote_memory((uint64_t)remote_addr.addr-(uint64_t)remote_addr.addr%((uint64_t)1024*1024*1024));
-        }
-        return true;
-    };
-    bool print_state() override {return false;};
-private:
-    mralloc::ConnectionManager* conn_;
-    mralloc::FreeQueueManager* heap_ ;
-};
-
-
-class MR_128MB_allocator : test_allocator{
-public:
-    MR_128MB_allocator(mralloc::ConnectionManager* conn) {
-        // std::unique_lock<std::mutex> lock(mutex_);
-        conn_ = conn;
-        heap_ = new mralloc::FreeQueueManager(alloc_size, (size_t)128*1024*1024);
-         mralloc::mr_rdma_addr new_heap = {0, 0, 0};
-         bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)128*1024*1024);
-         heap_->init(new_heap, (size_t)128*1024*1024);
-	 /*for(int i=0;i<2;i++){
-         bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)128*1024*1024);
-         heap_->fill_block(new_heap, (size_t)128*1024*1024);
-	 
-	 }*/
-    }
-    ~MR_128MB_allocator() {};
-    bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
-        if(heap_->fetch_block(remote_addr)){
-             return true;
-        } else {
-             mralloc::mr_rdma_addr new_heap = {0, 0, 0};
-             bool result = conn_->register_remote_memory(new_heap.addr, new_heap.rkey, (size_t)128*1024*1024);
-             if(result) return false;
-             heap_->fill_block(new_heap, (size_t)128*1024*1024);
-             heap_->fetch_block(remote_addr); 
-	    }
-        return true;
-    };
-    bool free(mralloc::mr_rdma_addr remote_addr) override {
-        bool freed;
-        heap_->return_block(remote_addr, freed);
-        if(freed){
-            conn_->unregister_remote_memory((uint64_t)remote_addr.addr-(uint64_t)remote_addr.addr%((uint64_t)128*1024*1024));
-        }
-        return true;
-    };
-    bool print_state() override {return false;};
-private:
-    mralloc::ConnectionManager* conn_;
-    mralloc::FreeQueueManager* heap_ ;
-};
-
 
 class rpc_allocator : test_allocator{
 public:
@@ -324,7 +194,7 @@ public:
     }
     ~rpc_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
-        return !conn_->register_remote_memory(remote_addr.addr, remote_addr.rkey, 4*1024*1024);
+        return !conn_->register_remote_memory(remote_addr.addr, remote_addr.rkey, REMOTE_MEM_SIZE*1<<remote_addr.size);
     };
     bool free(mralloc::mr_rdma_addr remote_addr) override {
         return !conn_->unregister_remote_memory(remote_addr.addr);
@@ -345,86 +215,11 @@ public:
     }
     ~share_allocator() {};
     bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
-        int retry_time = conn_->full_alloc(cache_section, cache_section_index, alloc_class, remote_addr.addr, remote_addr.rkey);
-        remote_addr.size = alloc_class;
+        int retry_time = conn_->full_alloc(cache_section, cache_section_index, remote_addr.size, remote_addr.addr, remote_addr.rkey);
         return true;
-        // int retry_time = 0, cas_time = 0, section_time = 0, region_time = 0, result;
-        // bool slow_path = false;
-        // uint16_t first_section = cache_section_index;
-        // uint16_t ring = 0;
-        // while((result = conn_->fetch_region_block(cache_section, cache_region, remote_addr.addr, remote_addr.rkey, false, cache_region_index, alloc_class)) < 0){
-        //     cas_time += (-1)*result;
-        //     if(alloc_class>0)
-        //         skip_mask += 1 << (cache_region_index%32);
-        //     if(!slow_path){
-        //         while((result = conn_->fetch_region(cache_section, cache_section_index, alloc_class, false, cache_region, cache_region_index, skip_mask)) < 0){
-        //             region_time += (-1)*result;
-        //             skip_mask = 0;
-        //             if((result = conn_->find_section(cache_section, cache_section_index, 0, mralloc::alloc_light)) < 0 || (result == first_section && ring == 2)){
-        //                 slow_path = true;
-        //                 section_time += (-1)*result;
-        //                 ring  = 0;
-        //                 break;
-		// 	        }else {
-        //                 if(result == first_section) {
-        //                     ring ++;
-        //                 }
-        //                 section_time += result;
-        //             }
-        //         }
-        //         region_time += result;
-        //     } else {
-        //         while((result = conn_->fetch_region(cache_section, cache_section_index, alloc_class, true, cache_region, cache_region_index, skip_mask)) < 0){
-        //             region_time += (-1)*result;
-        //             skip_mask = 0;
-        //             if((result = conn_->find_section(cache_section, cache_section_index, 0, mralloc::alloc_heavy)) < 0 || (result == first_section && ring == 2)){
-        //                 section_time += (-1)*result;
-        //                 printf("waiting for new section avaliable\n");
-		// 	        }
-        //             else {
-        //                 if(result == first_section) {
-        //                     ring ++;
-        //                 }
-        //                 section_time += result;
-        //             }
-        //         }  
-        //         region_time += result;
-        //     }
-        // }
-        // cas_time += result;
-        // if(cas_time >= mralloc::retry_threshold && !slow_path) {
-        //     // if(alloc_class == 0){
-        //     skip_mask = 0;
-        //     if((result = conn_->find_section(cache_section, cache_section_index, alloc_class, mralloc::alloc_light)) < 0){
-        //         slow_path = true;
-        //         section_time += (-1)*result;
-        //     }else section_time += result;
-        //     while((result = conn_->fetch_region(cache_section, cache_section_index, alloc_class, false, cache_region, cache_region_index, skip_mask)) < 0){
-        //         region_time += (-1)*result;
-        //         if((result = conn_->find_section(cache_section, cache_section_index, alloc_class, mralloc::alloc_light)) < 0){
-        //             slow_path = true;
-        //             section_time += (-1)*result;
-        //             break;
-        //         }else section_time += result;
-        //     }
-        // } 
-        // retry_time = cas_time + section_time + region_time;
-        // if(retry_time > max_retry){ 
-        //     max_retry = retry_time;
-        //     max_cas = cas_time;
-        //     max_section = section_time;
-        //     max_region = region_time;
-        // }
-	    // avg_retry = (avg_retry*alloc_num + retry_time)/(alloc_num+1);
-	    // alloc_num ++;
-        // return true;
-    };
+    }
     bool free(mralloc::mr_rdma_addr remote_addr) override {
-        // int result = conn_->free_region_block(remote_addr.addr, false, alloc_class);
-        int result = conn_->full_free(remote_addr.addr, alloc_class);
-        // if(result == -2 && conn_->get_addr_region_index(remote_addr.addr) != cache_region_index) {
-        //     conn_->set_region_empty(cache_region, cache_region_index);
-        // }
+        int result = conn_->full_free(remote_addr.addr, remote_addr.size);
         return true;
     };
     bool print_state() override {printf("%lf, %d, cas %d, region %d, section %d\n", avg_retry, max_retry, max_cas, max_region, max_section);return false;};
@@ -443,83 +238,24 @@ private:
     mralloc::ConnectionManager* conn_;
 };
 
-class exclusive_allocator : test_allocator{
-public:
-    exclusive_allocator(mralloc::ConnectionManager* conn) {
-        conn_ = conn;
-        conn->find_section(cache_section, cache_section_index, 0, mralloc::alloc_empty);
-        conn->fetch_region(cache_section, cache_section_index, 0, false, cache_region.region, cache_region.index, 0);
-        conn->fetch_exclusive_region_rkey(cache_region.index, cache_region.rkey);
-        region_record[cache_region.index] = cache_region;
-    }
-    ~exclusive_allocator() {};
-    bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
-        int index = 0 ;
-        while((index = mralloc::find_free_index_from_bitmap32_tail(cache_region.region.base_map_)) == -1 ){
-            bool cache_useful = false;
-            region_record[cache_region.index].region = cache_region.region;
-            for(auto iter = region_record.begin(); iter != region_record.end(); iter ++) {
-                if((index = mralloc::find_free_index_from_bitmap32_tail(iter->second.region.base_map_)) != -1){
-                    cache_region = iter->second;
-                    cache_useful = true;
-                    break;
-                }
-            }
-            if(!cache_useful) {
-                while(!conn_->fetch_region(cache_section, cache_section_index, 0, false, cache_region.region, cache_region.index, 0)){
-                    if(!conn_->find_section(cache_section, cache_section_index, 0, mralloc::alloc_empty)) {
-                        return false;
-                    }
-                }
-                conn_->fetch_exclusive_region_rkey(cache_region.index, cache_region.rkey);
-                region_record[cache_region.index] = cache_region;
-            }
-        }
-        cache_region.region.base_map_ |= 1<<index;
-        remote_addr.addr = conn_->get_region_block_addr(cache_region.index, index);
-        remote_addr.rkey = cache_region.rkey[index].main_rkey_;
-        return true;
-    };
-    bool free(mralloc::mr_rdma_addr remote_addr) override {
-        uint32_t index = conn_->get_addr_region_index(remote_addr.addr);
-        uint32_t offset = conn_->get_addr_region_offset(remote_addr.addr);
-        if(index == cache_region.index) {
-            cache_region.region.base_map_ &= ~(uint32_t)(1<<offset);
-            // conn_->remote_rebind(addr, 0, cache_region.rkey[offset]);
-        } else {
-            region_record[index].region.base_map_ &= ~(uint32_t)(1<<offset);
-            // conn_->remote_rebind(addr, 0, region_record[index].rkey[offset]);
-        }
-        return true;
-    };
-    bool print_state() override {return false;};
-
-private:
-    uint32_t cache_section_index;
-    mralloc::section_e cache_section;
-    mralloc::region_with_rkey cache_region;
-    std::unordered_map<uint32_t, mralloc::region_with_rkey> region_record;
-    mralloc::ConnectionManager* conn_;
-};
-
 class pool_allocator : test_allocator{
-public:
-    pool_allocator() {
-        cpu_cache_ = new mralloc::cpu_cache(4*1024*1024);
-    }
-    ~pool_allocator() {};
-    bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
-        uint64_t unused;
-        return cpu_cache_->malloc(0, remote_addr, unused);
-    };
-    bool free(mralloc::mr_rdma_addr remote_addr) override {
-        cpu_cache_->free(remote_addr);
-        return true;
-    };
-    bool print_state() override {return false;};
-
-private:
-    mralloc::cpu_cache* cpu_cache_;
+    public:
+        pool_allocator() {
+            cpu_cache_ = new mralloc::cpu_cache(4*1024*1024);
+        }
+        ~pool_allocator() {};
+        bool malloc(mralloc::mr_rdma_addr &remote_addr) override {
+            uint64_t unused;
+            return cpu_cache_->malloc(remote_addr.size, remote_addr, unused);
+        };
+        bool free(mralloc::mr_rdma_addr remote_addr) override {
+            cpu_cache_->free(remote_addr);
+            return true;
+        };
+        bool print_state() override {return false;};
+    
+    private:
+        mralloc::cpu_cache* cpu_cache_;
 };
 
 void warmup(test_allocator* alloc) {
@@ -832,7 +568,8 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
 
 void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_t thread_id) {
     std::random_device r;
-    std::mt19937 rand_val(r());
+    // std::mt19937 rand_val(r());
+    std::mt19937 rand_val(0);
     unsigned int random_offsets[iteration];
     uint64_t time_record[iteration];
     init_random_values(random_offsets);
@@ -860,6 +597,8 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
                     continue;
                 }
                 gettimeofday(&start, NULL);
+                remote_addr[next_idx].size = size_class;
+                // remote_addr[next_idx].size = rand_val()%10;
                 if(!alloc->malloc(remote_addr[next_idx]) || remote_addr[next_idx].addr == 0 || remote_addr[next_idx].addr == -1){
                     printf("alloc false\n");
                 }
@@ -873,7 +612,7 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
                 malloc_count_ += 1;
                 allocated ++;
                 allocate_size.fetch_add(1024*1024*4);
-                // printf("%lu, %u\n", remote_addr[next_idx].addr, remote_addr[next_idx].rkey);
+                // printf("%lx, %u\n", remote_addr[next_idx].addr, 1<<remote_addr[next_idx].size);
             }
             // for(int i = 0; i < rand_iter; i ++){
             //     char buffer[2][16] = {"aaa", "bbb"};
@@ -888,6 +627,7 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
                 if(remote_addr[i].addr != -1 && remote_addr[i].rkey != -1) 
                     continue;
                 gettimeofday(&start, NULL);
+                remote_addr[i].size = size_class;
                 if(!alloc->malloc(remote_addr[i]) || remote_addr[i].addr == 0 || remote_addr[i].addr == -1){
                     printf("alloc false\n");
                 }
@@ -1052,6 +792,10 @@ void short_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64
     malloc_avg[thread_id] = malloc_avg_time_;
 }
 
+redisContext *redis_conn;
+redisReply *redis_reply;
+    
+
 void* worker(void* arg) {
     uint64_t thread_id = id.fetch_add(1);
     cpu_set_t cpuset;
@@ -1071,6 +815,7 @@ void* worker(void* arg) {
     test_allocator* alloc;
     switch (type)
     {
+    // following types: One-sided(CXL-SHM), RPC-user, RPC-kernel
     case cxl_shm_alloc:
         alloc = (test_allocator*)new cxl_shm_allocator(conn, 0);
         // alloc = (test_allocator*)new cxl_shm_allocator(conn, rand());
@@ -1082,24 +827,11 @@ void* worker(void* arg) {
         alloc = (test_allocator*)new rpc_allocator(conn);
         break;
     case share_alloc:
-        alloc = (test_allocator*)new share_allocator(conn, 0);
-        // alloc = (test_allocator*)new share_allocator(conn, rand());
-        break;
-    case exclusive_alloc:
-        alloc = (test_allocator*)new exclusive_allocator(conn);
+        // alloc = (test_allocator*)new share_allocator(conn, 0);
+        alloc = (test_allocator*)new share_allocator(conn, rand());
         break;
     case pool_alloc:
         alloc = (test_allocator*)new pool_allocator();
-        break;
-    case bitmap_alloc:
-        alloc = (test_allocator*)new bitmap_allocator(conn, 0);
-        // alloc = (test_allocator*)new bitmap_allocator(conn, rand());
-        break;
-    case cache_alloc:
-        alloc = (test_allocator*)new MR_1GB_allocator(conn);
-        break;
-    case cache_thread:
-        alloc = (test_allocator*)new MR_128MB_allocator(conn);
         break;
     default:
         break;
@@ -1107,8 +839,23 @@ void* worker(void* arg) {
     pthread_barrier_wait(&start_barrier);
     warmup(alloc);
     pthread_barrier_wait(&end_barrier);
+    int node_id;
     if(thread_id == 1) {
-    	getchar();
+    	// getchar();
+        redis_reply = (redisReply*)redisCommand(redis_conn, "INCR bench_start");
+        printf("INCUR: %d\n", redis_reply->integer);
+        // freeReplyObject(redis_reply);
+        // redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");
+        node_id = redis_reply->integer;
+        if(redis_reply->integer != node_num){
+            redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
+            while(atoi(redis_reply->str) != node_num){
+                freeReplyObject(redis_reply);
+                redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
+                printf("GET: %s\n", redis_reply->str);
+            }
+        }
+        freeReplyObject(redis_reply);
     }
     pthread_barrier_wait(&start_barrier);
     // shuffle_alloc(conn, alloc, thread_id);
@@ -1130,22 +877,40 @@ void* worker(void* arg) {
         break;
     }
     pthread_barrier_wait(&end_barrier);
+    // if(thread_id == 1) {
+    //     redis_reply = (redisReply*)redisCommand(redis_conn, "SET bench_start 0");
+    //     freeReplyObject(redis_reply);
+    // }
     return NULL;
 }
 
 int main(int argc, char* argv[]) {
     allocate_size.store(0);
-    if(argc < 6){
-        printf("Usage: %s <ip> <port> <thread> <allocator> <trace>\n", argv[0]);
+    if(argc < 7){
+        printf("Usage: %s <ip> <port> <thread> <size> <allocator> <node_num>\n", argv[0]);
         return 0;
     }
-    // ProfilerStart("test.prof");
+    struct timeval timeout = { 1, 500000 }; // 1.5 seconds
+    redis_conn = redisConnectWithTimeout("10.10.1.1", 2222, timeout);
+    // redis_reply = (redisReply*)redisCommand(redis_conn,"SET bench_start 0");
+    // freeReplyObject(redis_reply);
+    if (redis_conn == NULL || redis_conn->err) {
+        if (redis_conn) {
+            printf("Connection error: %s\n", redis_conn->errstr);
+            redisFree(redis_conn);
+        } else {
+            printf("Connection error: can't allocate redis context\n");
+        }
+        exit(1);
+    }
     // init_random_values(random_offsets);
     std::string ip = argv[1];
     std::string port = argv[2];
     int thread_num = atoi(argv[3]);
-    std::string allocator_type = argv[4];
-    std::string trace_type = argv[5];
+    size_class = atoi(argv[4]);
+    std::string allocator_type = argv[5];
+    std::string trace_type = "frag";
+    node_num = atoi(argv[6]);
     if (allocator_type == "cxl")
         type = cxl_shm_alloc;
     else if (allocator_type == "fusee") 
@@ -1190,7 +955,7 @@ int main(int argc, char* argv[]) {
         malloc_record_global[i].store(0);
         free_record_global[i].store(0);
     }
-    id.store(1);
+    id.store(0);
     for(int i = 0; i < 128; i++)
         malloc_avg[i] = 0;
     free_avg.store(0);
@@ -1254,5 +1019,9 @@ int main(int argc, char* argv[]) {
     result << "max cas :" << cas_max_final << std::endl;
     result.close();
     result_detail.close();
-    // ProfilerStop();
+    redis_reply = (redisReply*)redisCommand(redis_conn, "INCRBYFLOAT avg %s", std::to_string(malloc_avg_final/thread_num).c_str());
+    printf("INCUR: %s\n", redis_reply->str);
+    freeReplyObject(redis_reply);
+    redis_reply = (redisReply*)redisCommand(redis_conn, "INCR finished");
+    freeReplyObject(redis_reply);
 }

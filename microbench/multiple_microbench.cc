@@ -902,8 +902,8 @@ void* worker(void* arg) {
 
 int main(int argc, char* argv[]) {
     allocate_size.store(0);
-    if(argc < 7){
-        printf("Usage: %s <config file> <thread> <size> <allocator> <trace> <node_num>\n", argv[0]);
+    if(argc < 6){
+        printf("Usage: %s <config file> <thread> <size> <allocator> <node_num>\n", argv[0]);
         return 0;
     }
     struct timeval timeout = { 1, 500000 }; // 1.5 seconds
@@ -923,8 +923,8 @@ int main(int argc, char* argv[]) {
     int thread_num = atoi(argv[2]);
     size_class = atoi(argv[3]);
     std::string allocator_type = argv[4];
-    std::string trace_type = argv[5];
-    node_num = atoi(argv[6]);
+    std::string trace_type = "frag";
+    node_num = atoi(argv[5]);
     if (allocator_type == "cxl")
         type = cxl_shm_alloc;
     else if (allocator_type == "fusee") 

@@ -2,79 +2,100 @@
 
 > All source codes of FineMem are avaliable here, while we are still working on complete the documents. And the source code of FineMem-User, FineMem-Swap and FineMem-KV stores at other repos, which we will refer in this repo future.
 
-🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧This repo is still under constructing🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧🚧
-
 ## Build 
 
+* Recommendate running on `Cloudlab r650/r6525/c6525/d6515/xl170` 
 
-* Only `OFED` & `Cmake` needed, no other libraray requirement.
-    * `scripts/install_ofed.sh` can help you quickly build up OFED enviroment on a new cloudlab node
+* OS & Driver version
+  
+  * Ubuntu 22.04/Ubuntu 20.04
 
-* Recommendate running on `Cloudlab r650/r6525/c6525/d6515
+  * MLNX_OFED 5.x/4.x
+
+* All nodes need install drivers and libraries as following commands:
 
 ```shell
-> sudo ./scripts/install_ofed.sh
+> git clone https://github.com/MemoryDisaggregation/FineMem.git
+> cd FineMem/
+> sudo ./scripts/env_setup.sh # Warning: node will reboot here
 > mkdir build; cd build
 > cmake ..; make 
 ```
 
-## Run
+## Hello-World Example
 
 ### Memory-side FineMem:
 
 using `ibdev2netdev` to show which RNIC(with status UP) you can use.
 
-```
-> sudo ./scripts/set_2MB_hugepage.sh 200000
+```shell
+> sudo ./scripts/set_2MB_hugepage.sh 200000 
 > cd ./build/source
-> ./server mlx_2<available RDMA device name> 10.10.1.1<server RDMA IP> 1234<serverport>
+> ./server mlx_3<available RDMA device name> 10.10.1.1<server RDMA IP> 1234<serverport>
 ```
 
 
 ### Compute-side FineMem service:
 
-```
+```shell
+> sudo ./scripts/set_2MB_hugepage.sh 2000 
 > cd ./build/source
-> ./client 10.10.1.1<server RDMA IP> 1234<server port>
+> ./client ../../config/config.json
+```
+
+```json
+client-side config file:
+{
+    "node_id":1,
+    "rdma_cm_port":1111,
+    "memory_node_num":1,
+    "memory_ips":[
+        "10.10.1.1"
+    ]
+}
 ```
 
 ### Compute-side Microbench:
 
 ```
 > cd ./build/microbench
-> ./microbench_common 10.10.1.1<server RDMA IP> 1234<server port> 48<thread number> <the allocator type from "cxl", "fusee", "share"(FineMem Raw), "pool"(FineMem with Service), "exclusive"> <the benchmark from "shuffle" and "stage">
+> ./microbench_common 10.10.1.1<server RDMA IP> 1234<server port> 16<thread number> 0<size 0-9> pool<allocator type from "cxl", "fusee", "share"(FineMem directly alloc from remote), "pool"(FineMem communicate with local service)>, 1<total node number for synchronization>
 ```
 
 ## Code content
 
-* If use libmralloc.a, the following libraries are usable:
+### Interfaces
 
-  ./include/cpu_cache.h: The cpu cache interface (C++)
+When using libmralloc.a, the following libraries are notable:
 
-  ./include/msg.h: the RDMA connection settings/RPC packet content defines
+* ./include/cpu_cache.h: semaphore-based message transfer interface between user applications and server applications.
+
+* ./include/msg.h: RDMA connection settings and RPC packet content defininations
   
-  ./include/rdma_conn.h: FineMem communication
+* ./include/rdma_conn.h: FineMem communication and raw allocation transaction interfaces
   
-  ./include/rdma_conn_manager.h: FineMem communication manager
+* ./include/rdma_conn_manager.h: FineMem communication group manager interfaces
   
-  ./include/free_block_magnaer.h: FineMem metadata
+* ./include/free_block_magnaer.h: FineMem metadata management and recovery interfaces
   
 
 
-* Important source files:
+Core source files to better understand the implementation:
   
-  ./source/computing_node.cc: FineMem compute node daemon
+* ./source/computing_node.cc: FineMem compute node service
   
-  ./source/memory_node.cc: FineMem memory server 
+* ./source/memory_node.cc: FineMem memory server 
 
-  ./source/free_block_manager.cc: FineMem metadata 
+* ./source/free_block_manager.cc: FineMem metadata management and recovery
 
-  ./source/rdma_conn.cc: FineMem communication
+* ./source/rdma_conn.cc: FineMem communication and allocation transaction
 
+## Evaluation Regeneration
 
-* Others:
-  
-  ./scripst: Set the memory node's hugepage number; Install the OFED Driver on cloudlab nodes(both for intel and amd)
-  
-  ./microbench: Microbench code, microbench_class.cc & microbench_common.cc
+### Microbench
 
+### Malloc Benchmarks
+
+### DM KV-Store System
+
+### DM Swap System
