@@ -90,7 +90,7 @@ Core source files to better understand the implementation:
 
 * ./source/rdma_conn.cc: FineMem communication and allocation transaction
 
-## Evaluation Regeneration
+## Evaluation Reproducing
 
 ### Microbench
 
