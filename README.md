@@ -94,8 +94,24 @@ Core source files to better understand the implementation:
 
 ### Microbench
 
-### Malloc Benchmarks
-
+```shell
+> cd FineMem/scripts/microbench
+> ./run_different_node.sh
+> ./run_different_size_16.sh
+> ./run_different_size_128.sh
+> ./run_different_thread.sh
+> python3 size_alloc.py
+> python3 thread_alloc.py
+```
 ### DM KV-Store System
 
+```shell
+> cd FineMem/scripts/
+> ./batch_build_fusee.sh
+> ./run_fusee_2MB.sh
+> ./run_fusee_4KB.sh
+```
+
 ### DM Swap System
+
+See Readme in folder Swap_FinrMem_Sim
