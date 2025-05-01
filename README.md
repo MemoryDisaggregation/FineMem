@@ -1,6 +1,6 @@
 # FineMem - Main Repo
 
-> All source codes of FineMem are avaliable here, while we are still working on complete the documents. And the source code of FineMem-User, FineMem-Swap and FineMem-KV stores at other repos, which we will refer in this repo future.
+> All source codes of FineMem are avaliable here, while we are still working on complete the documents. And the source code of FineMem-User, FineMem-Swap and FineMem-KV stores at other repos, which we will refer in this repo future. This ReadMe has four part, first is how to build FineMem, then an easy case to run FineMem, following the content explaniation and experiments reproduction.
 
 ## Build 
 
@@ -59,7 +59,7 @@ client-side config file:
 
 ```
 > cd ./build/microbench
-> ./microbench_common 10.10.1.1<server RDMA IP> 1234<server port> 16<thread number> 0<size 0-9> pool<allocator type from "cxl", "fusee", "share"(FineMem directly alloc from remote), "pool"(FineMem communicate with local service)>, 1<total node number for synchronization>
+> ./microbench_common 10.10.1.1 1234 16<thread number> 0<size 0-9> pool<allocator type from "cxl", "fusee", "pool">, 1<total node number>
 ```
 
 ## Code content
@@ -79,6 +79,7 @@ When using libmralloc.a, the following libraries are notable:
 * ./include/free_block_magnaer.h: FineMem metadata management and recovery interfaces
   
 
+### Source Code
 
 Core source files to better understand the implementation:
   
@@ -89,6 +90,8 @@ Core source files to better understand the implementation:
 * ./source/free_block_manager.cc: FineMem metadata management and recovery
 
 * ./source/rdma_conn.cc: FineMem communication and allocation transaction
+
+
 
 ## Evaluation Reproducing
 
