@@ -33,11 +33,17 @@ sudo cp /usr/local/include/hiredis/hiredis.h /usr/include/hiredis/
 sudo ldconfig
 cd ..; rm -rf hiredis-master; rm -rf master.zip
 
-wget https://content.mellanox.com/ofed/MLNX_OFED-5.8-6.0.4.2/MLNX_OFED_LINUX-5.8-6.0.4.2-ubuntu22.04-x86_64.tgz
-tar -zxvf MLNX_OFED_LINUX-5.8-6.0.4.2-ubuntu22.04-x86_64.tgz
-cd MLNX_OFED_LINUX-5.8-6.0.4.2-ubuntu22.04-x86_64
-sudo ./mlnxofedinstall --force
-cd ../; sudo rm -rf MLNX_OFED_LINUX-5.8-6.0.4.2-ubuntu22.04-x86_64*
+# wget https://content.mellanox.com/ofed/MLNX_OFED-5.8-6.0.4.2/MLNX_OFED_LINUX-5.8-6.0.4.2-ubuntu22.04-x86_64.tgz
+# tar -zxvf MLNX_OFED_LINUX-5.8-6.0.4.2-ubuntu22.04-x86_64.tgz
+# cd MLNX_OFED_LINUX-5.8-6.0.4.2-ubuntu22.04-x86_64
+# sudo ./mlnxofedinstall --force
+# cd ../; sudo rm -rf MLNX_OFED_LINUX-5.8-6.0.4.2-ubuntu22.04-x86_64*
+
+sudo export DOCA_URL="https://linux.mellanox.com/public/repo/doca/3.0.0/ubuntu22.04/x86_64/"
+sudo curl https://linux.mellanox.com/public/repo/doca/GPG-KEY-Mellanox.pub | gpg --dearmor > /etc/apt/trusted.gpg.d/GPG-KEY-Mellanox.pub
+sudo echo "deb [signed-by=/etc/apt/trusted.gpg.d/GPG-KEY-Mellanox.pub] $DOCA_URL ./" > /etc/apt/sources.list.d/doca.list
+sudo apt-get update
+sudo apt-get -y install doca-networking
 
 sudo sed -i "s/GRUB_CMDLINE_LINUX_DEFAULT=\"/GRUB_CMDLINE_LINUX_DEFAULT=\"iommu=pt/" /etc/default/grub
 sudo grub-mkconfig -o /boot/grub/grub.cfg
