@@ -53,4 +53,4 @@ sudo mst start
 sudo mlxconfig -y -d /dev/mst/mt4117_pciconf0 set SRIOV_EN=1 NUM_OF_VFS=16
 sudo mlxconfig -y -d /dev/mst/mt4117_pciconf1 set SRIOV_EN=1 NUM_OF_VFS=16
 
-sudo reboot
+# sudo reboot
