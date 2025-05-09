@@ -6,4 +6,4 @@ sudo ~/FineMem/scripts/set_2MB_hugepage.sh 30000
 
 nohup redis-server --bind 10.10.1.1 --port 2222 --protected-mode no &
 
-nohup ~/FineMem/build/source/server mlx5_3 10.10.1.1 1111 &
+nohup ~/FineMem/build/source/server mlx5_2 10.10.1.1 1111 &

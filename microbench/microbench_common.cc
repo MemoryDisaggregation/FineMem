@@ -1028,4 +1028,5 @@ int main(int argc, char* argv[]) {
     redis_reply = (redisReply*)redisCommand(redis_conn, "INCR finished");
     freeReplyObject(redis_reply);
     redis_reply = (redisReply*)redisCommand(redis_conn, "SET bench_start 0");   
+    freeReplyObject(redis_reply);
 }
