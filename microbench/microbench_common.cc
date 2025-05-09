@@ -890,8 +890,18 @@ int main(int argc, char* argv[]) {
         printf("Usage: %s <ip> <port> <thread> <size> <allocator> <node_num>\n", argv[0]);
         return 0;
     }
+
+    // init_random_values(random_offsets);
+    std::string ip = argv[1];
+    std::string port = argv[2];
+    int thread_num = atoi(argv[3]);
+    size_class = atoi(argv[4]);
+    std::string allocator_type = argv[5];
+    std::string trace_type = "frag";
+    node_num = atoi(argv[6]);
+
     struct timeval timeout = { 1, 500000 }; // 1.5 seconds
-    redis_conn = redisConnectWithTimeout("10.10.1.1", 2222, timeout);
+    redis_conn = redisConnectWithTimeout(ip.c_str(), 2222, timeout);
     // redis_reply = (redisReply*)redisCommand(redis_conn,"SET bench_start 0");
     // freeReplyObject(redis_reply);
     if (redis_conn == NULL || redis_conn->err) {
@@ -903,14 +913,7 @@ int main(int argc, char* argv[]) {
         }
         exit(1);
     }
-    // init_random_values(random_offsets);
-    std::string ip = argv[1];
-    std::string port = argv[2];
-    int thread_num = atoi(argv[3]);
-    size_class = atoi(argv[4]);
-    std::string allocator_type = argv[5];
-    std::string trace_type = "frag";
-    node_num = atoi(argv[6]);
+
     if (allocator_type == "cxl")
         type = cxl_shm_alloc;
     else if (allocator_type == "fusee") 
@@ -1024,4 +1027,5 @@ int main(int argc, char* argv[]) {
     freeReplyObject(redis_reply);
     redis_reply = (redisReply*)redisCommand(redis_conn, "INCR finished");
     freeReplyObject(redis_reply);
+    redis_reply = (redisReply*)redisCommand(redis_conn, "SET bench_start 0");   
 }

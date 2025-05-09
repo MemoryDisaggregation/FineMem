@@ -31,6 +31,7 @@ using `ibdev2netdev` to show which RNIC(with status UP) you can use.
 ```shell
 > sudo ./scripts/set_2MB_hugepage.sh 200000 
 > cd ./build/source
+> nohup redis-server --bind 10.10.1.1 --port 2222 --protected-mode no & # redis server needed for cross-node synch
 > ./server mlx_3<available RDMA device name> 10.10.1.1<server RDMA IP> 1234<serverport>
 ```
 
