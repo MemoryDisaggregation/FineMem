@@ -20,7 +20,7 @@
 
 const int iteration = 50;
 const int free_num = 12;
-const int epoch = 5000;
+const int epoch = 50000;
 int size_class = 0;
 int node_num = 0;
 
@@ -848,10 +848,10 @@ void* worker(void* arg) {
         // redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");
         node_id = redis_reply->integer;
         if(redis_reply->integer != 0){
-            redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
+            redis_reply = (redisReply*)redisCommand(redis_conn, "GET stage2");    
             while(atoi(redis_reply->str) != 0){
                 freeReplyObject(redis_reply);
-                redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
+                redis_reply = (redisReply*)redisCommand(redis_conn, "GET stage2");    
                 printf("GET: %s\n", redis_reply->str);
             }
         }
