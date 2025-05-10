@@ -108,11 +108,12 @@ in the directory ./scripts to replace original path to your work path.
 These scripts are configured for an 18-node cluster, numbered 0 through 17. After confirming passwordless SSH access (using RSA authentication) from node 0 to nodes 1-17, users can log in to node 0 as the control node (which also serves as the memory node) and execute the scripts from there to manage nodes 1-17 (functioning as compute nodes, with potentially additional memory nodes specified in the "run_different_node" configuration). The results will be collected in CSV format. It is recommended to use nohup or tmux to ensure uninterrupted long-term execution. If the scripts terminate abnormally, please first run ./scripts/fresh_all.sh to reset both memory-node and compute-node configurations.
 
 ```shell
+# execute at node 0
 > cd FineMem/scripts/microbench
-> ./run_different_size_16.sh # about 2 hours, result in different_size_16.csv
-> ./run_different_size_128.sh # about 2 hours, result in different_size_128.csv
-> ./run_different_thread.sh # about 2 hours, result in different_thread.csv
-> ./run_different_node.sh # about 2 hours result in different_node.csv
+> ./run_different_size_16.sh # memory node 0, computing node 1-16, about 2 hours, result in different_size_16.csv
+> ./run_different_size_128.sh # memory node 0, computing node 1-16, about 2 hours, result in different_size_128.csv
+> ./run_different_thread.sh # memory node 0, computing node 1-16, about 2 hours, result in different_thread.csv
+> ./run_different_node.sh # memory node 0-5, computing node 6-17, about 2 hours result in different_node.csv
 > python3 size_alloc.py
 > python3 thread_alloc.py
 ```
@@ -121,10 +122,11 @@ These scripts are configured for an 18-node cluster, numbered 0 through 17. Afte
 Similar to the microbenchmark scripts, ​​these​​ scripts can also be ​​executed from node 0 with a single command​​.
 
 ```shell
+# execute at node 0
 > cd FineMem/scripts/
 > ./batch_build_fusee.sh 
-> ./run_fusee_2MB.sh # about 2 hours, result in fusee_4kb.csv
-> ./run_fusee_4KB.sh # about 3-4 hours, result in fusee_2mb.csv
+> ./run_fusee_2MB.sh # memory node 0, computing node 1-16, about 2 hours, result in fusee_4kb.csv
+> ./run_fusee_4KB.sh # memory node 0, computing node 1-16, about 3-4 hours, result in fusee_2mb.csv
 > python3 draw_kv.py
 ```
 
