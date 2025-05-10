@@ -105,7 +105,9 @@ in the directory ./scripts to replace original path to your work path.
 
 ### Microbench
 
-These scripts are configured for an 18-node cluster, numbered 0 through 17. After confirming passwordless SSH access (using RSA authentication) from node 0 to nodes 1-17, users can log in to node 0 as the control node (which also serves as the memory node) and execute the scripts from there to manage nodes 1-17 (functioning as compute nodes, with potentially additional memory nodes specified in the "run_different_node" configuration). The results will be collected in CSV format. It is recommended to use nohup or tmux to ensure uninterrupted long-term execution. If the scripts terminate abnormally, please first run ./scripts/fresh_all.sh to reset both memory-node and compute-node configurations.
+These scripts are configured for an 18-node cluster, numbered 0 through 17. 
+
+After confirming passwordless SSH access (using RSA authentication) from node 0 to nodes 1-17, users can log in to node 0 as the control node (which also serves as the memory node) and execute the scripts from there to manage nodes 1-17 (functioning as compute nodes, with potentially additional memory nodes specified in the "run_different_node" configuration). The results will be collected in CSV format. 
 
 ```shell
 # execute at node 0
@@ -117,6 +119,9 @@ These scripts are configured for an 18-node cluster, numbered 0 through 17. Afte
 > python3 size_alloc.py
 > python3 thread_alloc.py
 ```
+
+It is recommended to use nohup or tmux to ensure uninterrupted long-term execution. If the scripts terminate abnormally, please first run ./scripts/fresh_all.sh to reset both memory-node and compute-node configurations.
+
 ### DM KV-Store System
 
 Similar to the microbenchmark scripts, ​​these​​ scripts can also be ​​executed from node 0 with a single command​​.
