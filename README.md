@@ -96,24 +96,36 @@ Core source files to better understand the implementation:
 
 ## Evaluation Reproducing
 
+**Critical Path Considerations:**
+If your working directory differ from our scripts default home directory reference, please ensure absolute path specification in all these scripts. Our distributed execution (by ssh) initializes from $HOME, making relative path resolution potentially unstable across nodes. You can use command like:
+```shell
+find -name '*.sh' | xargs perl -pi -e 's|~/FineMem|~/path/to/your/directory/FineMem|g'
+```
+in the directory ./scripts to replace original path to your work path.
+
 ### Microbench
+
+These scripts are configured for an 18-node cluster, numbered 0 through 17. After confirming passwordless SSH access (using RSA authentication) from node 0 to nodes 1-17, users can log in to node 0 as the control node (which also serves as the memory node) and execute the scripts from there to manage nodes 1-17 (functioning as compute nodes, with potentially additional memory nodes specified in the "run_different_node" configuration). The results will be collected in CSV format. It is recommended to use nohup or tmux to ensure uninterrupted long-term execution. If the scripts terminate abnormally, please first run ./scripts/fresh_all.sh to reset both memory-node and compute-node configurations.
 
 ```shell
 > cd FineMem/scripts/microbench
-> ./run_different_node.sh
-> ./run_different_size_16.sh
-> ./run_different_size_128.sh
-> ./run_different_thread.sh
+> ./run_different_size_16.sh # about 2 hours, result in different_size_16.csv
+> ./run_different_size_128.sh # about 2 hours, result in different_size_128.csv
+> ./run_different_thread.sh # about 2 hours, result in different_thread.csv
+> ./run_different_node.sh # about 2 hours result in different_node.csv
 > python3 size_alloc.py
 > python3 thread_alloc.py
 ```
 ### DM KV-Store System
 
+Similar to the microbenchmark scripts, ​​these​​ scripts can also be ​​executed from node 0 with a single command​​.
+
 ```shell
 > cd FineMem/scripts/
-> ./batch_build_fusee.sh
-> ./run_fusee_2MB.sh
-> ./run_fusee_4KB.sh
+> ./batch_build_fusee.sh 
+> ./run_fusee_2MB.sh # about 2 hours, result in fusee_4kb.csv
+> ./run_fusee_4KB.sh # about 3-4 hours, result in fusee_2mb.csv
+> python3 draw_kv.py
 ```
 
 ### DM Swap System
