@@ -15,7 +15,7 @@ sleep 30
 redis-cli -h 10.10.1.1 -p 2222 SET stage1 8 >/dev/null 2>&1
 redis-cli -h 10.10.1.1 -p 2222 SET stage2 16 >/dev/null 2>&1
 redis-cli -h 10.10.1.1 -p 2222 SET avg 0 >/dev/null 2>&1
-redis-cli -h 10.10.1.1 -p 2222 SET avg1 0 >/dev/null 2>&1
+redis-cli -h 10.10.1.1 -p 2222 SET avg_lat 0 >/dev/null 2>&1
 redis-cli -h 10.10.1.1 -p 2222 SET finished 0 >/dev/null 2>&1
 
 node_num=16
@@ -29,10 +29,17 @@ do
     ssh X1aoyang@node$i "cd ~/FineMem/applications/FUSEE_FineMem/build/ycsb-test; ./ycsb_test_multi_client ../../tests/client_config.json workloada 16 $1 >/dev/null 2>&1 &"
 done
 
-for i in $(seq 9 16) 
-do
-    ssh X1aoyang@node$i "~/FineMem/build/microbench/microbench_common 10.10.1.1 1111 16 0 $1 $node_num >/dev/null 2>&1 &"
-done
+# for i in $(seq 9 16) 
+# do
+ssh X1aoyang@node9 "~/FineMem/build/microbench/microbench_common 10.10.1.1 1111 16 0 $1 $node_num >/dev/null 2>&1 &"
+ssh X1aoyang@node10 "~/FineMem/build/microbench/microbench_common 10.10.1.1 1111 16 0 $1 $node_num >/dev/null 2>&1 &"
+ssh X1aoyang@node11 "~/FineMem/build/microbench/microbench_common 10.10.1.1 1111 16 1 $1 $node_num >/dev/null 2>&1 &"
+ssh X1aoyang@node12 "~/FineMem/build/microbench/microbench_common 10.10.1.1 1111 16 1 $1 $node_num >/dev/null 2>&1 &"
+ssh X1aoyang@node13 "~/FineMem/build/microbench/microbench_common 10.10.1.1 1111 16 2 $1 $node_num >/dev/null 2>&1 &"
+ssh X1aoyang@node14 "~/FineMem/build/microbench/microbench_common 10.10.1.1 1111 16 3 $1 $node_num >/dev/null 2>&1 &"
+ssh X1aoyang@node15 "~/FineMem/build/microbench/microbench_common 10.10.1.1 1111 16 4 $1 $node_num >/dev/null 2>&1 &"
+ssh X1aoyang@node16 "~/FineMem/build/microbench/microbench_common 10.10.1.1 1111 16 5 $1 $node_num >/dev/null 2>&1 &"
+# done
 
 
 while true; do
