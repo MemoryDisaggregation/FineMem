@@ -86,7 +86,7 @@ int main(int argc, char* argv[]){
     std::string ip[16], port[16];
     for(int i = 0; i < config.memory_node_num; i++){
         ip[i] = std::string(config.memory_ips[i]);
-        port[i] = std::to_string(config.rdma_cm_port);
+        port[i] = std::to_string(config.rdma_cm_port[i]);
     }
     bool multitest = false;
     if(!multitest) {
