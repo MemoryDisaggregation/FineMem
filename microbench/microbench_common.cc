@@ -20,7 +20,7 @@
 
 const int iteration = 50;
 const int free_num = 12;
-const int epoch = 20000;
+const int epoch = 50000;
 int size_class = 0;
 int node_num = 0;
 
