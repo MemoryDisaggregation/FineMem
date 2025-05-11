@@ -1,9 +1,8 @@
 {
     "node_id":1,
-    "rdma_cm_port":[1111, 1112],
-    "memory_node_num":2,
+    "rdma_cm_port":[1145],
+    "memory_node_num":1,
     "memory_ips":[
-        "10.10.1.3",
-        "10.10.1.4"
+        "10.10.1.1"
     ]
 }

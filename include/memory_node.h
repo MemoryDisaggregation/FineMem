@@ -32,7 +32,7 @@
 
 namespace mralloc {
 
-const int accelerate_thread = 4;
+const int accelerate_thread = 16;
 
 const int cache_length = 72*1024;
 
@@ -174,7 +174,7 @@ private:
     uint32_t simple_cache_rkey[32];
     uint64_t simple_cache_watermark;
 
-    bool use_global_rkey = false;
+    bool use_global_rkey = true;
     // << function enabled >>
     bool one_sided_enabled_;
     ibv_qp* rebinder_qp; ibv_cq* rebinder_cq;

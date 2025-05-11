@@ -42,6 +42,9 @@ void * run_mw_generator(ibv_mw** block_mw, ibv_mw** backup_mw, int start, int en
         // uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
         block_mw[i] = ibv_alloc_mw(pd, IBV_MW_TYPE_1);
         backup_mw[i] = ibv_alloc_mw(pd, IBV_MW_TYPE_1);
+        if((i-start) % 10240 == 0){
+            printf("%d MB\n", i / 1024);
+        } 
     }
 };
 
@@ -349,27 +352,28 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
         printf("init cache failed\n");
         return false;
     }
-    uint64_t block_num_ = server_block_manager_->get_block_num() ;
+    if(!use_global_rkey){
+        uint64_t block_num_ = server_block_manager_->get_block_num() ;
 
-    block_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
+        block_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
 
-    backup_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
+        backup_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
 
-    std::thread* mw_thread[accelerate_thread];
-    struct timeval start, end;
-    gettimeofday(&start, NULL);
-    uint64_t interval = block_num_ / accelerate_thread;
-    for(int i = 0; i < accelerate_thread; i++){
-        mw_thread[i] = new std::thread(&run_mw_generator, block_mw, backup_mw, i*interval, (i+1)*interval, m_pd_);
+        std::thread* mw_thread[accelerate_thread];
+        struct timeval start, end;
+        gettimeofday(&start, NULL);
+        uint64_t interval = block_num_ / accelerate_thread;
+        for(int i = 0; i < accelerate_thread; i++){
+            mw_thread[i] = new std::thread(&run_mw_generator, block_mw, backup_mw, i*interval, (i+1)*interval, m_pd_);
+        }
+        for(int i = 0; i < accelerate_thread; i++){
+            mw_thread[i]->join();
+        }
+
+        gettimeofday(&end, NULL);
+        uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
+        printf("mw_reg bost on %d is %lu: %lf\n", block_num_, time, 1.0*time/block_num_);
     }
-    for(int i = 0; i < accelerate_thread; i++){
-        mw_thread[i]->join();
-    }
-
-    gettimeofday(&end, NULL);
-    uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
-    printf("mw_reg bost on %d is %lu: %lf\n", block_num_, time, 1.0*time/block_num_);
-    
     return true;
 }
 
