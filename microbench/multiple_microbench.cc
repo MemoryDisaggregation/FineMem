@@ -874,8 +874,9 @@ void* worker(void* arg) {
     warmup(alloc);
     pthread_barrier_wait(&end_barrier);
     int node_id;
-    // if(thread_id == 1) {
-    // 	// getchar();
+    if(thread_id == 1) {
+    	getchar();
+    }
     //     redis_reply = (redisReply*)redisCommand(redis_conn, "INCR bench_start");
     //     printf("INCUR: %d\n", redis_reply->integer);
     //     // freeReplyObject(redis_reply);
