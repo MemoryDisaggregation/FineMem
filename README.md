@@ -141,4 +141,4 @@ Similar to the microbenchmark scripts, ​​these​​ scripts can also be ​
 
 ### DM Swap System
 
-About the running of simulator please see Readme in folder Swap_FineMem_Sim, and you can FineMem-Swap's repository at https://github.com/MemoryDisaggregation/fastswap (we will add more scripts for environment setting and running in the future).
+About the running of simulator please see Readme in folder Swap_FineMem_Sim, and you can access FineMem-Swap's repository at https://github.com/MemoryDisaggregation/fastswap (we will add more scripts for environment setting and running in the future).
