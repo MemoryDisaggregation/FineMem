@@ -122,6 +122,10 @@ After confirming passwordless SSH access (using RSA authentication) from node 0 
 
 It is recommended to use nohup or tmux to ensure uninterrupted long-term execution. If the scripts terminate abnormally, please first run ./scripts/fresh_all.sh to reset both memory-node and compute-node configurations.
 
+### Memory Malloc System
+
+We reimplemented mimalloc with FineMem at repository (https://github.com/MemoryDisaggregation/mimallocv1_mralloc), and the automated configuration and execution scripts will be available soon.
+
 ### DM KV-Store System
 
 Similar to the microbenchmark scripts, ​​these​​ scripts can also be ​​executed from node 0 with a single command​​.
@@ -137,4 +141,4 @@ Similar to the microbenchmark scripts, ​​these​​ scripts can also be ​
 
 ### DM Swap System
 
-See Readme in folder Swap_FinrMem_Sim
+About the running of simulator please see Readme in folder Swap_FineMem_Sim, and you can FineMem-Swap's repository at https://github.com/MemoryDisaggregation/fastswap (we will add more scripts for environment setting and running in the future).
