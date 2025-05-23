@@ -352,12 +352,13 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
         printf("init cache failed\n");
         return false;
     }
+    uint64_t block_num_ = server_block_manager_->get_block_num() ;
+
+    block_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
+
+    backup_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
     if(!use_global_rkey){
-        uint64_t block_num_ = server_block_manager_->get_block_num() ;
 
-        block_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
-
-        backup_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
 
         std::thread* mw_thread[accelerate_thread];
         struct timeval start, end;
