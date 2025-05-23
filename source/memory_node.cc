@@ -960,10 +960,10 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
             resp_msg->status = RES_OK;
             resp_msg->size = REMOTE_MEM_SIZE*(1<<((FetchFastRequest*)request)->size_class);
             // printf("%d\n", resp_msg->size);
-            // if(resp_msg->size == 4096)
+            if(resp_msg->size == 4096)
                 resp_msg->addr = (uint64_t)memkind_malloc(memkind_, resp_msg->size);
-            // else
-            //     memkind_posix_memalign(memkind_, (void**)&resp_msg->addr, resp_msg->size, resp_msg->size);
+            else
+                memkind_posix_memalign(memkind_, (void**)&resp_msg->addr, resp_msg->size, resp_msg->size);
             if(resp_msg->addr == 0){
                 printf("error!%d\n", resp_msg->size);
             }
