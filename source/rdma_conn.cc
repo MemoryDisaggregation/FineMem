@@ -1359,7 +1359,7 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
             }
             for(int j = 0; j < fetch; j ++) {
                 int section_index = (j+random_offset)%fetch; 
-                if((uint16_t)(~cache_section_array[section_index].frag_map_ | ~cache_section_array[section_index].alloc_map_) != 0){
+                if((uint16_t)((uint16_t)~cache_section_array[section_index].frag_map_ | (uint16_t)~cache_section_array[section_index].alloc_map_) != (uint16_t)0){
                     alloc_section = cache_section_array[section_index];
                     section_offset = index + section_index;
                     return retry_time;
