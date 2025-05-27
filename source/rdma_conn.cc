@@ -1309,8 +1309,8 @@ int RDMAConnection::section_alloc(uint32_t &section_offset, uint16_t size_class,
                         }
                         break;
                     }
-                    new_section.alloc_map_ = ~(uint16_t)0;
-                    new_section.frag_map_ = ~(uint16_t)0;
+                    new_section.alloc_map_ = bitmap16_filled;
+                    new_section.frag_map_ = bitmap16_filled;
                     retry_counter_ = new_section.retry_;
                     new_section.retry_ = (retry_time>=retry_threshold)? 2: ((retry_time >= low_threshold)? 1:0);
                     new_section.last_offset_ = index;
@@ -1359,7 +1359,7 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
             }
             for(int j = 0; j < fetch; j ++) {
                 int section_index = (j+random_offset)%fetch; 
-                if((cache_section_array[section_index].frag_map_ & cache_section_array[section_index].alloc_map_) != ~(uint16_t)0){
+                if((cache_section_array[section_index].frag_map_ & cache_section_array[section_index].alloc_map_) != bitmap16_filled){
                     alloc_section = cache_section_array[section_index];
                     section_offset = index + section_index;
                     return retry_time;
@@ -1379,7 +1379,7 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
             }
             for(int j = 0; j < fetch; j ++) {
                 int section_index = (j+random_offset)%fetch; 
-                if((cache_section_array[section_index].frag_map_ ) != ~(uint16_t)0){
+                if((cache_section_array[section_index].frag_map_ ) != bitmap16_filled){
                     alloc_section = cache_section_array[section_index];
                     section_offset = index + section_index;
                     return retry_time;
@@ -1399,7 +1399,7 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
             }
             for(int j = 0; j < fetch; j ++) {
                 int section_index = (j+random_offset)%fetch; 
-                if((cache_section_array[section_index].frag_map_ | cache_section_array[section_index].alloc_map_) != ~(uint16_t)0){
+                if((cache_section_array[section_index].frag_map_ | cache_section_array[section_index].alloc_map_) != bitmap16_filled){
                     alloc_section = cache_section_array[section_index];
                     section_offset = index + section_index;
                     return retry_time;
