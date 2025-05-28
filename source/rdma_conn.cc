@@ -995,7 +995,7 @@ int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offse
             }else section_time += result;
         }
     }
-    }while(retry <= 0 && alloc_time < 1);
+    }while(retry <= 0 && alloc_time < 10);
     return retry;
 }
 
