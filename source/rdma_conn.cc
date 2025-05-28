@@ -1532,9 +1532,9 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
             if(!use_chance && ((~section.alloc_map_ & section.frag_map_) & (uint16_t)1<<(chunk_index)) != 0){
                 continue;
             }
-            if(!use_chance && iter == 0 && cache_region_array[chunk_index].on_use_ == 0){
-                continue;
-            }
+            // if(!use_chance && iter == 0 && cache_region_array[chunk_index].on_use_ == 0){
+            //     continue;
+            // }
             // if(!use_chance && iter == 1 && ((section.frag_map_ & 1 << (chunk_index)) != 0)){
             //     continue;
             // }
