@@ -1302,7 +1302,7 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
             }
             for(int j = 0; j < fetch; j ++) {
                 int section_index = (j+random_offset)%fetch; 
-                if((cache_section_array[section_index].frag_map_ ) != bitmap16_filled){
+                if((cache_section_array[section_index].frag_map_ ) != 65535){
                     alloc_section = cache_section_array[section_index];
                     section_offset = index + section_index;
                     return retry_time;
