@@ -1569,6 +1569,9 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                     if((index = find_free_index_from_bitmap32_tail(new_region.base_map_)) == -1) {
                         remote_read(cache_region_array, 16*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
                         out_date_counter = 0;
+                        new_region = cache_region_array[chunk_index];
+                        size = 1<<(region_num+1);
+                        search_map = new_region.base_map_;
                         if((index = find_free_index_from_bitmap32_tail(new_region.base_map_)) == -1) {
                             force_update_section_state(alloc_section, region_index, alloc_full);
                             not_suitable  = true;
