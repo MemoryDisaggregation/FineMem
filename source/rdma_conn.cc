@@ -1532,9 +1532,9 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
             if(!use_chance && ((~section.alloc_map_ & section.frag_map_) & 1<<(chunk_index)) != 0){
                 continue;
             }
-            // if(!use_chance && iter == 0 && cache_region_array[chunk_index].on_use_ == 0){
-            //     continue;
-            // }
+            if(!use_chance && iter == 0 && cache_region_array[chunk_index].on_use_ == 0){
+                continue;
+            }
             // if(!use_chance && iter == 1 && ((section.frag_map_ & 1 << (chunk_index)) != 0)){
             //     continue;
             // }
@@ -1567,8 +1567,13 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                 index = 0;
                 if(size_class == 0){
                     if((index = find_free_index_from_bitmap32_tail(new_region.base_map_)) == -1) {
-                        remote_read(cache_region_array, 16*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
-                        out_date_counter = 0;
+                        if(retry_temp > 1 ){
+                            out_date_counter ++;
+                            if(out_date_counter > retry_threshold) {
+                                remote_read(cache_region_array, 16*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
+                                out_date_counter = 0;
+                            }
+                        }
                         new_region = cache_region_array[chunk_index];
                         size = 1<<(region_num+1);
                         search_map = new_region.base_map_;
@@ -1593,6 +1598,9 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                                 out_date_counter = 0;
                             }
                         }
+                        new_region = cache_region_array[chunk_index];
+                        size = 1<<(region_num+1);
+                        search_map = new_region.base_map_;
                         not_suitable = true;
                         break;
                     }
