@@ -967,7 +967,7 @@ int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offse
         bool slow_path = false;
         uint16_t first_section = section_offset;
         uint16_t ring = 0;
-	int retry;
+	    int retry;
         while((retry = chunk_alloc(alloc_section, section_offset, size_class, slow_path, addr, rkey)) <= 0){
             if(!slow_path){
                 if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0){
@@ -992,84 +992,6 @@ int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offse
             }else section_time += result;
         }
         return retry;
-
-            while((result = fetch_region(alloc_section, section_offset, size_class, false, cache_region, *(uint32_t*)&cache_region_index, skip_mask)) < 0){
-                region_time += (-1)*result;
-                if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0){
-                    slow_path = true;
-                    section_time += (-1)*result;
-                    break;
-                }else {
-                    section_time += result;
-                    if((result = chunk_alloc(alloc_section, section_offset, size_class, false, addr, rkey)) >= 0){
-                        return result;
-                    }
-                }       
-            } 
-        while((result = fetch_region_block(alloc_section, cache_region, addr, rkey, false, cache_region_index, size_class)) < 0){
-            cas_time += (-1)*result;
-            if(size_class>0)
-                skip_mask += 1 << (cache_region_index%16);
-            if(!slow_path){
-                while((result = fetch_region(alloc_section, section_offset, size_class, false, cache_region, *(uint32_t*)&cache_region_index, skip_mask)) < 0){
-                    region_time += (-1)*result;
-                    skip_mask = 0;
-                    if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0 || (result == first_section && ring == 2)){
-                        slow_path = true;
-                        section_time += (-1)*result;
-                        ring  = 0;
-                        break;
-			        }else {
-                        if((result = chunk_alloc(alloc_section, section_offset, size_class, false, addr, rkey)) >= 0){
-                            return result;
-                        }
-                        if(result == first_section) {
-                            ring ++;
-                        }
-                        section_time += result;
-                    }
-                }
-                region_time += result;
-            } else {
-                printf("slow path!\n");
-                while((result = fetch_region(alloc_section, section_offset, size_class, true, cache_region, *(uint32_t*)&cache_region_index, skip_mask)) < 0){
-                    region_time += (-1)*result;
-                    skip_mask = 0;
-                    if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_heavy)) < 0 || (result == first_section && ring == 2)){
-                        section_time += (-1)*result;
-                        printf("waiting for new section avaliable\n");
-			        }
-                    else {
-                        if((result = chunk_alloc(alloc_section, section_offset, size_class, false, addr, rkey)) >= 0){
-                            return result;
-                        }
-                        if(result == first_section) {
-                            ring ++;
-                        }
-                        section_time += result;
-                    }
-                }  
-                region_time += result;
-            }
-        }
-        cas_time += result;
-        if(cas_time >= mralloc::retry_threshold && !slow_path) {
-            // if(alloc_class == 0){
-            skip_mask = 0;
-            if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0){
-                slow_path = true;
-                section_time += (-1)*result;
-            }else section_time += result;
-            while((result = fetch_region(alloc_section, section_offset, size_class, false, cache_region, *(uint32_t*)&cache_region_index, skip_mask)) < 0){
-                region_time += (-1)*result;
-                if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0){
-                    slow_path = true;
-                    section_time += (-1)*result;
-                    break;
-                }else section_time += result;
-            }
-        } 
-        return cas_time + section_time + region_time;
     }
 }
 
@@ -1645,6 +1567,13 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                 index = 0;
                 if(size_class == 0){
                     if((index = find_free_index_from_bitmap32_tail(new_region.base_map_)) == -1) {
+                        if(retry_temp > 1 ){
+                            out_date_counter ++;
+                            if(out_date_counter > retry_threshold) {
+                                remote_read(cache_region_array, 16*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
+                                out_date_counter = 0;
+                            }
+                        }
                         force_update_section_state(alloc_section, region_index, alloc_full);
                         not_suitable  = true;
                         break;
