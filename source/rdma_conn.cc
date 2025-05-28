@@ -931,8 +931,8 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
                 return false;
             }
             section_new = section;
-            section_new.frag_map_ &= ~((bitmap16)1 << region_offset);
-            section_new.alloc_map_ |= (bitmap16)1 << region_offset;
+            section_new.frag_map_ &= (bitmap16)~((bitmap16)1 << region_offset);
+            section_new.alloc_map_ |= (bitmap16)(bitmap16)1 << region_offset;
         // }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section, section_metadata_addr(section_offset), global_rkey_));
         remote_write(&section_new, sizeof(section_new), section_metadata_addr(section_offset), global_rkey_);
         return true;
@@ -944,8 +944,8 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
                 return false;
             }
             section_new = section;
-            section_new.frag_map_ |= (bitmap16)1 << region_offset;
-            section_new.alloc_map_ &= ~((bitmap16)1 << region_offset);
+            section_new.frag_map_ |= (bitmap16)(bitmap16)1 << region_offset;
+            section_new.alloc_map_ &= (bitmap16)~((bitmap16)1 << region_offset);
         // }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section, section_metadata_addr(section_offset), global_rkey_));
         remote_write(&section_new, sizeof(section_new), section_metadata_addr(section_offset), global_rkey_);
         return true;
@@ -1529,7 +1529,7 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
             // if(!use_chance && cache_region_array[chunk_index].retry_ == 2){
             //     continue;
             // }
-            if(!use_chance && ((~section.alloc_map_ & section.frag_map_) & 1<<(chunk_index)) != 0){
+            if(!use_chance && ((~section.alloc_map_ & section.frag_map_) & (uint16_t)1<<(chunk_index)) != 0){
                 continue;
             }
             if(!use_chance && iter == 0 && cache_region_array[chunk_index].on_use_ == 0){
@@ -1546,13 +1546,13 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                 do{
                     index = chunk_index;
                     new_section = section;
-                    if(((section.frag_map_|section.alloc_map_) & 1<<(chunk_index)) != 0){
+                    if(((section.frag_map_|section.alloc_map_) & (uint16_t)1<<(chunk_index)) != 0){
                         empty = false;
                         break;
                     }
                     raise_bit(new_section.alloc_map_, new_section.frag_map_, index);
                 }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&section, section_metadata_addr(section_offset), global_rkey_));
-                if(!empty && ((section.frag_map_&section.alloc_map_) & 1<<(chunk_index)) != 0){
+                if(!empty && ((section.frag_map_&section.alloc_map_) & (uint16_t)1<<(chunk_index)) != 0){
                     continue;
                 }
             }
