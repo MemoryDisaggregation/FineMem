@@ -954,11 +954,14 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
 }
 
 int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, uint64_t &addr, uint32_t &rkey) {
+    int retry = 0, alloc_time = 0;
+    do{
     if(size_class > 9){
         return section_alloc(section_offset, size_class, addr, rkey);
     } else if(size_class >= 5 ){
         return region_alloc(alloc_section, section_offset, size_class, addr, rkey);
     } else {
+        alloc_time ++;
         uint16_t skip_mask = 0;
         // region_e cache_region;
         // uint32_t cache_region_index;
@@ -967,7 +970,7 @@ int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offse
         bool slow_path = false;
         uint16_t first_section = section_offset;
         uint16_t ring = 0;
-	    int retry;
+
         while((retry = chunk_alloc(alloc_section, section_offset, size_class, slow_path, addr, rkey)) <= 0){
             if(!slow_path){
                 if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0){
@@ -991,8 +994,9 @@ int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offse
                 // break;
             }else section_time += result;
         }
-        return retry;
     }
+    }while(retry <= 0 && alloc_time < 1);
+    return retry;
 }
 
 int RDMAConnection::full_free(uint64_t addr, uint16_t block_class) {
