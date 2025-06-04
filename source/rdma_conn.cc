@@ -1612,7 +1612,6 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                         new_region.base_map_ |= (uint32_t)1<<(index+i);
                     } 
                 }
-                // [TODO] fix retry counter for section/region alloc
                 retry_counter_ = new_region.retry_;
                 new_region.retry_ = (retry_time>=retry_threshold)? 2: ((retry_time >= low_threshold)? 1:0);
                 new_region.last_offset_ = index;
@@ -1622,46 +1621,46 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                 new_region.num = size_class;
                 if(empty)
                     new_region.on_use_ = 1;
-                
-                if(cache_region_array[chunk_index].last_modify_id_ != 0){
-                    if((cache_region_array[chunk_index].base_map_ & ((uint32_t)1<<cache_region_array[chunk_index].last_offset_)) != 0 ){
-                        // malloc
-                        block_e old_block;
-                        remote_read(&old_block, sizeof(block_e), block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * cache_region_array[chunk_index].last_offset_, global_rkey_);
-                        // block_e old_block = {0, (cache_region_array[chunk_index].last_timestamp_ +126) % 127 + 1, 0};
-                        block_e new_block = {node_id_, cache_region_array[chunk_index].last_timestamp_, cache_region_array[chunk_index].num};
-                        do {
-                            int distant = abs((long)old_block.timestamp_ - (long)new_block.timestamp_);
-                            bool outdate = distant > 64 ? (old_block.timestamp_ <= new_block.timestamp_) : (old_block.timestamp_ >= new_block.timestamp_);
-                            if((old_block.timestamp_ & (1<<7)) != 0){
-                                if(cache_region_array[chunk_index].on_use_ == 0){
-                                    outdate = true;
-                                }
-                            }
-                            if(old_block.client_id_ != 0 || outdate){
-                                break;
-                            }
-                        } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * cache_region_array[chunk_index].last_offset_, global_rkey_));
-                    } else {
-                        //free
-                        // block_e old_block = {cache_region_array[chunk_index].last_modify_id_, (cache_region_array[chunk_index].last_timestamp_ +126) % 127 + 1, 0};
-                        block_e old_block;
-                        remote_read(&old_block, sizeof(block_e), block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * cache_region_array[chunk_index].last_offset_, global_rkey_);
-                        block_e new_block = {0, cache_region_array[chunk_index].last_timestamp_, cache_region_array[chunk_index].num};
-                        do {
-                            int distant = abs((long)old_block.timestamp_ - (long)new_block.timestamp_);
-                            bool outdate = distant > 64 ? (old_block.timestamp_ <= new_block.timestamp_) : (old_block.timestamp_ >= new_block.timestamp_);
-                            if((old_block.timestamp_ & (1<<7)) != 0){
-                                if(cache_region_array[chunk_index].on_use_ == 0){
-                                    outdate = true;
-                                }
-                            }
-                            if(old_block.client_id_ != cache_region_array[chunk_index].last_modify_id_ || outdate ){
-                                break;
-                            }
-                        } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * cache_region_array[chunk_index].last_offset_, global_rkey_));
-                    }
-                }
+                // flush log
+                // if(cache_region_array[chunk_index].last_modify_id_ != 0){
+                //     if((cache_region_array[chunk_index].base_map_ & ((uint32_t)1<<cache_region_array[chunk_index].last_offset_)) != 0 ){
+                //         // malloc
+                //         block_e old_block;
+                //         remote_read(&old_block, sizeof(block_e), block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * cache_region_array[chunk_index].last_offset_, global_rkey_);
+                //         // block_e old_block = {0, (cache_region_array[chunk_index].last_timestamp_ +126) % 127 + 1, 0};
+                //         block_e new_block = {node_id_, cache_region_array[chunk_index].last_timestamp_, cache_region_array[chunk_index].num};
+                //         do {
+                //             int distant = abs((long)old_block.timestamp_ - (long)new_block.timestamp_);
+                //             bool outdate = distant > 64 ? (old_block.timestamp_ <= new_block.timestamp_) : (old_block.timestamp_ >= new_block.timestamp_);
+                //             if((old_block.timestamp_ & (1<<7)) != 0){
+                //                 if(cache_region_array[chunk_index].on_use_ == 0){
+                //                     outdate = true;
+                //                 }
+                //             }
+                //             if(old_block.client_id_ != 0 || outdate){
+                //                 break;
+                //             }
+                //         } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * cache_region_array[chunk_index].last_offset_, global_rkey_));
+                //     } else {
+                //         //free
+                //         // block_e old_block = {cache_region_array[chunk_index].last_modify_id_, (cache_region_array[chunk_index].last_timestamp_ +126) % 127 + 1, 0};
+                //         block_e old_block;
+                //         remote_read(&old_block, sizeof(block_e), block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * cache_region_array[chunk_index].last_offset_, global_rkey_);
+                //         block_e new_block = {0, cache_region_array[chunk_index].last_timestamp_, cache_region_array[chunk_index].num};
+                //         do {
+                //             int distant = abs((long)old_block.timestamp_ - (long)new_block.timestamp_);
+                //             bool outdate = distant > 64 ? (old_block.timestamp_ <= new_block.timestamp_) : (old_block.timestamp_ >= new_block.timestamp_);
+                //             if((old_block.timestamp_ & (1<<7)) != 0){
+                //                 if(cache_region_array[chunk_index].on_use_ == 0){
+                //                     outdate = true;
+                //                 }
+                //             }
+                //             if(old_block.client_id_ != cache_region_array[chunk_index].last_modify_id_ || outdate ){
+                //                 break;
+                //             }
+                //         } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * cache_region_array[chunk_index].last_offset_, global_rkey_));
+                //     }
+                // }
 
             }while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&cache_region_array[chunk_index], region_metadata_addr(region_index), global_rkey_));
             cache_region_array[chunk_index] = new_region;
