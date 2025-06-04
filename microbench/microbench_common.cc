@@ -827,8 +827,8 @@ void* worker(void* arg) {
         alloc = (test_allocator*)new rpc_allocator(conn);
         break;
     case share_alloc:
-        // alloc = (test_allocator*)new share_allocator(conn, 0);
-        alloc = (test_allocator*)new share_allocator(conn, rand());
+        alloc = (test_allocator*)new share_allocator(conn, 0);
+        // alloc = (test_allocator*)new share_allocator(conn, rand());
         break;
     case pool_alloc:
         alloc = (test_allocator*)new pool_allocator();
