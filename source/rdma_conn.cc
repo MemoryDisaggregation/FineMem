@@ -1503,7 +1503,8 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
     }
     // region_e region[16] = {0,0};
     int region_num = 1 << (size_class);
-    int offset = mt()%16;
+    int cache_size = 1;
+    int offset = mt()%cache_size;
     // int offset = 0;
     int index = offset;
     uint64_t start_addr;
@@ -1512,18 +1513,18 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
     if(section_offset != cache_region_index){
         skip_region = -1;
         cache_region_index = section_offset;
-        remote_read(cache_region_array, 16*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
+        remote_read(cache_region_array, cache_size*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
     }
     // remote_read(&section, sizeof(section_e), section_metadata_addr(section_offset), global_rkey_);
     region_e new_region;
     for(int iter = 0; iter<2; iter++){
         int out_date_counter = 0;
-        for(int j = 0; j < 16; j ++) {
+        for(int j = 0; j < cache_size; j ++) {
 
             //retry_time = 0;
             int retry_temp = 0;
             bool not_suitable = false;
-            int chunk_index = (j+offset)%16;
+            int chunk_index = (j+offset)%cache_size;
             // if(!use_chance && skip_region == chunk_index){
             //     skip_region = -1;
             //     continue;
@@ -1574,7 +1575,7 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                         if(retry_temp > 1 ){
                             out_date_counter ++;
                             if(out_date_counter > retry_threshold) {
-                                remote_read(cache_region_array, 16*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
+                                remote_read(cache_region_array, cache_size*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
                                 out_date_counter = 0;
                             }
                         }
@@ -1598,7 +1599,7 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                         if(retry_temp > 1 ){
                             out_date_counter ++;
                             if(out_date_counter > retry_threshold) {
-                                remote_read(cache_region_array, 16*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
+                                remote_read(cache_region_array, cache_size*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
                                 out_date_counter = 0;
                             }
                         }
