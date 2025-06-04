@@ -18,8 +18,8 @@
 #include "hiredis/hiredis.h"
 #include <string>
 
-const int iteration = 200;
-const int free_num = 50;
+const int iteration = 10000;
+const int free_num = 5000;
 const int epoch = 5000;
 int size_class = 0;
 int node_num = 0;
