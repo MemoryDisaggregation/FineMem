@@ -1667,7 +1667,8 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
             if(!not_suitable){
                 // out_date_counter -= 1;
                 addr = get_region_block_addr(region_index, index);
-                rkey = get_region_block_rkey(region_index, index); 
+                rkey = get_global_rkey();
+                // rkey = get_region_block_rkey(region_index, index); 
 
                 // retry counter for least 3 time allocation
                 uint64_t old_retry = retry_counter_;
