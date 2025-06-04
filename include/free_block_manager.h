@@ -38,7 +38,7 @@ namespace mralloc {
 // #define REMOTE_MEM_SIZE 2097152
 
 
-#define INIT_MEM_SIZE ((uint64_t)32*1024*1024*1024)
+#define INIT_MEM_SIZE ((uint64_t)24*1024*1024*1024)
 
 const uint64_t large_block_items = 64;
 
