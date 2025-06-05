@@ -1266,7 +1266,8 @@ int RDMAConnection::section_alloc(uint32_t &section_offset, uint16_t size_class,
 int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, alloc_advise advise) {
     int retry_time = 0;
     // section_e section[8] = {0,0};
-    int random_offset = mt()%16;
+    int random_offset = 0;
+    // int random_offset = mt()%16;
     section_offset += 1;
     int offset = (section_offset)%section_num_;
     // each epoch fetch 8 sections, 8*8B = 64Byte

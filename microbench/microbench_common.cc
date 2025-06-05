@@ -19,7 +19,7 @@
 #include <string>
 
 const int iteration = 10000;
-const int free_num = 5000;
+const int free_num = 2500;
 const int epoch = 50;
 int size_class = 0;
 int node_num = 0;
