@@ -17,7 +17,7 @@
 
 #define MEM_ALIGN_SIZE 4096
 
-const bool use_reg = false;
+const bool use_reg = true;
 const bool use_1GB = false;
 const bool use_40GB = false;
 const bool use_hugepage = true;

@@ -1,7 +1,7 @@
 sudo apt install -y jq
 mkdir ~/FineMem/applications
 cd ~/FineMem/applications
-git clone https://github.com/MemoryDisaggregation/FUSEE_FineMem.git
+git clone https://github.com/ADSLMemoryDisaggregation/FUSEE_FineMem.git
 cd FUSEE_FineMem/
 git stash; git pull
 cp ~/FineMem/include/cpu_cache.h ./src/
