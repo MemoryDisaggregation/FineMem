@@ -1508,7 +1508,7 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
     // int offset = mt()%cache_size;
     int offset = 0;
     int index = offset;
-    int out_date_threshold = 4;
+    int out_date_threshold = 16;
     uint64_t start_addr;
     // retry_time++;
     section_e section = alloc_section;
