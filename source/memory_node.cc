@@ -20,7 +20,7 @@
 const bool use_reg = true;
 const bool use_1GB = false;
 const bool use_40GB = false;
-const bool use_hugepage = true;
+const bool use_hugepage = false;
 
 #define POOL_MEM_SIZE (uint64_t)1024*1024*1024
 
@@ -328,7 +328,7 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
     free_queue_manager_ = new FreeQueueManager(REMOTE_MEM_SIZE, POOL_MEM_SIZE);
     mr_rdma_addr addr;
     addr.node = 0;
-    if(use_1GB || use_40GB || use_reg){
+    if(use_1GB || use_40GB){
         allocate_and_register_memory(addr.addr, addr.rkey, POOL_MEM_SIZE);
         free_queue_manager_->init(addr, POOL_MEM_SIZE);
     }

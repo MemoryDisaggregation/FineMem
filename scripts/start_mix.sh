@@ -6,7 +6,7 @@
 
 ./start_server.sh >/dev/null 2>&1
 
-sleep 10
+sleep 60
 
 ./start_remote_client.sh 1 16 >/dev/null 2>&1
 

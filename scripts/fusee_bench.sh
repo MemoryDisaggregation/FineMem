@@ -6,7 +6,7 @@
 
 ./start_server.sh >/dev/null 2>&1
 
-sleep 30
+sleep 60
 
 ./start_remote_client.sh $1 $2 >/dev/null 2>&1
 
@@ -27,7 +27,7 @@ do
     ssh X1aoyang@node$i "jq '.block_size = $5' ~/FineMem/applications/FUSEE_FineMem/tests/client_config.json > tmp.json && mv tmp.json ~/FineMem/applications/FUSEE_FineMem/tests/client_config.json"
     ssh X1aoyang@node$i "jq '.workload_run_time = $6' ~/FineMem/applications/FUSEE_FineMem/tests/client_config.json > tmp.json && mv tmp.json ~/FineMem/applications/FUSEE_FineMem/tests/client_config.json"
     ssh X1aoyang@node$i "cd ~/FineMem/applications/FUSEE_FineMem/build/ycsb-test; python3 split-workload.py $thread_num >/dev/null 2>&1"
-    ssh X1aoyang@node$i "cd ~/FineMem/applications/FUSEE_FineMem/build/ycsb-test; ./ycsb_test_multi_client ../../tests/client_config.json workloada 16 $3 >/dev/null 2>&1 &"
+    ssh X1aoyang@node$i "cd ~/FineMem/applications/FUSEE_FineMem/build/ycsb-test; ./ycsb_test_multi_client ../../tests/client_config.json workloada 16 $3 >log 2>&1 &"
 done
 
 
