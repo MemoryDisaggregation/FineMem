@@ -23,10 +23,10 @@ namespace mralloc {
 
 #define RESOLVE_TIMEOUT_MS 5000
 
-const int retry_threshold = 5;
+const int retry_threshold = 10;
 // const int retry_threshold = 1000000;
 // const int low_threshold = 100000;
-const int low_threshold = 3;
+const int low_threshold = 4;
 
 struct one_side_info {
     uint64_t block_size_;
