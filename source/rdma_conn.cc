@@ -1508,7 +1508,7 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
     // int offset = mt()%cache_size;
     int offset = 0;
     int index = offset;
-    int out_date_threshold = 3;
+    // int out_date_threshold = 3;
     uint64_t start_addr;
     // retry_time++;
     section_e section = alloc_section;
@@ -1576,7 +1576,7 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                     if((index = find_free_index_from_bitmap32_tail(new_region.base_map_)) == -1) {
                         if(retry_temp > 1 ){
                             out_date_counter ++;
-                            if(out_date_counter > out_date_threshold) {
+                            if(out_date_counter > retry_threshold) {
                                 remote_read(cache_region_array, cache_size*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
                                 out_date_counter = 0;
                             }
@@ -1600,7 +1600,7 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                     if(index >= 32){
                         if(retry_temp > 1 ){
                             out_date_counter ++;
-                            if(out_date_counter > out_date_threshold) {
+                            if(out_date_counter > retry_threshold) {
                                 remote_read(cache_region_array, cache_size*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
                                 out_date_counter = 0;
                             }
