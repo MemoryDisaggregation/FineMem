@@ -1505,8 +1505,8 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
     // region_e region[16] = {0,0};
     int region_num = 1 << (size_class);
     int cache_size = 16;
-    // int offset = mt()%cache_size;
-    int offset = 0;
+    int offset = mt()%cache_size;
+    // int offset = 0;
     int index = offset;
     // int out_date_threshold = 3;
     uint64_t start_addr;
