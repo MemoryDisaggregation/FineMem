@@ -1508,6 +1508,7 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
     // int offset = mt()%cache_size;
     int offset = 0;
     int index = offset;
+    int out_date_threshold = 8;
     uint64_t start_addr;
     // retry_time++;
     section_e section = alloc_section;
@@ -1518,7 +1519,7 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
     }
     // remote_read(&section, sizeof(section_e), section_metadata_addr(section_offset), global_rkey_);
     region_e new_region;
-    // for(int iter = 0; iter<2; iter++){
+    for(int iter = 0; iter<2; iter++){
         int out_date_counter = 0;
         for(int j = 0; j < cache_size; j ++) {
 
@@ -1575,7 +1576,7 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                     if((index = find_free_index_from_bitmap32_tail(new_region.base_map_)) == -1) {
                         if(retry_temp > 1 ){
                             out_date_counter ++;
-                            if(out_date_counter > retry_threshold) {
+                            if(out_date_counter > out_date_threshold) {
                                 remote_read(cache_region_array, cache_size*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
                                 out_date_counter = 0;
                             }
@@ -1599,7 +1600,7 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                     if(index >= 32){
                         if(retry_temp > 1 ){
                             out_date_counter ++;
-                            if(out_date_counter > retry_threshold) {
+                            if(out_date_counter > out_date_threshold) {
                                 remote_read(cache_region_array, cache_size*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
                                 out_date_counter = 0;
                             }
@@ -1714,7 +1715,7 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                 return retry_time;
             }
         }
-    // }
+    }
     return retry_time*(-1);
 }
 
