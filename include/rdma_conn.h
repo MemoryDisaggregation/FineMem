@@ -26,7 +26,7 @@ namespace mralloc {
 const int retry_threshold = 3;
 // const int retry_threshold = 1000000;
 // const int low_threshold = 100000;
-const int low_threshold = 3;
+const int low_threshold = 2;
 
 struct one_side_info {
     uint64_t block_size_;
