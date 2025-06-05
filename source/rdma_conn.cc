@@ -1518,7 +1518,7 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
     }
     // remote_read(&section, sizeof(section_e), section_metadata_addr(section_offset), global_rkey_);
     region_e new_region;
-    for(int iter = 0; iter<2; iter++){
+    // for(int iter = 0; iter<2; iter++){
         int out_date_counter = 0;
         for(int j = 0; j < cache_size; j ++) {
 
@@ -1714,7 +1714,7 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                 return retry_time;
             }
         }
-    }
+    // }
     return retry_time*(-1);
 }
 
