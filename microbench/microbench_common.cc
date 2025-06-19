@@ -18,9 +18,9 @@
 #include "hiredis/hiredis.h"
 #include <string>
 
-const int iteration = 50;
-const int free_num = 12;
-const int epoch = 5000;
+const int iteration = 1000;
+const int free_num = 250;
+const int epoch = 500;
 int size_class = 0;
 int node_num = 0;
 
@@ -827,8 +827,8 @@ void* worker(void* arg) {
         alloc = (test_allocator*)new rpc_allocator(conn);
         break;
     case share_alloc:
-        // alloc = (test_allocator*)new share_allocator(conn, 0);
-        alloc = (test_allocator*)new share_allocator(conn, rand());
+        alloc = (test_allocator*)new share_allocator(conn, 0);
+        // alloc = (test_allocator*)new share_allocator(conn, rand());
         break;
     case pool_alloc:
         alloc = (test_allocator*)new pool_allocator();
@@ -842,16 +842,16 @@ void* worker(void* arg) {
     int node_id;
     if(thread_id == 1) {
     	// getchar();
-        redis_reply = (redisReply*)redisCommand(redis_conn, "INCR bench_start");
+        redis_reply = (redisReply*)redisCommand(redis_conn, "DECR stage2");
         printf("INCUR: %d\n", redis_reply->integer);
         // freeReplyObject(redis_reply);
         // redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");
         node_id = redis_reply->integer;
-        if(redis_reply->integer != node_num){
-            redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
-            while(atoi(redis_reply->str) != node_num){
+        if(redis_reply->integer != 0){
+            redis_reply = (redisReply*)redisCommand(redis_conn, "GET stage2");    
+            while(atoi(redis_reply->str) != 0){
                 freeReplyObject(redis_reply);
-                redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
+                redis_reply = (redisReply*)redisCommand(redis_conn, "GET stage2");    
                 printf("GET: %s\n", redis_reply->str);
             }
         }
@@ -1022,10 +1022,11 @@ int main(int argc, char* argv[]) {
     result << "max cas :" << cas_max_final << std::endl;
     result.close();
     result_detail.close();
-    redis_reply = (redisReply*)redisCommand(redis_conn, "INCRBYFLOAT avg %s", std::to_string(malloc_avg_final/thread_num).c_str());
+    redis_reply = (redisReply*)redisCommand(redis_conn, "INCRBYFLOAT avg_lat %s", std::to_string(malloc_avg_final/thread_num).c_str());
     printf("INCUR: %s\n", redis_reply->str);
     freeReplyObject(redis_reply);
     redis_reply = (redisReply*)redisCommand(redis_conn, "INCR finished");
     freeReplyObject(redis_reply);
     redis_reply = (redisReply*)redisCommand(redis_conn, "SET bench_start 0");   
+    freeReplyObject(redis_reply);
 }

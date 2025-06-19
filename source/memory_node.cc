@@ -13,7 +13,6 @@
 #include <sys/stat.h>
 #include <linux/mman.h>
 #include <unistd.h>
-#include <sys/time.h>
 
 #define MEM_ALIGN_SIZE 4096
 
@@ -37,6 +36,17 @@ const uint64_t base_block_size = (uint64_t)1024*4*1024;
 const bool global_rkey = true;
 
 const uint64_t SERVER_BASE_ADDR = (uint64_t)0x10000000;
+
+void * run_mw_generator(ibv_mw** block_mw, ibv_mw** backup_mw, int start, int end, ibv_pd* pd) {
+    for(int i = start; i < end; i++){
+        // uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
+        block_mw[i] = ibv_alloc_mw(pd, IBV_MW_TYPE_1);
+        backup_mw[i] = ibv_alloc_mw(pd, IBV_MW_TYPE_1);
+        if((i-start) % 10240 == 0){
+            printf("%d MB\n", i / 1024);
+        } 
+    }
+};
 
 void * run_rebinder(void* arg) {
     cpu_set_t cpuset;
@@ -342,7 +352,29 @@ bool MemoryNode::init_memory_heap(uint64_t size) {
         printf("init cache failed\n");
         return false;
     }
-    
+    uint64_t block_num_ = server_block_manager_->get_block_num() ;
+
+    block_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
+
+    backup_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
+    if(!use_global_rkey){
+
+
+        std::thread* mw_thread[accelerate_thread];
+        struct timeval start, end;
+        gettimeofday(&start, NULL);
+        uint64_t interval = block_num_ / accelerate_thread;
+        for(int i = 0; i < accelerate_thread; i++){
+            mw_thread[i] = new std::thread(&run_mw_generator, block_mw, backup_mw, i*interval, (i+1)*interval, m_pd_);
+        }
+        for(int i = 0; i < accelerate_thread; i++){
+            mw_thread[i]->join();
+        }
+
+        gettimeofday(&end, NULL);
+        uint64_t time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
+        printf("mw_reg bost on %d is %lu: %lf\n", block_num_, time, 1.0*time/block_num_);
+    }
     return true;
 }
 
@@ -532,13 +564,8 @@ int MemoryNode::create_connection(struct rdma_cm_id *cm_id, uint8_t connect_type
 }
 
 bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
-
     uint64_t block_num_ = server_block_manager_->get_block_num() ;
 
-    block_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
-
-    backup_mw = (ibv_mw**)malloc(block_num_ * sizeof(ibv_mw*));
-    
     // When use global rkey: application not support multiple rkey or evaluation the side-effect of memory window
     if(use_global_rkey){
         block_mw[0] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
@@ -615,8 +642,8 @@ bool MemoryNode::init_mw(ibv_qp *qp, ibv_cq *cq) {
         gettimeofday(&start, NULL);
         for(int i = 0; i < block_num_; i++){
             uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
-            block_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
-            backup_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
+            // block_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
+            // backup_mw[i] = ibv_alloc_mw(m_pd_, IBV_MW_TYPE_1);
             bind_mw(block_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
             bind_mw(backup_mw[i], block_addr_, server_block_manager_->get_block_size(), qp, cq);
             server_block_manager_->set_block_rkey(i, block_mw[i]->rkey);
@@ -933,6 +960,7 @@ void MemoryNode::worker(volatile WorkerInfo *work_info, uint32_t num) {
             resp_msg->status = RES_OK;
             resp_msg->size = REMOTE_MEM_SIZE*(1<<((FetchFastRequest*)request)->size_class);
             // printf("%d\n", resp_msg->size);
+            if(resp_msg->size == 4096)
             if(resp_msg->size == 4096)
                 resp_msg->addr = (uint64_t)memkind_malloc(memkind_, resp_msg->size);
             else

@@ -19,9 +19,9 @@
 #include "hiredis/hiredis.h"
 #include <string>
 
-const int iteration = 100;
-const int free_num = 25;
-const int epoch = 500;
+const int iteration = 1024*32;
+const int free_num = iteration/4;
+const int epoch = 50;
 int size_class = 0;
 const int alloc_size = 4096*1024;
 
@@ -47,6 +47,7 @@ std::atomic<int> free_record_global[100000];
 std::atomic<uint64_t> allocate_size;
 volatile double malloc_avg[128] = {0};
 volatile double cas_avg[128] = {0};
+volatile double access_avg[128] = {0};
 volatile int cas_max[128] = {0};
 std::atomic<uint64_t> free_avg;
 std::atomic<uint64_t> id;
@@ -586,7 +587,8 @@ void shuffle_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint
     free_avg.fetch_add(free_avg_time_);
 }
 
-void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_t thread_id) {
+void frag_alloc(mralloc::ConnectionManager** conn, test_allocator* alloc, uint64_t thread_id) {
+    mralloc::ConnectionManager** conn_ = conn;
     std::random_device r;
     // std::mt19937 rand_val(r());
     std::mt19937 rand_val(0);
@@ -594,8 +596,8 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
     uint64_t time_record[iteration];
     init_random_values(random_offsets);
     unsigned int offsets_record[iteration];
-    double malloc_avg_time_ = 0, free_avg_time_ = 0, time = 0;
-    uint64_t malloc_count_ = 0, free_count_ = 0;
+    double malloc_avg_time_ = 0, free_avg_time_ = 0, access_avg_time_ = 0, time = 0;
+    uint64_t malloc_count_ = 0, free_count_ = 0, access_count_ = 0;
     struct timeval start, end;
     int malloc_record[100000] = {0};
     int free_record[100000] = {0};
@@ -673,20 +675,33 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
             // conn->remote_print_alloc_info();
             
         //valid check
-        // char buffer[2][16] = {"aaa", "bbb"};
-        // uint32_t rkey_write_buffer;
-        // uint32_t rkey_read_buffer;
-        // char read_buffer[4];
-        // for(int i = 0; i < rand_iter; i ++){
-        // //     // conn->remote_write(buffer[i%2], 64, remote_addr[i].addr, remote_addr[i].rkey);
-        // //     // conn->remote_read(read_buffer, 4, remote_addr[i].addr, remote_addr[i].rkey);
-        // //     // assert(read_buffer[0] == buffer[i%2][0]);
-        //     rkey_write_buffer = remote_addr[i].rkey;
-        //     conn->remote_write(&rkey_write_buffer, sizeof(rkey_write_buffer), remote_addr[i].addr, remote_addr[i].rkey);
-        //     conn->remote_read(&rkey_read_buffer, sizeof(rkey_read_buffer), remote_addr[i].addr, remote_addr[i].rkey);
-        //     printf("%lu, %u\n", remote_addr[i].addr, rkey_read_buffer);
-        //     assert(rkey_read_buffer == rkey_write_buffer);
-        // }        
+        pthread_barrier_wait(&start_barrier);
+        char buffer[2][1024] = {"aaa", "bbb"};
+        uint32_t rkey_write_buffer;
+        uint32_t rkey_read_buffer;
+        char read_buffer[4];
+        gettimeofday(&start, NULL);
+        unsigned int offset_state = 0;
+        unsigned int next_idx ;
+        for(int i = 0; i < rand_iter; i ++){
+        //     // conn->remote_write(buffer[i%2], 64, remote_addr[i].addr, remote_addr[i].rkey);
+        //     // conn->remote_read(read_buffer, 4, remote_addr[i].addr, remote_addr[i].rkey);
+        //     // assert(read_buffer[0] == buffer[i%2][0]);
+            next_idx = get_random_offset(random_offsets, &offset_state);
+            offsets_record[i] = next_idx;
+            rkey_write_buffer = remote_addr[next_idx].rkey;
+            // conn_[remote_addr[next_idx].node]->remote_write(&rkey_write_buffer, sizeof(rkey_write_buffer), remote_addr[next_idx].addr, remote_addr[next_idx].rkey);
+            // conn_[remote_addr[next_idx].node]->remote_read(&rkey_read_buffer, sizeof(rkey_read_buffer), remote_addr[next_idx].addr, remote_addr[next_idx].rkey);
+            conn_[remote_addr[next_idx].node]->remote_read(&buffer, 1024, remote_addr[next_idx].addr, remote_addr[next_idx].rkey);
+            // printf("%lu, %u\n", remote_addr[i].addr, rkey_read_buffer);
+            // assert(rkey_read_buffer == rkey_write_buffer);
+        }      
+        gettimeofday(&end, NULL);
+        time =  end.tv_usec + end.tv_sec*1000*1000 - start.tv_usec - start.tv_sec*1000*1000;
+        time = time / rand_iter;
+        access_avg_time_ = (access_avg_time_*access_count_ + time)/(access_count_ + 1);
+        access_count_ += 1;
+        // printf("%lf\n", time/rand_iter);       
        // printf("thread %d, epoch %d, malloc time %lf\n", thread_id, j, malloc_avg_time_);
         // std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         // free
@@ -694,8 +709,6 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
         random_values(random_offsets, rand_val);
         gettimeofday(&start, NULL);
         int result;        
-        unsigned int offset_state = 0;
-        unsigned int next_idx ;
         allocated = 0;
         // if(thread_id % 2 == 0){
             for(int i = 0; i < free_num; i ++){
@@ -761,6 +774,7 @@ void frag_alloc(mralloc::ConnectionManager* conn, test_allocator* alloc, uint64_
     }
     alloc->print_state();
     malloc_avg[thread_id] = malloc_avg_time_;
+    access_avg[thread_id] = access_avg_time_;
     cas_avg[thread_id] = alloc->get_avg_retry();
     cas_max[thread_id] = alloc->get_max_retry();
     free_avg.fetch_add(free_avg_time_);
@@ -861,23 +875,24 @@ void* worker(void* arg) {
     pthread_barrier_wait(&end_barrier);
     int node_id;
     if(thread_id == 1) {
-    	// getchar();
-        redis_reply = (redisReply*)redisCommand(redis_conn, "INCR bench_start");
-        printf("INCUR: %d\n", redis_reply->integer);
-        // freeReplyObject(redis_reply);
-        // redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");
-        node_id = redis_reply->integer;
-        if(redis_reply->integer != node_num){
-            redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
-            while(atoi(redis_reply->str) != node_num){
-                freeReplyObject(redis_reply);
-                redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
-                printf("GET: %s\n", redis_reply->str);
-            }
-        }
-        freeReplyObject(redis_reply);
+    	getchar();
     }
-    pthread_barrier_wait(&start_barrier);
+    //     redis_reply = (redisReply*)redisCommand(redis_conn, "INCR bench_start");
+    //     printf("INCUR: %d\n", redis_reply->integer);
+    //     // freeReplyObject(redis_reply);
+    //     // redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");
+    //     node_id = redis_reply->integer;
+    //     if(redis_reply->integer != node_num){
+    //         redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
+    //         while(atoi(redis_reply->str) != node_num){
+    //             freeReplyObject(redis_reply);
+    //             redis_reply = (redisReply*)redisCommand(redis_conn, "GET bench_start");    
+    //             printf("GET: %s\n", redis_reply->str);
+    //         }
+    //     }
+    //     freeReplyObject(redis_reply);
+    // }
+    // pthread_barrier_wait(&start_barrier);
     // shuffle_alloc(conn, alloc, thread_id);
     switch (test)
     {
@@ -891,7 +906,7 @@ void* worker(void* arg) {
         short_alloc(conn[0], alloc, thread_id);
         break;
     case frag_test:
-        frag_alloc(conn[0], alloc, thread_id);
+        frag_alloc(conn, alloc, thread_id);
         break;
     default:
         break;
@@ -906,8 +921,8 @@ int main(int argc, char* argv[]) {
         printf("Usage: %s <config file> <thread> <size> <allocator> <node_num>\n", argv[0]);
         return 0;
     }
-    struct timeval timeout = { 1, 500000 }; // 1.5 seconds
-    redis_conn = redisConnectWithTimeout("10.10.1.1", 2222, timeout);
+    // struct timeval timeout = { 1, 500000 }; // 1.5 seconds
+    // redis_conn = redisConnectWithTimeout("10.10.1.2", 2222, timeout);
     
     mralloc::GlobalConfig config;
     mralloc::load_config(argv[1], &config);
@@ -915,7 +930,7 @@ int main(int argc, char* argv[]) {
     mem_node_num = config.memory_node_num;
     for(int i = 0; i < config.memory_node_num; i++){
         ip[i] = std::string(config.memory_ips[i]);
-        port[i] = std::to_string(config.rdma_cm_port);
+        port[i] = std::to_string(config.rdma_cm_port[i]);
     }
     // init_random_values(random_offsets);
     // std::string ip = argv[1];
@@ -970,8 +985,10 @@ int main(int argc, char* argv[]) {
         free_record_global[i].store(0);
     }
     id.store(1);
-    for(int i = 0; i < 128; i++)
+    for(int i = 0; i < 128; i++){
         malloc_avg[i] = 0;
+        access_avg[i] = 0;
+    }
     free_avg.store(0);
     pthread_mutex_init(&file_lock, NULL);
     pthread_barrier_init(&start_barrier, NULL, thread_num);
@@ -979,12 +996,12 @@ int main(int argc, char* argv[]) {
     pthread_t running_thread[thread_num];
     mralloc::ConnectionManager* conn[thread_num][config.memory_node_num];
         for(int i = 0; i < thread_num; i++) {
-            if(allocator_type != "pool"){
+            // if(allocator_type != "pool"){
                 for(int j = 0; j < config.memory_node_num; j++) {
                     conn[i][j] = new mralloc::ConnectionManager();
                     conn[i][j]->init(ip[j], port[j], 1, 1, 1);
                 }
-            }
+            // }
             pthread_create(&running_thread[i], NULL, worker, conn[i]);
         }  
     // mralloc::ConnectionManager* listen_conn = new mralloc::ConnectionManager();
@@ -1014,8 +1031,12 @@ int main(int argc, char* argv[]) {
             result << i << " " <<free_record_global[i].load() << std::endl;
     }
     volatile double malloc_avg_final = 0;
+    volatile double access_avg_final = 0;
     for(int i = 0; i < 128; i++) {
         malloc_avg_final += malloc_avg[i];
+    }
+    for(int i = 0; i < 128; i++) {
+        access_avg_final += access_avg[i];
     }
     volatile double cas_avg_final = 0;
     for(int i = 0; i < 128; i++) {
@@ -1027,8 +1048,10 @@ int main(int argc, char* argv[]) {
             cas_max_final = cas_max[i];
     }
     printf("%lf\n", malloc_avg_final/thread_num);
+    printf("%lf\n", access_avg_final/thread_num);
     // printf("total malloc avg: %lfus\n", malloc_avg_final/thread_num);
     result << "total malloc avg: " << malloc_avg_final/thread_num << std::endl;
+    // result << "total access avg: " << access_avg_final/thread_num << std::endl;
     // printf("total free avg: %luus\n", free_avg.load()/thread_num);
     result << "total free avg: " << free_avg.load()/thread_num << std::endl;
     // printf("total cas avg: %lf\n", cas_avg_final/thread_num);
@@ -1037,9 +1060,11 @@ int main(int argc, char* argv[]) {
     result << "max cas :" << cas_max_final << std::endl;
     result.close();
     result_detail.close();
-    redis_reply = (redisReply*)redisCommand(redis_conn, "INCRBYFLOAT avg %s", std::to_string(malloc_avg_final/thread_num).c_str());
-    printf("INCUR: %s\n", redis_reply->str);
-    freeReplyObject(redis_reply);
-    redis_reply = (redisReply*)redisCommand(redis_conn, "INCR finished");
-    freeReplyObject(redis_reply);
+    // redis_reply = (redisReply*)redisCommand(redis_conn, "INCRBYFLOAT avg %s", std::to_string(malloc_avg_final/thread_num).c_str());
+    // printf("INCUR: %s\n", redis_reply->str);
+    // freeReplyObject(redis_reply);
+    // redis_reply = (redisReply*)redisCommand(redis_conn, "INCR finished");
+    // freeReplyObject(redis_reply);
+    // redis_reply = (redisReply*)redisCommand(redis_conn, "SET bench_start 0");   
+    // freeReplyObject(redis_reply);
 }

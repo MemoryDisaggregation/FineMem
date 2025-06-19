@@ -123,7 +123,7 @@ typedef struct mi_segment_migrate {
 };
 
 const uint64_t BITMAP_SIZE = (uint64_t)1024*1024*1024*16;
-const uint32_t nprocs = 20;
+const uint32_t nprocs = 48;
 const uint32_t max_alloc_item = 16;
 const uint32_t max_free_item = 16;
 

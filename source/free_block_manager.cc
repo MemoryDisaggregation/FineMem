@@ -301,7 +301,7 @@ namespace mralloc {
                 retry_time++;
                 for(int j = 0; j < fetch; j++) {
                     section = section_header_[index+j].load();
-                    if((section.frag_map_ & section.alloc_map_) != ~(uint16_t)0){
+                    if((section.frag_map_ & section.alloc_map_) != bitmap16_filled){
                         alloc_section = section;
                         section_offset = index + j;
                         return true;
@@ -315,7 +315,7 @@ namespace mralloc {
                 retry_time++;
                 for(int j = 0; j < fetch; j++) {
                     section = section_header_[index+j].load();
-                    if((section.frag_map_) != ~(uint16_t)0){
+                    if((section.frag_map_) != bitmap16_filled){
                         alloc_section = section;
                         section_offset = index + j;
                         return true;
@@ -328,7 +328,7 @@ namespace mralloc {
             while(remain > 0) {
                 for(int j = 0; j < fetch; j++) {
                     section = section_header_[index+j].load();
-                    if((section.frag_map_ | section.alloc_map_) != ~(uint16_t)0){
+                    if((section.frag_map_ | section.alloc_map_) != bitmap16_filled){
                         alloc_section = section;
                         section_offset = index + j;
                         return true;

@@ -27,10 +27,23 @@
 #include "cpu_cache.h"
 #include "rpc_server.h"
 #include <memkind.h>
+#include <thread>
+#include <sys/time.h>
 
 namespace mralloc {
 
+const int accelerate_thread = 16;
+
 const int cache_length = 72*1024;
+
+static void * run_mw_release(ibv_mw** block_mw, ibv_mw** backup_mw, int start, int end, ibv_pd* pd) {
+    for(int i = start; i < end; i++){
+        // uint64_t block_addr_ = server_block_manager_->get_block_addr(i);
+        ibv_dealloc_mw(block_mw[i]);
+        ibv_dealloc_mw(backup_mw[i]);
+    }
+};
+
 
 class MWPool {
  public:
@@ -80,7 +93,19 @@ public:
         ring_cache = new ring_buffer_atomic<mr_rdma_addr>(cache_length, ring_cache_content, mr_rdma_addr(-1, -1, -1), &reader, &writer);
         ring_cache -> clear();
     };
-    ~MemoryNode(){};
+    ~MemoryNode(){
+        uint64_t block_num_ = server_block_manager_->get_block_num() ;
+        std::thread* mw_thread[accelerate_thread];
+        struct timeval start, end;
+        gettimeofday(&start, NULL);
+        uint64_t interval = block_num_ / accelerate_thread;
+        for(int i = 0; i < accelerate_thread; i++){
+            mw_thread[i] = new std::thread(&run_mw_release, block_mw, backup_mw, i*interval, (i+1)*interval, m_pd_);
+        }
+        for(int i = 0; i < accelerate_thread; i++){
+            mw_thread[i]->join();
+        }
+    };
 
     bool start(const std::string addr, const std::string port, const std::string device);
     void stop();

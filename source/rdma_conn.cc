@@ -931,8 +931,8 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
                 return false;
             }
             section_new = section;
-            section_new.frag_map_ &= ~((bitmap16)1 << region_offset);
-            section_new.alloc_map_ |= (bitmap16)1 << region_offset;
+            section_new.frag_map_ &= (bitmap16)~((bitmap16)1 << region_offset);
+            section_new.alloc_map_ |= (bitmap16)(bitmap16)1 << region_offset;
         // }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section, section_metadata_addr(section_offset), global_rkey_));
         remote_write(&section_new, sizeof(section_new), section_metadata_addr(section_offset), global_rkey_);
         return true;
@@ -944,8 +944,8 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
                 return false;
             }
             section_new = section;
-            section_new.frag_map_ |= (bitmap16)1 << region_offset;
-            section_new.alloc_map_ &= ~((bitmap16)1 << region_offset);
+            section_new.frag_map_ |= (bitmap16)(bitmap16)1 << region_offset;
+            section_new.alloc_map_ &= (bitmap16)~((bitmap16)1 << region_offset);
         // }while(!remote_CAS(*(uint64_t*)&section_new, (uint64_t*)&section, section_metadata_addr(section_offset), global_rkey_));
         remote_write(&section_new, sizeof(section_new), section_metadata_addr(section_offset), global_rkey_);
         return true;
@@ -954,11 +954,14 @@ bool RDMAConnection::force_update_section_state(section_e &section, uint32_t reg
 }
 
 int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, uint64_t &addr, uint32_t &rkey) {
+    int retry = 0, alloc_time = 0;
+    do{
     if(size_class > 9){
         return section_alloc(section_offset, size_class, addr, rkey);
     } else if(size_class >= 5 ){
         return region_alloc(alloc_section, section_offset, size_class, addr, rkey);
     } else {
+        alloc_time ++;
         uint16_t skip_mask = 0;
         // region_e cache_region;
         // uint32_t cache_region_index;
@@ -967,7 +970,7 @@ int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offse
         bool slow_path = false;
         uint16_t first_section = section_offset;
         uint16_t ring = 0;
-	int retry;
+
         while((retry = chunk_alloc(alloc_section, section_offset, size_class, slow_path, addr, rkey)) <= 0){
             if(!slow_path){
                 if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0){
@@ -991,86 +994,9 @@ int RDMAConnection::full_alloc(section_e &alloc_section, uint32_t &section_offse
                 // break;
             }else section_time += result;
         }
-        return retry;
-
-            while((result = fetch_region(alloc_section, section_offset, size_class, false, cache_region, *(uint32_t*)&cache_region_index, skip_mask)) < 0){
-                region_time += (-1)*result;
-                if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0){
-                    slow_path = true;
-                    section_time += (-1)*result;
-                    break;
-                }else {
-                    section_time += result;
-                    if((result = chunk_alloc(alloc_section, section_offset, size_class, false, addr, rkey)) >= 0){
-                        return result;
-                    }
-                }       
-            } 
-        while((result = fetch_region_block(alloc_section, cache_region, addr, rkey, false, cache_region_index, size_class)) < 0){
-            cas_time += (-1)*result;
-            if(size_class>0)
-                skip_mask += 1 << (cache_region_index%16);
-            if(!slow_path){
-                while((result = fetch_region(alloc_section, section_offset, size_class, false, cache_region, *(uint32_t*)&cache_region_index, skip_mask)) < 0){
-                    region_time += (-1)*result;
-                    skip_mask = 0;
-                    if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0 || (result == first_section && ring == 2)){
-                        slow_path = true;
-                        section_time += (-1)*result;
-                        ring  = 0;
-                        break;
-			        }else {
-                        if((result = chunk_alloc(alloc_section, section_offset, size_class, false, addr, rkey)) >= 0){
-                            return result;
-                        }
-                        if(result == first_section) {
-                            ring ++;
-                        }
-                        section_time += result;
-                    }
-                }
-                region_time += result;
-            } else {
-                printf("slow path!\n");
-                while((result = fetch_region(alloc_section, section_offset, size_class, true, cache_region, *(uint32_t*)&cache_region_index, skip_mask)) < 0){
-                    region_time += (-1)*result;
-                    skip_mask = 0;
-                    if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_heavy)) < 0 || (result == first_section && ring == 2)){
-                        section_time += (-1)*result;
-                        printf("waiting for new section avaliable\n");
-			        }
-                    else {
-                        if((result = chunk_alloc(alloc_section, section_offset, size_class, false, addr, rkey)) >= 0){
-                            return result;
-                        }
-                        if(result == first_section) {
-                            ring ++;
-                        }
-                        section_time += result;
-                    }
-                }  
-                region_time += result;
-            }
-        }
-        cas_time += result;
-        if(cas_time >= mralloc::retry_threshold && !slow_path) {
-            // if(alloc_class == 0){
-            skip_mask = 0;
-            if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0){
-                slow_path = true;
-                section_time += (-1)*result;
-            }else section_time += result;
-            while((result = fetch_region(alloc_section, section_offset, size_class, false, cache_region, *(uint32_t*)&cache_region_index, skip_mask)) < 0){
-                region_time += (-1)*result;
-                if((result = find_section(alloc_section, section_offset, size_class, mralloc::alloc_light)) < 0){
-                    slow_path = true;
-                    section_time += (-1)*result;
-                    break;
-                }else section_time += result;
-            }
-        } 
-        return cas_time + section_time + region_time;
     }
+    }while(retry <= 0 && alloc_time < 10);
+    return retry;
 }
 
 int RDMAConnection::full_free(uint64_t addr, uint16_t block_class) {
@@ -1309,8 +1235,8 @@ int RDMAConnection::section_alloc(uint32_t &section_offset, uint16_t size_class,
                         }
                         break;
                     }
-                    new_section.alloc_map_ = ~(uint16_t)0;
-                    new_section.frag_map_ = ~(uint16_t)0;
+                    new_section.alloc_map_ = bitmap16_filled;
+                    new_section.frag_map_ = bitmap16_filled;
                     retry_counter_ = new_section.retry_;
                     new_section.retry_ = (retry_time>=retry_threshold)? 2: ((retry_time >= low_threshold)? 1:0);
                     new_section.last_offset_ = index;
@@ -1340,7 +1266,8 @@ int RDMAConnection::section_alloc(uint32_t &section_offset, uint16_t size_class,
 int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_offset, uint16_t size_class, alloc_advise advise) {
     int retry_time = 0;
     // section_e section[8] = {0,0};
-    int random_offset = mt()%16;
+    int random_offset = 0;
+    // int random_offset = mt()%16;
     section_offset += 1;
     int offset = (section_offset)%section_num_;
     // each epoch fetch 8 sections, 8*8B = 64Byte
@@ -1359,7 +1286,8 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
             }
             for(int j = 0; j < fetch; j ++) {
                 int section_index = (j+random_offset)%fetch; 
-                if((cache_section_array[section_index].frag_map_ & cache_section_array[section_index].alloc_map_) != ~(uint16_t)0){
+                if(!(cache_section_array[section_index].frag_map_ == 65535 && cache_section_array[section_index].alloc_map_ == 65535)){
+                    printf("%u, %u\n", cache_section_array[section_index].frag_map_, cache_section_array[section_index].alloc_map_);
                     alloc_section = cache_section_array[section_index];
                     section_offset = index + section_index;
                     return retry_time;
@@ -1379,7 +1307,7 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
             }
             for(int j = 0; j < fetch; j ++) {
                 int section_index = (j+random_offset)%fetch; 
-                if((cache_section_array[section_index].frag_map_ ) != ~(uint16_t)0){
+                if((cache_section_array[section_index].frag_map_ ) != 65535){
                     alloc_section = cache_section_array[section_index];
                     section_offset = index + section_index;
                     return retry_time;
@@ -1399,7 +1327,7 @@ int RDMAConnection::find_section(section_e &alloc_section, uint32_t &section_off
             }
             for(int j = 0; j < fetch; j ++) {
                 int section_index = (j+random_offset)%fetch; 
-                if((cache_section_array[section_index].frag_map_ | cache_section_array[section_index].alloc_map_) != ~(uint16_t)0){
+                if((cache_section_array[section_index].frag_map_ | cache_section_array[section_index].alloc_map_) != bitmap16_filled){
                     alloc_section = cache_section_array[section_index];
                     section_offset = index + section_index;
                     return retry_time;
@@ -1576,27 +1504,29 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
     }
     // region_e region[16] = {0,0};
     int region_num = 1 << (size_class);
-    int offset = mt()%16;
+    int cache_size = 16;
+    int offset = mt()%cache_size;
     // int offset = 0;
     int index = offset;
+    // int out_date_threshold = 3;
     uint64_t start_addr;
     // retry_time++;
     section_e section = alloc_section;
     if(section_offset != cache_region_index){
         skip_region = -1;
         cache_region_index = section_offset;
-        remote_read(cache_region_array, 16*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
+        remote_read(cache_region_array, cache_size*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
     }
     // remote_read(&section, sizeof(section_e), section_metadata_addr(section_offset), global_rkey_);
     region_e new_region;
     for(int iter = 0; iter<2; iter++){
         int out_date_counter = 0;
-        for(int j = 0; j < 16; j ++) {
+        for(int j = 0; j < cache_size; j ++) {
 
             //retry_time = 0;
             int retry_temp = 0;
             bool not_suitable = false;
-            int chunk_index = (j+offset)%16;
+            int chunk_index = (j+offset)%cache_size;
             // if(!use_chance && skip_region == chunk_index){
             //     skip_region = -1;
             //     continue;
@@ -1606,12 +1536,12 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
             // if(!use_chance && cache_region_array[chunk_index].retry_ == 2){
             //     continue;
             // }
-            if(!use_chance && ((~section.alloc_map_ & section.frag_map_) & 1<<(chunk_index)) != 0){
+            if(!use_chance && ((~section.alloc_map_ & section.frag_map_) & (uint16_t)1<<(chunk_index)) != 0){
                 continue;
             }
-            if(!use_chance && iter == 0 && cache_region_array[chunk_index].on_use_ == 0){
-                continue;
-            }
+            // if(!use_chance && iter == 0 && cache_region_array[chunk_index].on_use_ == 0){
+            //     continue;
+            // }
             // if(!use_chance && iter == 1 && ((section.frag_map_ & 1 << (chunk_index)) != 0)){
             //     continue;
             // }
@@ -1623,13 +1553,13 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                 do{
                     index = chunk_index;
                     new_section = section;
-                    if(((section.frag_map_|section.alloc_map_) & 1<<(chunk_index)) != 0){
+                    if(((section.frag_map_|section.alloc_map_) & (uint16_t)1<<(chunk_index)) != 0){
                         empty = false;
                         break;
                     }
                     raise_bit(new_section.alloc_map_, new_section.frag_map_, index);
                 }while(!remote_CAS(*(uint64_t*)&new_section, (uint64_t*)&section, section_metadata_addr(section_offset), global_rkey_));
-                if(!empty && ((section.frag_map_&section.alloc_map_) & 1<<(chunk_index)) != 0){
+                if(!empty && ((section.frag_map_&section.alloc_map_) & (uint16_t)1<<(chunk_index)) != 0){
                     continue;
                 }
             }
@@ -1644,9 +1574,21 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                 index = 0;
                 if(size_class == 0){
                     if((index = find_free_index_from_bitmap32_tail(new_region.base_map_)) == -1) {
-                        force_update_section_state(alloc_section, region_index, alloc_full);
-                        not_suitable  = true;
-                        break;
+                        if(retry_temp > 1 ){
+                            out_date_counter ++;
+                            if(out_date_counter > retry_threshold) {
+                                remote_read(cache_region_array, cache_size*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
+                                out_date_counter = 0;
+                            }
+                        }
+                        new_region = cache_region_array[chunk_index];
+                        size = 1<<(region_num+1);
+                        search_map = new_region.base_map_;
+                        if((index = find_free_index_from_bitmap32_tail(new_region.base_map_)) == -1) {
+                            force_update_section_state(alloc_section, region_index, alloc_full);
+                            not_suitable  = true;
+                            break;
+                        }
                         // return retry_time*(-1);
                     }
                     new_region.base_map_ |= (uint32_t)1<<index;
@@ -1659,10 +1601,13 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                         if(retry_temp > 1 ){
                             out_date_counter ++;
                             if(out_date_counter > retry_threshold) {
-                                remote_read(cache_region_array, 16*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
+                                remote_read(cache_region_array, cache_size*sizeof(region_e), region_metadata_addr(section_offset*region_per_section), global_rkey_);
                                 out_date_counter = 0;
                             }
                         }
+                        new_region = cache_region_array[chunk_index];
+                        size = 1<<(region_num+1);
+                        search_map = new_region.base_map_;
                         not_suitable = true;
                         break;
                     }
@@ -1670,7 +1615,6 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                         new_region.base_map_ |= (uint32_t)1<<(index+i);
                     } 
                 }
-                // [TODO] fix retry counter for section/region alloc
                 retry_counter_ = new_region.retry_;
                 new_region.retry_ = (retry_time>=retry_threshold)? 2: ((retry_time >= low_threshold)? 1:0);
                 new_region.last_offset_ = index;
@@ -1680,53 +1624,54 @@ int RDMAConnection::chunk_alloc(section_e &alloc_section, uint32_t &section_offs
                 new_region.num = size_class;
                 if(empty)
                     new_region.on_use_ = 1;
-                
-                if(cache_region_array[chunk_index].last_modify_id_ != 0){
-                    if((cache_region_array[chunk_index].base_map_ & ((uint32_t)1<<cache_region_array[chunk_index].last_offset_)) != 0 ){
-                        // malloc
-                        block_e old_block;
-                        remote_read(&old_block, sizeof(block_e), block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * cache_region_array[chunk_index].last_offset_, global_rkey_);
-                        // block_e old_block = {0, (cache_region_array[chunk_index].last_timestamp_ +126) % 127 + 1, 0};
-                        block_e new_block = {node_id_, cache_region_array[chunk_index].last_timestamp_, cache_region_array[chunk_index].num};
-                        do {
-                            int distant = abs((long)old_block.timestamp_ - (long)new_block.timestamp_);
-                            bool outdate = distant > 64 ? (old_block.timestamp_ <= new_block.timestamp_) : (old_block.timestamp_ >= new_block.timestamp_);
-                            if((old_block.timestamp_ & (1<<7)) != 0){
-                                if(cache_region_array[chunk_index].on_use_ == 0){
-                                    outdate = true;
-                                }
-                            }
-                            if(old_block.client_id_ != 0 || outdate){
-                                break;
-                            }
-                        } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * cache_region_array[chunk_index].last_offset_, global_rkey_));
-                    } else {
-                        //free
-                        // block_e old_block = {cache_region_array[chunk_index].last_modify_id_, (cache_region_array[chunk_index].last_timestamp_ +126) % 127 + 1, 0};
-                        block_e old_block;
-                        remote_read(&old_block, sizeof(block_e), block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * cache_region_array[chunk_index].last_offset_, global_rkey_);
-                        block_e new_block = {0, cache_region_array[chunk_index].last_timestamp_, cache_region_array[chunk_index].num};
-                        do {
-                            int distant = abs((long)old_block.timestamp_ - (long)new_block.timestamp_);
-                            bool outdate = distant > 64 ? (old_block.timestamp_ <= new_block.timestamp_) : (old_block.timestamp_ >= new_block.timestamp_);
-                            if((old_block.timestamp_ & (1<<7)) != 0){
-                                if(cache_region_array[chunk_index].on_use_ == 0){
-                                    outdate = true;
-                                }
-                            }
-                            if(old_block.client_id_ != cache_region_array[chunk_index].last_modify_id_ || outdate ){
-                                break;
-                            }
-                        } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * cache_region_array[chunk_index].last_offset_, global_rkey_));
-                    }
-                }
+                // flush log
+                // if(cache_region_array[chunk_index].last_modify_id_ != 0){
+                //     if((cache_region_array[chunk_index].base_map_ & ((uint32_t)1<<cache_region_array[chunk_index].last_offset_)) != 0 ){
+                //         // malloc
+                //         block_e old_block;
+                //         remote_read(&old_block, sizeof(block_e), block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * cache_region_array[chunk_index].last_offset_, global_rkey_);
+                //         // block_e old_block = {0, (cache_region_array[chunk_index].last_timestamp_ +126) % 127 + 1, 0};
+                //         block_e new_block = {node_id_, cache_region_array[chunk_index].last_timestamp_, cache_region_array[chunk_index].num};
+                //         do {
+                //             int distant = abs((long)old_block.timestamp_ - (long)new_block.timestamp_);
+                //             bool outdate = distant > 64 ? (old_block.timestamp_ <= new_block.timestamp_) : (old_block.timestamp_ >= new_block.timestamp_);
+                //             if((old_block.timestamp_ & (1<<7)) != 0){
+                //                 if(cache_region_array[chunk_index].on_use_ == 0){
+                //                     outdate = true;
+                //                 }
+                //             }
+                //             if(old_block.client_id_ != 0 || outdate){
+                //                 break;
+                //             }
+                //         } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * cache_region_array[chunk_index].last_offset_, global_rkey_));
+                //     } else {
+                //         //free
+                //         // block_e old_block = {cache_region_array[chunk_index].last_modify_id_, (cache_region_array[chunk_index].last_timestamp_ +126) % 127 + 1, 0};
+                //         block_e old_block;
+                //         remote_read(&old_block, sizeof(block_e), block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * cache_region_array[chunk_index].last_offset_, global_rkey_);
+                //         block_e new_block = {0, cache_region_array[chunk_index].last_timestamp_, cache_region_array[chunk_index].num};
+                //         do {
+                //             int distant = abs((long)old_block.timestamp_ - (long)new_block.timestamp_);
+                //             bool outdate = distant > 64 ? (old_block.timestamp_ <= new_block.timestamp_) : (old_block.timestamp_ >= new_block.timestamp_);
+                //             if((old_block.timestamp_ & (1<<7)) != 0){
+                //                 if(cache_region_array[chunk_index].on_use_ == 0){
+                //                     outdate = true;
+                //                 }
+                //             }
+                //             if(old_block.client_id_ != cache_region_array[chunk_index].last_modify_id_ || outdate ){
+                //                 break;
+                //             }
+                //         } while(!remote_CAS(*(uint64_t*)&new_block, (uint64_t*)&old_block, block_header_ + sizeof(uint64_t) * region_index * block_per_region + sizeof(uint64_t) * cache_region_array[chunk_index].last_offset_, global_rkey_));
+                //     }
+                // }
 
             }while(!remote_CAS(*(uint64_t*)&new_region, (uint64_t*)&cache_region_array[chunk_index], region_metadata_addr(region_index), global_rkey_));
             cache_region_array[chunk_index] = new_region;
             if(!not_suitable){
                 // out_date_counter -= 1;
                 addr = get_region_block_addr(region_index, index);
-                rkey = get_region_block_rkey(region_index, index); 
+                rkey = get_global_rkey();
+                // rkey = get_region_block_rkey(region_index, index); 
 
                 // retry counter for least 3 time allocation
                 uint64_t old_retry = retry_counter_;
