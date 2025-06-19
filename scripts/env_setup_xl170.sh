@@ -2,7 +2,7 @@
 
 #xl170
 
-# echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDXPY6VzIvivxGOlFifJlbsbWYnwIDbLdcZAklivcJzlizdCNKHWZF2fNqF3/GFMtJkT2v5E5/IxxmWzN2Lm+3YYYI1mEbwL9LuwFncuhxgqhP8HT81Z8bXKShEyMDK6lii11eJ9xFKwuv4We4a5A+jTEu4HROsO1en64e7JcHr502lphVFzljiduwsFjFpmqXc6Y8rQdMPn4guQokcPwI7/8xMO72q8v+qsGvi7ss2ed8p5fyZfe2xuSqT2a6aoFNdS2r0/1xIFEM1B1jXwoxD3nrq3/d3OvTKcvt56Y+uVO+TfOb3lzMzSQMN40zmCfD4tJg7WxYKuezzFpDG5SyRdUHmelp7lYiprPySfSFmZNRQ56ClhKpIDwMVWNf9MqXi1ztU8AlrfHuXCvqyrlStrmNfqGzzv7p5uKqppfNhneanMJLpwuAPxFkynrlOT02tj+nIEeKzoqoarZmNEk73tNQ7tUypEQLPcGxUi+Iyapy/zh6sE25WSdh3heSsxtc= X1aoyang@node0.x1aoyang-255734.adslremotememory-pg0.utah.cloudlab.us" >> ~/.ssh/authorized_keys
+echo "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDXPY6VzIvivxGOlFifJlbsbWYnwIDbLdcZAklivcJzlizdCNKHWZF2fNqF3/GFMtJkT2v5E5/IxxmWzN2Lm+3YYYI1mEbwL9LuwFncuhxgqhP8HT81Z8bXKShEyMDK6lii11eJ9xFKwuv4We4a5A+jTEu4HROsO1en64e7JcHr502lphVFzljiduwsFjFpmqXc6Y8rQdMPn4guQokcPwI7/8xMO72q8v+qsGvi7ss2ed8p5fyZfe2xuSqT2a6aoFNdS2r0/1xIFEM1B1jXwoxD3nrq3/d3OvTKcvt56Y+uVO+TfOb3lzMzSQMN40zmCfD4tJg7WxYKuezzFpDG5SyRdUHmelp7lYiprPySfSFmZNRQ56ClhKpIDwMVWNf9MqXi1ztU8AlrfHuXCvqyrlStrmNfqGzzv7p5uKqppfNhneanMJLpwuAPxFkynrlOT02tj+nIEeKzoqoarZmNEk73tNQ7tUypEQLPcGxUi+Iyapy/zh6sE25WSdh3heSsxtc= X1aoyang@node0.x1aoyang-255734.adslremotememory-pg0.utah.cloudlab.us" >> ~/.ssh/authorized_keys
 
 sudo apt update
 sudo apt install -y cmake libboost-all-dev libgoogle-perftools-dev libtbb-dev libgtest-dev libgflags-dev libgoogle-glog-dev
@@ -16,7 +16,7 @@ sudo make install
 cd ..; rm -rf memkind
 
 sudo apt-get install lsb-release curl gpg
-curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
+[ ! -f "/usr/share/keyrings/redis-archive-keyring.gpg" ] && curl -fsSL https://packages.redis.io/gpg | sudo gpg --dearmor -o /usr/share/keyrings/redis-archive-keyring.gpg
 sudo chmod 644 /usr/share/keyrings/redis-archive-keyring.gpg
 echo "deb [signed-by=/usr/share/keyrings/redis-archive-keyring.gpg] https://packages.redis.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/redis.list
 sudo apt-get update

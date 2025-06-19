@@ -1,6 +1,6 @@
 #!/bin/bash
 
-sudo ~/FineMem/scripts/set_2MB_hugepage.sh 30000
+sudo ~/FineMem/scripts/set_2MB_hugepage.sh 20000
 
 nohup redis-server --bind 10.10.1.1 --port 2222 --protected-mode no &
 
